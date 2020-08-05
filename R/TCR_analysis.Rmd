@@ -1,0 +1,269 @@
+---
+title: "HNSCC_scRNAseq_Descriptive_paper_TCR_Analysis"
+author: "Dillon Corvino & Thomas Watkins"
+date: "03/02/2020"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: united
+    highlight: tango
+    df_print: paged
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+
+Built with R version `r getRversion()`
+
+## Setup {.tabset}
+
+### Dataset information
+```{r Dataset_Info}
+
+# Human samples from HNSCC patients
+# samples 1 and 2 are unstimulated 
+# samples 3 and 4 are stimulated 
+# Patients in 1 match patients in 3 and sample 2 pairs with 4
+# Cells are HNSCC TILs sorted on Lymphocytes/Live/CD3+/CD4-/CD8+
+# Data acquired was transcript expression, ADT (antibody expression), and TCRA & B sequences
+# This analysis uses just Transcript and TCR data
+
+```
+
+### Environment
+```{r Environment_setup, message = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,  
+  eval = TRUE, 
+  tidy = TRUE
+)
+
+# Environment Set up
+rm(list = ls()) #Clean workspace
+cat("\014")     #Clean Console
+gc() # Free memory
+
+start.time <- Sys.time()
+quick.load <- TRUE
+long.compute <- FALSE
+
+###################
+# Install packages
+###################
+
+# Ensure Seurat is version >3
+
+pkgs <- c("remedy", "Seurat", "dplyr", "rstudioapi",
+          "cowplot", "ggplot2", "grid", "gridExtra",
+          "styler", "stringr", "inlmisc", "RColorBrewer",
+          "readxl", "devtools", "tidyverse", "hdf5r")
+
+
+for(i in 1:length(pkgs)){
+  if(!require(pkgs[i], character.only = T)){
+    install.packages(pkgs[i])
+    require(pkgs[i], character.only = T)
+  }else{
+    require(pkgs[i], character.only = T)
+  }
+}
+
+pkgs <- c("gplots", "fgsea", "biomaRt", "clusterProfiler", 
+          "GSEABase", "org.Hs.eg.db", "pcaMethods",
+          "SingleCellExperiment", "batchelor", "DelayedArray", "DelayedMatrixStats",
+          "limma", "SummarizedExperiment")
+
+for(i in 1:length(pkgs)){
+  if(!require(pkgs[i], character.only = T)){
+    BiocManager::install(pkgs[i])
+    require(pkgs[i], character.only = T)
+  }else{
+    require(pkgs[i], character.only = T)
+  }
+}
+
+
+#####################
+# Github packages
+#####################
+
+# library("devtools")
+
+
+# @Thomas: I suggest you use your own GITHUB_PAT. Not sure if will cause complications using mine across OS etc. Maybe have to look it up. Should it be required.
+
+#usethis::browse_github_pat()
+#usethis::edit_r_environ()
+# GITHUB_PAT = "d8207153aef7b295cdf66eb1e1b2a2ed38b0ca18"
+# R_MAX_VSIZE = 30Gb
+
+
+#devtools::install_github("ncborcherding/scRepertoire")
+
+#devtools::install_github('satijalab/seurat-wrappers')
+
+#devtools::install_github("immunomind/immunarch")
+
+#.rs.restartR()
+
+####################
+# Colour scheme
+####################
+
+Condition.cols <- c("turquoise", "red")
+
+clust.cols <- c("#E41A1C", # Naive_like_1_CM
+                  "#A6761D", # Naive_like_2_SC
+                  "#8DA0CB", # Naive_like_3
+                  "#666666", # Cytotoxic
+                  "#A6D854", # Type_I_IFN
+                  "#984EA3", # Stimulated_1
+                  "#1B9E77", # Stimulated_exhausted
+                  "#D95F02", # Exhausted_1
+                  "#7570B3", # Exhausted_2
+                  "#E7298A", # TRM
+                  "#E6AB02", # gd_T_g9d2
+                  "#8DD3C7", # gd_T_non_g9d2
+                  "#FF7F00", # MAIT 
+                  "#E78AC3") # Proliferative
+
+ 
+ module.cols <- c("#E41A1C", # Naive_Stem
+                  "#1B9E77", # Activated
+                  "#7570B3", # Exhaustion
+                  "#FF7F00", # Innate
+                  "#E78AC3") # Cycling
+
+
+
+# Archive code for colour scheme tinkering 
+# display.brewer.all()
+# 14 cols needed
+#clust.cols <-  c(brewer.pal(11, "Set3"), brewer.pal(3, "Dark2"))
+# names(clust.cols) <- levels(seurat.tcr@meta.data$seurat_clusters)
+# clust.cols
+  
+
+# Set working directory to source file location 
+# @Thomas: This may not work on Windows OS // also note that when knitting a document wd must be hard-coded and the following 2 lines must be commented out
+setwd(dirname(getActiveDocumentContext()$path))
+working.dir <- getwd()
+
+
+# create output directories
+if(!dir.exists("../Exported_RDS_files")){dir.create("../Exported_RDS_files", recursive = T)}
+if(!dir.exists("../output")){dir.create("../output", recursive = T)}
+if(!dir.exists("../output/figures")){dir.create("../output/figures", recursive = T)}
+if(!dir.exists("../output/tables")){dir.create("../output/tables", recursive = T)}
+if(!dir.exists("../output/QC")){dir.create("../output/QC", recursive = T)}
+
+
+# load saved seurat object with cluster annotations and imputation performed
+if(quick.load){
+  seurat.combined <- readRDS("../Data/seurat_combined.rds")
+  seurat.tcr <- readRDS("../Data/seurat_tcr.rds")
+}
+
+
+```
+
+
+### Example code
+```{r Examples_for_Thomas}
+
+# Change idents
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+# Cluster annotations
+seurat.combined@meta.data$seurat_clusters
+
+# Module annotations
+seurat.combined@meta.data$Module
+
+
+# To plot UMAP use
+UMAPPlot(object = seurat.combined,
+         pt.size = 1,
+         label = FALSE, 
+         cols = clust.cols) + # use clust.cols, module.cols, or condition.cols to get correct colour scheme 
+  ggtitle("UMAP named clusters") +
+  NoLegend() # Use to turn of legend 
+
+
+
+
+
+
+```
+
+
+## TCR analysis {.tabset}
+
+### Format data with scRepertoire
+```{r Format_data_with_scRep}
+
+# @Thomas: Below code is what was used to generate seurat.tcr object
+
+# devtools::install_github("ncborcherding/scRepertoire")
+# install.packages("ggalluvial")
+
+# @Thomas: I can't load this package properly on mac OS. therefore using this hack to install but you shouldnt require this. please leave for my use
+# Package fails to load - use this trick to get tools of the package 
+# devtools::load_all("~/Documents/Work/Sciebo/Scripts/scRepertoire/")
+
+
+#################################
+# Read in and format data
+#################################
+
+# read in contig files
+S1.contig <- read.csv("../Data/VDJ_data/Sample1_filtered_contig_annotations.csv", stringsAsFactors = FALSE)
+S2.contig <- read.csv("../Data/VDJ_data/Sample2_filtered_contig_annotations.csv", stringsAsFactors = FALSE)
+S3.contig <- read.csv("../Data/VDJ_data/Sample3_filtered_contig_annotations.csv", stringsAsFactors = FALSE)
+S4.contig <- read.csv("../Data/VDJ_data/Sample4_filtered_contig_annotations.csv", stringsAsFactors = FALSE)
+
+# create list of contigs
+contig.list <- list(S1.contig, S2.contig,
+                    S3.contig, S4.contig)
+
+# Combine contig list
+combined.contig <- combineTCR(contig.list, 
+                              samples = c("S1", "S2", "S3", "S4"), 
+                              ID = c("US", "US", "Stim", "Stim"), 
+                              cells = "T-AB",
+                              removeNA = TRUE,
+                              removeMulti = FALSE, 
+                              filterMulti = TRUE) # take the top 2 expressed chains for cells with multiple chains 
+
+# on average, filteringMulti results in approx. 200 more cells for each sample than outright removing cells
+
+
+# Need to amend BarcodeID to match with seurat object
+combined.contig$S1_US$barcode <- gsub("US_", "", combined.contig$S1_US$barcode)
+combined.contig$S2_US$barcode <- gsub("US_", "", combined.contig$S2_US$barcode)
+combined.contig$S3_Stim$barcode <- gsub("Stim_", "", combined.contig$S3_Stim$barcode)
+combined.contig$S4_Stim$barcode <- gsub("Stim_", "", combined.contig$S4_Stim$barcode)
+
+
+# Combine seurat object with contig info
+seurat.tcr <- combineExpression(combined.contig,
+                                seurat.combined,
+                                cloneCall = "aa",
+                                cloneTypes = c(None = 0, Single = 1, Small = 5, Medium = 10, Large = 20, Hyperexpanded = 100),
+                                groupBy = "ID", # should clonotype frequencies be calculated by ID (US/Stim) or sample (S1..S4)
+                                filterNA = TRUE) # should seurat object be subsetted to remove NA values
+
+# Max freq of a clonotype is 88, therefore reset cloneTypes accordingly, 90% of data <= 35, 80% <= 14
+
+# Seurat object went from 11658 samples to 6625 samples 
+# Therefore 56% of original dataset remains 
+
+
+
+```
+ 
+
