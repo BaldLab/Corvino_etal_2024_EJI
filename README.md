@@ -17,6 +17,7 @@
 - GLIPH analysis - note there is now a Gliph V2 algorithm 
 - GLIPH visualisation 
 - Logo TCR motif generation 
+- Rarefacation analysis across clusters - cumulative diversity vs. clonotypeID
 
 # scRNAseq tasks
 - Transcription factor network analysis
