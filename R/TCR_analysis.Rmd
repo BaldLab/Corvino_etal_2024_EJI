@@ -263,7 +263,13 @@ seurat.tcr <- combineExpression(combined.contig,
 # Seurat object went from 11658 samples to 6625 samples 
 # Therefore 56% of original dataset remains 
 
-
+# Ensure seurat object cloneType var is a factor with correct levels
+seurat.tcr@meta.data$cloneType <- factor(seurat.tcr@meta.data$cloneType, 
+                                         levels = c("Hyperexpanded (20 < X <= 100)",
+                                                    "Large (10 < X <= 20)", 
+                                                    "Medium (5 < X <= 10)",
+                                                    "Small (1 < X <= 5)", 
+                                                    "Single (0 < X <= 1)"))
 
 ```
  
