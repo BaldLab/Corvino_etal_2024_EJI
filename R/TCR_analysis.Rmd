@@ -151,21 +151,22 @@ clust.cols <- c("#E41A1C", # Naive_like_1_CM
 # Set working directory to source file location 
 # @Thomas: This may not work on Windows OS // also note that when knitting a document wd must be hard-coded and the following 2 lines must be commented out
 setwd(dirname(getActiveDocumentContext()$path))
+setwd("../") # All my scripts are written in a way that script file is in the working directiory. Given now on github, was easier to change wd up 1 level.
 working.dir <- getwd()
 
 
 # create output directories
-if(!dir.exists("../Exported_RDS_files")){dir.create("../Exported_RDS_files", recursive = T)}
-if(!dir.exists("../output")){dir.create("../output", recursive = T)}
-if(!dir.exists("../output/figures")){dir.create("../output/figures", recursive = T)}
-if(!dir.exists("../output/tables")){dir.create("../output/tables", recursive = T)}
-if(!dir.exists("../output/QC")){dir.create("../output/QC", recursive = T)}
+if(!dir.exists("Exported_RDS_files")){dir.create("Exported_RDS_files", recursive = T)}
+if(!dir.exists("output")){dir.create("output", recursive = T)}
+if(!dir.exists("output/figures")){dir.create("output/figures", recursive = T)}
+if(!dir.exists("output/tables")){dir.create("output/tables", recursive = T)}
+if(!dir.exists("output/QC")){dir.create("output/QC", recursive = T)}
 
 
 # load saved seurat object with cluster annotations and imputation performed
 if(quick.load){
-  seurat.combined <- readRDS("../Data/seurat_combined.rds")
-  seurat.tcr <- readRDS("../Data/seurat_tcr.rds")
+  seurat.combined <- readRDS("Data/seurat_combined.rds")
+  seurat.tcr <- readRDS("Data/seurat_tcr.rds")
 }
 
 
@@ -221,10 +222,10 @@ UMAPPlot(object = seurat.combined,
 #################################
 
 # read in contig files
-S1.contig <- read.csv("../Data/VDJ_data/Sample1_filtered_contig_annotations.csv", stringsAsFactors = FALSE)
-S2.contig <- read.csv("../Data/VDJ_data/Sample2_filtered_contig_annotations.csv", stringsAsFactors = FALSE)
-S3.contig <- read.csv("../Data/VDJ_data/Sample3_filtered_contig_annotations.csv", stringsAsFactors = FALSE)
-S4.contig <- read.csv("../Data/VDJ_data/Sample4_filtered_contig_annotations.csv", stringsAsFactors = FALSE)
+S1.contig <- read.csv("Data/VDJ_data/Sample1_filtered_contig_annotations.csv", stringsAsFactors = FALSE)
+S2.contig <- read.csv("Data/VDJ_data/Sample2_filtered_contig_annotations.csv", stringsAsFactors = FALSE)
+S3.contig <- read.csv("Data/VDJ_data/Sample3_filtered_contig_annotations.csv", stringsAsFactors = FALSE)
+S4.contig <- read.csv("Data/VDJ_data/Sample4_filtered_contig_annotations.csv", stringsAsFactors = FALSE)
 
 # create list of contigs
 contig.list <- list(S1.contig, S2.contig,
@@ -266,4 +267,306 @@ seurat.tcr <- combineExpression(combined.contig,
 
 ```
  
+### Analysis with scRepertoire
+```{r scRepertoire_analysis}
 
+# Create output directories
+if(!dir.exists("output/figures/TCRseq/scRepertoire")){
+  dir.create("output/figures/TCRseq/scRepertoire",
+             recursive = T)}
+
+if(!dir.exists("output/figures/TCRseq/scRepertoire/clusters")){
+  dir.create("output/figures/TCRseq/scRepertoire/clusters",
+             recursive = T)}
+
+if(!dir.exists("output/figures/TCRseq/scRepertoire/modules")){
+  dir.create("output/figures/TCRseq/scRepertoire/modules",
+             recursive = T)}
+
+
+
+#########################
+# Set uniform variables 
+#########################
+
+# for clonalProportion split
+split.var <- c(1, 5, 10, 20, 50, 500, 5000, 1e+05)
+
+# for clonalHomeostasis split
+homeostasis.var <- c(Rare = 0.001, 
+                     very_small = 0.002,
+                     Small = 0.005, 
+                     Medium = 0.01, 
+                     Large = 0.05, 
+                     very_Large = 0.1, 
+                     Hyperexpanded = 1)
+
+
+#########################################################
+# Perform basic clonotype analysis and visualisation
+#########################################################
+
+# quantify % unique clonotype per sample
+quantContig(combined.contig,
+            cloneCall="aa", 
+            scale = TRUE)
+
+dev.copy(pdf, "output/figures/TCRseq/scRepertoire/Quant_contig_sample.pdf")
+dev.off()
+
+# quantify % unique clonotype per group
+quantContig(combined.contig,
+            cloneCall="aa", 
+            group = "ID",
+            scale = TRUE)
+
+dev.copy(pdf, "output/figures/TCRseq/scRepertoire/Quant_contig_treatment.pdf")
+dev.off()
+
+
+# abundance of clonotypes
+abundanceContig(combined.contig,
+                cloneCall = "aa",
+                group = "ID", 
+                scale = TRUE)
+
+dev.copy(pdf, "output/figures/TCRseq/scRepertoire/Clonotype_abundance_by_treatment.pdf")
+dev.off()
+
+
+
+# Chain length overview 
+lengthContig(combined.contig, 
+             cloneCall="aa", 
+             chains = "combined",
+             group = "ID") 
+
+dev.copy(pdf, "output/figures/TCRseq/scRepertoire/Chain_length_combined.pdf")
+dev.off()
+
+# Chain length by chain
+lengthContig(combined.contig, 
+             cloneCall="aa", 
+             chains = "single",
+             group = "ID")
+
+dev.copy(pdf, "output/figures/TCRseq/scRepertoire/Chain_length_by_locus.pdf")
+dev.off()
+
+
+## Something looks weird with the alluvial plots - lines dont line up
+
+# Compare clonotypes across samples
+
+compareClonotypes(combined.contig,
+                  numbers = 20, 
+                  samples = c("S1_US", "S3_Stim"), 
+                  cloneCall = "aa", 
+                  graph = "alluvial") + NoLegend()
+
+
+compareClonotypes(combined.contig,
+                  numbers = 20, 
+                  samples = c("S2_US", "S4_Stim"), 
+                  cloneCall = "aa", 
+                  graph = "alluvial") + NoLegend()
+
+
+
+# Overview of clonal homeostasis
+clonalHomeostasis(combined.contig, 
+                  cloneType = homeostasis.var,
+                  cloneCall = "aa")
+
+dev.copy(pdf, "output/figures/TCRseq/scRepertoire/clonalHomeostasis.pdf")
+dev.off()
+
+
+# Clonal Proportion
+clonalProportion(combined.contig,
+                 split = split.var,
+                 cloneCall = "aa") 
+
+dev.copy(pdf, "output/figures/TCRseq/scRepertoire/clonalProportion.pdf")
+dev.off()
+
+# clonal overlap
+clonalOverlap(combined.contig, 
+              cloneCall = "aa", 
+              method = "morisita")
+
+dev.copy(pdf, "output/figures/TCRseq/scRepertoire/cloncalOverlap.pdf")
+dev.off()
+
+
+# clone size distribution
+clonesizeDistribution(combined.contig, 
+                      cloneCall = "aa", 
+                      method = "ward.D2")
+
+dev.copy(pdf, "output/figures/TCRseq/scRepertoire/cloneSizeDistribution.pdf")
+dev.off()
+
+# Clonal Diversity 
+clonalDiversity(combined.contig,
+                cloneCall = "aa",
+                group = "ID")
+
+dev.copy(pdf, "output/figures/TCRseq/scRepertoire/clonalDiversity.pdf")
+dev.off()
+
+
+
+########################################################################
+# perform basic repertoire analysis across clusters & modules
+########################################################################
+
+# Modified function, original was not subsetting correctly
+expression2List.mod <- function(sc, group){
+  meta <- grabMeta(sc)
+  unique.var <- str_sort(as.character(unique(meta[,group])), numeric = TRUE)
+  df <- NULL
+  for (i in seq_along(unique.var)) {
+    subset.var <- meta[meta[,group] == unique.var[i],]
+    df[[i]] <- subset.var
+  }
+  names(df) <- unique.var
+  
+  return(df)
+}
+
+
+tcr.clusters <- expression2List.mod(seurat.tcr, group = "seurat_clusters")
+   
+tcr.modules <- expression2List.mod(seurat.tcr, group = "Module")
+
+
+
+####################
+# Clonal Diversity 
+####################
+
+# Clusters
+clonalDiversity(tcr.clusters, 
+                cloneCall = "aa")
+
+dev.copy(pdf, "output/figures/TCRseq/scRepertoire/clusters/clonalDiversity_clusters.pdf")
+dev.off()
+
+# Modules
+clonalDiversity(tcr.modules, 
+                cloneCall = "aa")
+
+dev.copy(pdf, "output/figures/TCRseq/scRepertoire/modules/clonalDiversity_modules.pdf")
+dev.off()
+
+
+
+####################
+# Clonal Homeostasis
+####################
+
+
+# Clusters
+clonalHomeostasis(tcr.clusters, 
+                  cloneType = homeostasis.var,
+                  cloneCall = "aa") + 
+  theme(axis.text.x = element_text(angle = 90))
+
+dev.copy(pdf, "output/figures/TCRseq/scRepertoire/clusters/clonalHomeostasis_clusters.pdf")
+dev.off()
+
+# Modules
+clonalHomeostasis(tcr.modules, 
+                  cloneType = homeostasis.var,
+                  cloneCall = "aa") + 
+  theme(axis.text.x = element_text(angle = 90))
+
+dev.copy(pdf, "output/figures/TCRseq/scRepertoire/modules/clonalHomeostasis_modules.pdf")
+dev.off()
+
+
+####################
+# Clonal Proportion
+####################
+
+# Clusters
+clonalProportion(tcr.clusters, 
+                 split = split.var,
+                 cloneCall = "aa") + 
+    theme(axis.text.x = element_text(angle = 90))
+
+dev.copy(pdf, "output/figures/TCRseq/scRepertoire/clusters/clonalproportion_clusters.pdf")
+dev.off()
+
+
+# Modules
+clonalProportion(tcr.modules, 
+                 split = split.var,
+                 cloneCall = "aa") + 
+  theme(axis.text.x = element_text(angle = 90))
+
+dev.copy(pdf, "output/figures/TCRseq/scRepertoire/modules/clonalproportion_modules.pdf")
+dev.off()
+
+
+
+####################
+# Clonal Overlap
+####################
+
+# Clusters
+clonalOverlap(tcr.clusters, 
+              cloneCall = "aa", 
+              method = "overlap") + 
+    theme(axis.text.x = element_text(angle = 90))
+
+dev.copy(pdf, "output/figures/TCRseq/scRepertoire/clusters/clonaloverlap_clusters.pdf")
+dev.off()
+
+# Modules
+clonalOverlap(tcr.modules, 
+              cloneCall = "aa", 
+              method = "overlap") + 
+    theme(axis.text.x = element_text(angle = 90))
+
+dev.copy(pdf, "output/figures/TCRseq/scRepertoire/modules/clonaloverlap_modules.pdf")
+dev.off()
+
+
+
+
+
+###################################
+# Split dataset by condition
+###################################
+
+Idents(seurat.tcr) <- seurat.tcr@meta.data$condition
+
+# US
+US.seurat.tcr <- subset(seurat.tcr, ident = "US")
+tcr.clusters.US <- expression2List.mod(US.seurat.tcr, group = "seurat_clusters")
+
+# Stimulated
+Stim.seurat.tcr <- subset(seurat.tcr, ident = "Stim")
+tcr.clusters.Stim <- expression2List.mod(Stim.seurat.tcr, group = "seurat_clusters")
+
+
+
+
+p1 <- clonalOverlap(tcr.clusters.US, 
+              cloneCall = "aa", 
+              method = "overlap") + 
+    theme(axis.text.x = element_text(angle = 90))
+
+p2 <- clonalOverlap(tcr.clusters.Stim, 
+              cloneCall = "aa", 
+              method = "overlap") + 
+    theme(axis.text.x = element_text(angle = 90))
+
+
+p1|p2
+
+
+```
+ 
