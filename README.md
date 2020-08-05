@@ -7,3 +7,7 @@
 - Cells are HNSCC TILs sorted on Lymphocytes/Live/CD3+/CD4-/CD8+
 - Data acquired was transcript expression, ADT (antibody expression), and TCRA & B sequences
 - This analysis uses just Transcript and TCR data
+
+# Message to Thomas Watkins
+- I have annotated bits of code with @Thomas: please read 
+
