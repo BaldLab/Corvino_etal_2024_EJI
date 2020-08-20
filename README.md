@@ -8,6 +8,15 @@
 - Data acquired was transcript expression, ADT (antibody expression), and TCRA & B sequences
 - This analysis uses just Transcript and TCR data
 
+# Note: 
+- Dir/file paths are not written in a github compatible structure - these file paths will need to be amended 
+- Data/ seurat_combined.rds = all cells and genes following filtering and annotations 
+- Data/ seurat_tcr.rds = only cells which have a paired ab TCR 
+- Data/VDJ_data/ is the raw dataframes output by 10x (Cellranger) pipeline with TCR info
+- R/ HNSC_scRNAseq_Descriptive_paper_V*.Rmd = full script with entire analysis so far - including many work in progress sections of code 
+- R/ HNSCC_scTCRseq_analysis.Rmd = just TCRseq relevant code chunks taken from the full script
+
+
 # Outstanding tasks
 - Track clonotypes - for each cluster in US do clones increase/decrease and/or move between clusters 
 
