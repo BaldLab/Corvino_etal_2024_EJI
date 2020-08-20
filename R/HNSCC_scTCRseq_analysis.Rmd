@@ -1,0 +1,1673 @@
+---
+title: "HNSCC_scRNAseq_Descriptive_paper"
+author: "Dillon Corvino"
+date: "03/02/2020"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: united
+    highlight: tango
+    df_print: paged
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+
+Built with R version `r getRversion()`
+
+## Setup {.tabset}
+
+### Dataset information
+```{r Dataset_Info}
+
+# HNSCC scRNAseq/scTCRseq dataset
+# Cells are HNSCC TILs sorted on Lymphocytes/Live/CD3+/CD4-/CD8+
+# Human samples
+# Each sample is a pool of 4 patients
+# samples 1 and 2 are unstimulated 
+# samples 3 and 4 are stimulated 
+# Patients in sample 1 match patients in sample 3 and sample 2 pairs with 4
+# Data acquired was transcript expression, ADT (antibody expression), and TCRA & B sequences
+# This analysis uses just Transcript and TCR data
+
+
+# General information
+# CellRanger was used for sequence alignment/QC/counts/TCR calls - performed by Ross (QIMR, Brisbane, Aus)
+# DC was provided the output from CellRanger (counts matrix) and used this as input for analysis within this script
+
+```
+
+### Environment
+```{r Environment_setup, message = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,  
+  eval = TRUE, 
+  tidy = TRUE
+)
+
+# Environment Set up
+rm(list = ls()) #Clean workspace
+cat("\014")     #Clean Console
+gc() # Free memory
+
+# pipeline variables
+start.time <- Sys.time()
+quick.load <- TRUE
+long.compute <- FALSE
+
+###################
+# Install packages
+###################
+
+# CITEseq requires latest version of Seurat i.e at least V3
+# To install the development version of seurat
+# devtools::install_github(repo = 'satijalab/seurat', ref = 'develop')
+
+pkgs <- c("remedy", "Seurat", "dplyr", "rstudioapi",
+          "cowplot", "ggplot2", "grid", "gridExtra",
+          "styler", "stringr", "inlmisc", "RColorBrewer",
+          "readxl", "devtools", "tidyverse", "hdf5r", "scales", "useful")
+
+for(i in 1:length(pkgs)){
+  if(!require(pkgs[i], character.only = T)){
+    install.packages(pkgs[i])
+    require(pkgs[i], character.only = T)
+  }else{
+    require(pkgs[i], character.only = T)
+  }
+}
+
+pkgs <- c("gplots", "fgsea", "biomaRt", "clusterProfiler", 
+          "GSEABase", "org.Hs.eg.db", "org.Mm.eg.db", "pcaMethods",
+          "SingleCellExperiment", "batchelor", "DelayedArray", "DelayedMatrixStats",
+          "limma", "SummarizedExperiment")
+
+for(i in 1:length(pkgs)){
+  if(!require(pkgs[i], character.only = T)){
+    BiocManager::install(pkgs[i])
+    require(pkgs[i], character.only = T)
+  }else{
+    require(pkgs[i], character.only = T)
+  }
+}
+
+
+#####################
+# Github packages
+#####################
+
+# Installed packages 
+
+# library("devtools")
+
+# usethis::browse_github_pat()
+# usethis::edit_r_environ()
+# GITHUB_PAT = "d8207153aef7b295cdf66eb1e1b2a2ed38b0ca18"
+# R_MAX_VSIZE = 30Gb
+
+# celltalker
+#devtools::install_github("arc85/celltalker")
+
+# Scillus 
+#devtools::install_github("xmc811/Scillus", ref = "development")
+
+#devtools::install_github('satijalab/seurat-data')
+
+#devtools::install_github("velocyto-team/velocyto.R")
+
+#devtools::install_github("dynverse/dyno")
+
+#devtools::install_github('cole-trapnell-lab/leidenbase')
+#devtools::install_github('cole-trapnell-lab/monocle3')
+
+#devtools::install_github("immunomind/immunarch")
+#devtools::install_github("Coolgenome/iTALK", build_vignettes = TRUE)
+
+#########################
+# Failed installations
+#########################
+
+# I have been getting a killed:9 error installing the following github packages. 
+# I believe the issue is clang or something to do with the compiler. Unable to fix the issue. Many open github issues on this error
+
+# For using scRep package I have made a work around to get access to the functions
+#devtools::install_github("ncborcherding/scRepertoire")
+
+#devtools::install_github('satijalab/seurat-wrappers')
+
+
+# Moncle packages to load 
+#library(monocle3)
+#library(Seurat)
+#library(SeuratData)
+#library(SeuratWrappers)
+#library(ggplot2)
+#library(patchwork)
+#library(magrittr)
+
+
+#.rs.restartR()
+
+
+# Failed
+#remotes::install_git("https://gitlab.unil.ch/carmona/ProjecTILs.git", ref = "v0.4.1")
+
+# TILPRED install works, but only currently for mouse datasets
+#remotes::install_github("carmonalab/TILPRED")
+
+
+####################
+# Colour scheme
+####################
+
+Condition.cols <- c("turquoise", "red")
+
+clust.cols <- c("#E41A1C", # Naive_like_1_CM
+                "#A6761D", # Naive_like_2_SC
+                "#8DA0CB", # Naive_like_3
+                "#666666", # Cytotoxic
+                "#A6D854", # Type_I_IFN
+                "#984EA3", # Stimulated_1
+                "#1B9E77", # Stimulated_exhausted
+                "#D95F02", # Exhausted_1
+                "#7570B3", # Exhausted_2
+                "#E7298A", # TRM
+                "#E6AB02", # gd_T_g9d2
+                "#8DD3C7", # gd_T_non_g9d2
+                "#FF7F00", # MAIT 
+                "#E78AC3") # Proliferative
+
+
+module.cols <- c("#E41A1C", # Naive_Stem
+                 "#1B9E77", # Activated
+                 "#7570B3", # Exhaustion
+                 "#FF7F00", # Innate
+                 "#E78AC3") # Cycling
+
+# Set working directory to source file location
+setwd(dirname(getActiveDocumentContext()$path))
+working.dir <- getwd()
+
+# create output directories
+if(!dir.exists("Exported_RDS_files")){dir.create("Exported_RDS_files", recursive = T)}
+if(!dir.exists("output")){dir.create("output", recursive = T)}
+if(!dir.exists("output/figures")){dir.create("output/figures", recursive = T)}
+if(!dir.exists("output/tables")){dir.create("output/tables", recursive = T)}
+if(!dir.exists("output/QC")){dir.create("output/QC", recursive = T)}
+
+
+# load saved seurat object with cluster annotations and imputation performed
+if(quick.load){
+  seurat.combined <- readRDS("Exported_RDS_files/seurat_combined.rds")
+}
+
+
+```
+
+## TCR analysis - formatting {.tabset}
+
+### Load scRepertoire package
+```{r Load_scRep_Package}
+
+# If using R < 4, should use the dev version with @dev
+#devtools::install_github("ncborcherding/scRepertoire")
+#install.packages("ggalluvial")
+
+# Package fails to load - use this trick to get tools of the package 
+devtools::load_all("~/Documents/Work/Sciebo/Scripts/Packages/scRepertoire/")
+
+
+```
+ 
+### Format data with scRepertoire
+```{r Format_data_with_scRep}
+#################################
+# Read in and format data
+#################################
+
+# read in contig files
+S1.contig <- read.csv("Input_data/VDJ_data/Sample1_filtered_contig_annotations.csv", stringsAsFactors = FALSE)
+S2.contig <- read.csv("Input_data/VDJ_data/Sample2_filtered_contig_annotations.csv", stringsAsFactors = FALSE)
+S3.contig <- read.csv("Input_data/VDJ_data/Sample3_filtered_contig_annotations.csv", stringsAsFactors = FALSE)
+S4.contig <- read.csv("Input_data/VDJ_data/Sample4_filtered_contig_annotations.csv", stringsAsFactors = FALSE)
+
+# create list of contigs
+contig.list <- list(S1.contig, S2.contig,
+                    S3.contig, S4.contig)
+
+# Combine contig list
+combined.contig <- combineTCR(contig.list, 
+                              samples = c("S1", "S2", "S3", "S4"), 
+                              ID = c("US", "US", "Stim", "Stim"), 
+                              cells = "T-AB",
+                              removeNA = TRUE,
+                              removeMulti = FALSE, 
+                              filterMulti = TRUE) # take the top 2 expressed chains for cells with multiple chains 
+
+# on average, filteringMulti results in approx. 200 more cells for each sample than outright removing cells
+
+
+# Need to amend BarcodeID to match with seurat object
+combined.contig$S1_US$barcode <- gsub("US_", "", combined.contig$S1_US$barcode)
+combined.contig$S2_US$barcode <- gsub("US_", "", combined.contig$S2_US$barcode)
+combined.contig$S3_Stim$barcode <- gsub("Stim_", "", combined.contig$S3_Stim$barcode)
+combined.contig$S4_Stim$barcode <- gsub("Stim_", "", combined.contig$S4_Stim$barcode)
+
+
+# Combine seurat object with contig info
+seurat.tcr <- combineExpression(combined.contig,
+                                seurat.combined,
+                                cloneCall = "aa",
+                                cloneTypes = c(None = 0, Single = 1, Small = 5, Medium = 10, Large = 20, Hyperexpanded = 150),
+                                groupBy = "none", # Alternative frequencies are calculated in next code Chunk
+                                filterNA = TRUE) # should seurat object be subsetted to remove NA values
+
+# Max freq of a clonotype is 127, therefore reset cloneTypes accordingly
+
+# Seurat object went from 11658 samples to 6625 samples 
+# Therefore 56% of original dataset remains 
+
+
+# Remove frequency column calculated by combineExpression function
+logic.vec <- grepl("Frequency", colnames(seurat.tcr@meta.data))
+seurat.tcr@meta.data[ ,logic.vec] <- NULL
+head(seurat.tcr@meta.data)
+
+# Ensure seurat object cloneType var is a factor with correct levels
+seurat.tcr@meta.data$cloneType <- factor(seurat.tcr@meta.data$cloneType, 
+                                         levels = c("Hyperexpanded (20 < X <= 150)",
+                                                    "Large (10 < X <= 20)", 
+                                                    "Medium (5 < X <= 10)",
+                                                    "Small (1 < X <= 5)", 
+                                                    "Single (0 < X <= 1)"))
+
+# remove unneeded objects
+rm(combined.contig, contig.list, S1.contig, S2.contig, S3.contig, S4.contig)
+
+```
+
+### Count clonotype frequencies and normalise
+```{r Count_and_normalise_clonotype_frequencies}
+
+####################################################################################
+# Need to count clonotype occurrence per condition and then normalise this value 
+####################################################################################
+
+# create temp meta.data df and append cell_ID as column (lost in dplyr workflow)
+meta.data.temp <- seurat.tcr@meta.data
+meta.data.temp$cell_ID <- rownames(seurat.tcr@meta.data)
+
+corner(meta.data.temp, c = ncol(meta.data.temp))
+
+
+# Get total number of cells in each condition
+US.cell.n <- table(meta.data.temp$condition)[1] # 3,184 
+Stim.cell.n <- table(meta.data.temp$condition)[2] # 3,441
+total.cell.n <- US.cell.n + Stim.cell.n # 6,625 
+
+#dim(meta.data.temp) // sanity check of total cell number
+
+
+
+
+####################################################################################
+# Count occurence of clonotypes across entire dataset 
+####################################################################################
+# Also: Normalise n() by # of cells within dataset
+meta.data.temp <- meta.data.temp %>%
+  dplyr::group_by(CTaa) %>%
+  dplyr::mutate(Total_clonotype_n = n()) %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(Total_clonotype_freq = (Total_clonotype_n/total.cell.n)*100) %>%
+  dplyr::ungroup()
+
+####################################################################################
+# Count occurence of clonotypes across entire condition 
+####################################################################################
+# Also: Normalise n() by # of cells within condition
+meta.data.temp <- meta.data.temp %>%
+  dplyr::group_by(CTaa, condition) %>%
+  dplyr::mutate(Clone_conditionwise_n = n()) %>%
+  dplyr::group_by(condition) %>%
+  dplyr::mutate(Clone_conditionwise_freq = case_when(condition == "US" ~ (Clone_conditionwise_n/US.cell.n)*100, 
+                                                         condition == "Stim" ~ (Clone_conditionwise_n/Stim.cell.n)*100)) %>%
+  dplyr::ungroup()
+
+####################################################################################
+# Count occurence of clonotypes within each cluster per condition 
+####################################################################################
+# Also: Normalise n() by # of cells within condition
+meta.data.temp <- meta.data.temp %>%
+  dplyr::group_by(CTaa, condition, seurat_clusters) %>%
+  dplyr::mutate(Clone_Clust_conditionwise_n = n()) %>%
+  dplyr::group_by(condition) %>%
+  dplyr::mutate(Clone_Clust_conditionwise_freq = case_when(condition == "US" ~ (Clone_Clust_conditionwise_n/US.cell.n)*100, 
+                                                         condition == "Stim" ~ (Clone_Clust_conditionwise_n/Stim.cell.n)*100)) %>%
+  dplyr::ungroup()
+
+
+######################################
+# Add new metadata to seurat object
+######################################
+
+#########
+# Total 
+#########
+
+# Add total clonotype n value
+seurat.tcr <- AddMetaData(object = seurat.tcr, 
+                          col.name = "Total_clonotype_n",
+                          metadata = meta.data.temp$Total_clonotype_n)
+
+# Add total clonotype freq
+seurat.tcr <- AddMetaData(object = seurat.tcr, 
+                          col.name = "Total_clonotype_freq",
+                          metadata = meta.data.temp$Total_clonotype_freq)
+
+##################
+# Condition-wise 
+##################
+
+# Add clone condition-wise n value
+seurat.tcr <- AddMetaData(object = seurat.tcr, 
+                          col.name = "Clone_conditionwise_n",
+                          metadata = meta.data.temp$Clone_conditionwise_n)
+
+# Add Clone condition-wise freq
+seurat.tcr <- AddMetaData(object = seurat.tcr, 
+                          col.name = "Clone_conditionwise_freq",
+                          metadata = meta.data.temp$Clone_conditionwise_freq)
+
+################################
+# Cluster and Condition-wise 
+################################
+
+# Add Clone Clust and condition-wise n value
+seurat.tcr <- AddMetaData(object = seurat.tcr, 
+                          col.name = "Clone_Clust_conditionwise_n",
+                          metadata = meta.data.temp$Clone_Clust_conditionwise_n)
+
+# Add Clone Clust and condition-wise Freq
+seurat.tcr <- AddMetaData(object = seurat.tcr, 
+                          col.name = "Clone_Clust_conditionwise_freq",
+                          metadata = meta.data.temp$Clone_Clust_conditionwise_freq)
+
+
+#############################################
+# Scale variables for downstream plotting
+#############################################
+scale.var <- c(0, 10)
+
+# Scale total clonotype number
+seurat.tcr@meta.data$Total_clonotype_scaled <- scales::rescale(seurat.tcr@meta.data$Total_clonotype_n, 
+                                                               to = scale.var)
+
+
+# Scale clonotype per condition freq
+seurat.tcr@meta.data$Clone_conditionwise_scaled <- scales::rescale(seurat.tcr@meta.data$Clone_conditionwise_freq, 
+                                                                   to = scale.var)
+
+# Scale clonotype per cluster per condition freq
+seurat.tcr@meta.data$Clone_Clust_conditionwise_scaled <- scales::rescale(seurat.tcr@meta.data$Clone_Clust_conditionwise_freq, 
+                                                                         to = scale.var)
+
+
+
+
+rm(meta.data.temp)
+
+
+```
+ 
+### Export or read in tcr seurat object
+```{r export_RDS}
+
+if(quick.load){
+  seurat.tcr <- readRDS("Exported_RDS_files/seurat_tcr.rds")
+}else if(!quick.load){
+  saveRDS(seurat.tcr, file = "Exported_RDS_files/seurat_tcr.rds")
+}
+
+```
+
+## TCR analysis - General analysis {.tabset}
+
+### Heatmaps VJ gene usage
+```{r V_J_usage_heatmaps}
+
+# Move to working dir
+setwd(working.dir)
+
+# Create output directories
+if(!dir.exists("output/figures/TCRseq/VJ_usage")){
+  dir.create("output/figures/TCRseq/VJ_usage",
+             recursive = T)}
+
+# set and move to output.dir
+output.dir <- "output/figures/TCRseq/VJ_usage"
+setwd(output.dir)
+
+
+
+########################
+# Heatmap functions
+########################
+
+hclust.func <- function(x){
+  hclust(x, method = 'ward.D2')
+}
+
+dist.func <- function(x){
+  dist(x,method = 'binary')
+}
+
+col.palette <- colorRampPalette(brewer.pal(8, "RdYlBu"))(600)
+
+######################################################
+# Plot V/J gene usage as a log2() of cell number
+######################################################
+
+# TRA-V gene usage
+
+x <- table(seurat.tcr@meta.data$v_gene_A, seurat.tcr@meta.data$seurat_clusters)
+
+cells.remove <- c("gd_T_non_g9d2", "gd_T_g9d2", "MAIT")
+
+x <- x[ ,-grep(paste0(cells.remove, collapse = "|"), colnames(x))]
+
+
+heatmap.2(as.matrix(log2(x+1)), 
+          scale = "none",
+          trace = "none",
+          Colv = TRUE,
+          cexRow = 0.5, 
+          margins = c(8, 5),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = rev(col.palette))     
+
+dev.copy(pdf, "Heatmap_TRA_V_usage.pdf")
+dev.off()
+
+# TRA-J gene usage
+
+x <- table(seurat.tcr@meta.data$j_gene_A, seurat.tcr@meta.data$seurat_clusters)
+
+cells.remove <- c("gd_T_non_g9d2", "gd_T_g9d2", "MAIT")
+
+x <- x[ ,-grep(paste0(cells.remove, collapse = "|"), colnames(x))]
+
+
+heatmap.2(as.matrix(log2(x+1)), 
+          scale = "none",
+          trace = "none",
+          Colv = TRUE,
+          cexRow = 0.5, 
+          margins = c(8, 5),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = rev(col.palette))     
+
+dev.copy(pdf, "Heatmap_TRA_V_usage.pdf")
+dev.off()
+
+
+# TRB-V gene usage
+
+x <- table(seurat.tcr@meta.data$v_gene_B, seurat.tcr@meta.data$seurat_clusters)
+
+cells.remove <- c("gd_T_non_g9d2", "gd_T_g9d2", "MAIT")
+
+x <- x[ ,-grep(paste0(cells.remove, collapse = "|"), colnames(x))]
+
+
+heatmap.2(as.matrix(log2(x+1)), 
+          scale = "none",
+          trace = "none",
+          Colv = TRUE,
+          cexRow = 0.5, 
+          margins = c(8, 5),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = rev(col.palette))     
+
+dev.copy(pdf, "Heatmap_TRB_V_usage.pdf")
+dev.off()
+
+
+
+# TRB-J gene usage
+
+x <- table(seurat.tcr@meta.data$j_gene_B, seurat.tcr@meta.data$seurat_clusters)
+
+cells.remove <- c("gd_T_non_g9d2", "gd_T_g9d2", "MAIT")
+
+x <- x[ ,-grep(paste0(cells.remove, collapse = "|"), colnames(x))]
+
+
+heatmap.2(as.matrix(log2(x+1)), 
+          scale = "none",
+          trace = "none",
+          Colv = TRUE,
+          cexRow = 0.5, 
+          margins = c(8, 5),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = rev(col.palette))     
+
+dev.copy(pdf, "Heatmap_TRB_J_usage.pdf")
+dev.off()
+
+
+
+
+# Reset working dir
+setwd(working.dir)
+
+
+
+
+```
+
+### Heatmap of top clonotypes
+```{r Heatmap_top_clonotypes}
+
+# Move to working dir
+setwd(working.dir)
+
+# Create output directories
+if(!dir.exists("output/figures/TCRseq/Top_clonotypes_heatmaps")){
+  dir.create("output/figures/TCRseq/Top_clonotypes_heatmaps",
+             recursive = T)}
+
+# set and move to output.dir
+output.dir <- "output/figures/TCRseq/Top_clonotypes_heatmaps"
+setwd(output.dir)
+
+
+
+########################
+# Heatmap functions
+########################
+
+hclust.func <- function(x){
+  hclust(x, method = 'ward.D2')
+}
+
+dist.func <- function(x){
+  dist(x,method = 'binary')
+}
+
+col.palette <- colorRampPalette(brewer.pal(8, "RdYlBu"))(600)
+
+
+
+
+
+
+
+
+
+
+
+
+# Get data of how many cells in each cluster are assigned to what clonotypes
+clonotype.data <- table(seurat.tcr@meta.data$CTaa, seurat.tcr@meta.data$seurat_clusters)
+
+# remove non-T cell clusters
+cells.remove <- c("gd_T_non_g9d2", "gd_T_g9d2")
+cells.remove.index <- grep(paste0(cells.remove, collapse = "|"), colnames(clonotype.data))
+clonotype.data <- clonotype.data[ ,-cells.remove.index]
+
+# also filter colouring variable to remove non-T cell clusters
+temp.cols <- clust.cols[-cells.remove.index]
+
+
+
+
+
+
+# Plot the top 10 clonotypes
+aa.keep <- sort(rowSums(clonotype.data), decreasing = TRUE)[1:10]
+
+keep.vec <- rownames(clonotype.data) %in% names(aa.keep)
+
+plot.data <- clonotype.data[keep.vec, ]
+
+
+heatmap.2(as.matrix(log2(plot.data+1)), 
+          scale = "none",
+          trace = "none",
+          ColSideColors = temp.cols,
+          Colv = TRUE,
+          cexRow = 0.8, 
+          margins = c(8, 15),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = rev(col.palette))     
+
+dev.copy(pdf, "Heatmap_top_10_clonotypes.pdf")
+dev.off()
+
+
+
+# Plot the top 50 clonotypes
+aa.keep <- sort(rowSums(clonotype.data), decreasing = TRUE)[1:50]
+
+keep.vec <- rownames(clonotype.data) %in% names(aa.keep)
+
+plot.data <- clonotype.data[keep.vec, ]
+
+
+heatmap.2(as.matrix(log2(plot.data+1)), 
+          scale = "none",
+          trace = "none",
+          ColSideColors = temp.cols,
+          Colv = TRUE,
+          cexRow = 0.5, 
+          labRow = FALSE,
+          margins = c(8, 5),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = rev(col.palette))     
+
+dev.copy(pdf, "Heatmap_top_50_clonotypes.pdf")
+dev.off()
+
+
+
+# Plot the all clonotypes in > 3 cells
+
+aa.keep <- rowSums(clonotype.data) > 3
+
+keep.vec <- rownames(clonotype.data) %in% names(aa.keep)[aa.keep]
+
+plot.data <- clonotype.data[keep.vec, ]
+
+heatmap.2(as.matrix(log2(plot.data+1)), 
+          scale = "none",
+          trace = "none",
+          ColSideColors = temp.cols,
+          Colv = TRUE,
+          cexRow = 0.5, 
+          labRow = FALSE,
+          margins = c(8, 5),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = rev(col.palette))     
+
+dev.copy(pdf, "Heatmap_top_all_clonotypes_in_morethan_3_cells.pdf")
+dev.off()
+
+# Reset working dir
+setwd(working.dir)
+```
+
+### Analysis with scRepertoire
+```{r scRepertoire_analysis}
+
+# Ensure dir back in working
+setwd(working.dir)
+
+# Create output directories
+if(!dir.exists("output/figures/TCRseq/scRepertoire/clusters")){
+  dir.create("output/figures/TCRseq/scRepertoire/clusters",
+             recursive = T)}
+
+if(!dir.exists("output/figures/TCRseq/scRepertoire/modules")){
+  dir.create("output/figures/TCRseq/scRepertoire/modules",
+             recursive = T)}
+
+output.dir <- "output/figures/TCRseq/scRepertoire"
+setwd(output.dir)
+
+#########################
+# Set uniform variables 
+#########################
+
+# for clonalProportion split
+split.var <- c(1, 5, 10, 20, 50, 500, 5000, 1e+05)
+
+# for clonalHomeostasis split
+homeostasis.var <- c(Rare = 0.001, 
+                     very_small = 0.002,
+                     Small = 0.005, 
+                     Medium = 0.01, 
+                     Large = 0.05, 
+                     very_Large = 0.1, 
+                     Hyperexpanded = 1)
+
+
+#########################################################
+# Perform basic clonotype analysis and visualisation
+#########################################################
+
+# quantify % unique clonotype per sample
+quantContig(combined.contig,
+            cloneCall="aa", 
+            scale = TRUE)
+
+dev.copy(pdf, "Quant_contig_sample.pdf")
+dev.off()
+
+# quantify % unique clonotype per group
+quantContig(combined.contig,
+            cloneCall="aa", 
+            group = "ID",
+            scale = TRUE)
+
+dev.copy(pdf, "Quant_contig_treatment.pdf")
+dev.off()
+
+
+# abundance of clonotypes
+abundanceContig(combined.contig,
+                cloneCall = "aa",
+                group = "ID", 
+                scale = TRUE)
+
+dev.copy(pdf, "Clonotype_abundance_by_treatment.pdf")
+dev.off()
+
+
+
+# Chain length overview 
+lengthContig(combined.contig, 
+             cloneCall="aa", 
+             chains = "combined",
+             group = "ID") 
+
+dev.copy(pdf, "Chain_length_combined.pdf")
+dev.off()
+
+# Chain length by chain
+lengthContig(combined.contig, 
+             cloneCall="aa", 
+             chains = "single",
+             group = "ID")
+
+dev.copy(pdf, "Chain_length_by_locus.pdf")
+dev.off()
+
+
+## Something looks weird with the alluvial plots - lines dont line up
+
+# Compare clonotypes across samples
+
+compareClonotypes(combined.contig,
+                  numbers = 20, 
+                  samples = c("S1_US", "S3_Stim"), 
+                  cloneCall = "aa", 
+                  graph = "alluvial") + NoLegend()
+
+
+compareClonotypes(combined.contig,
+                  numbers = 20, 
+                  samples = c("S2_US", "S4_Stim"), 
+                  cloneCall = "aa", 
+                  graph = "alluvial") + NoLegend()
+
+
+
+# Overview of clonal homeostasis
+clonalHomeostasis(combined.contig, 
+                  cloneType = homeostasis.var,
+                  cloneCall = "aa")
+
+dev.copy(pdf, "clonalHomeostasis.pdf")
+dev.off()
+
+
+# Clonal Proportion
+clonalProportion(combined.contig,
+                 split = split.var,
+                 cloneCall = "aa") 
+
+dev.copy(pdf, "clonalProportion.pdf")
+dev.off()
+
+# clonal overlap
+clonalOverlap(combined.contig, 
+              cloneCall = "aa", 
+              method = "morisita")
+
+dev.copy(pdf, "cloncalOverlap.pdf")
+dev.off()
+
+
+# clone size distribution
+clonesizeDistribution(combined.contig, 
+                      cloneCall = "aa", 
+                      method = "ward.D2")
+
+dev.copy(pdf, "cloneSizeDistribution.pdf")
+dev.off()
+
+# Clonal Diversity 
+clonalDiversity(combined.contig,
+                cloneCall = "aa",
+                group = "ID")
+
+dev.copy(pdf, "clonalDiversity.pdf")
+dev.off()
+
+
+
+########################################################################
+# perform basic repertoire analysis across clusters & modules
+########################################################################
+
+# Modified function, original was not subsetting correctly
+expression2List.mod <- function(sc, group){
+  meta <- grabMeta(sc)
+  unique.var <- str_sort(as.character(unique(meta[,group])), numeric = TRUE)
+  df <- NULL
+  for (i in seq_along(unique.var)) {
+    subset.var <- meta[meta[,group] == unique.var[i],]
+    df[[i]] <- subset.var
+  }
+  names(df) <- unique.var
+  
+  return(df)
+}
+
+
+tcr.clusters <- expression2List.mod(seurat.tcr, group = "seurat_clusters")
+
+tcr.modules <- expression2List.mod(seurat.tcr, group = "Module")
+
+
+
+####################
+# Clonal Diversity 
+####################
+
+# Clusters
+clonalDiversity(tcr.clusters, 
+                cloneCall = "aa")
+
+dev.copy(pdf, "clusters/clonalDiversity_clusters.pdf")
+dev.off()
+
+# Modules
+clonalDiversity(tcr.modules, 
+                cloneCall = "aa")
+
+dev.copy(pdf, "modules/clonalDiversity_modules.pdf")
+dev.off()
+
+
+
+####################
+# Clonal Homeostasis
+####################
+
+
+# Clusters
+clonalHomeostasis(tcr.clusters, 
+                  cloneType = homeostasis.var,
+                  cloneCall = "aa") + 
+  theme(axis.text.x = element_text(angle = 90))
+
+dev.copy(pdf, "clusters/clonalHomeostasis_clusters.pdf")
+dev.off()
+
+# Modules
+clonalHomeostasis(tcr.modules, 
+                  cloneType = homeostasis.var,
+                  cloneCall = "aa") + 
+  theme(axis.text.x = element_text(angle = 90))
+
+dev.copy(pdf, "modules/clonalHomeostasis_modules.pdf")
+dev.off()
+
+
+####################
+# Clonal Proportion
+####################
+
+# Clusters
+clonalProportion(tcr.clusters, 
+                 split = split.var,
+                 cloneCall = "aa") + 
+  theme(axis.text.x = element_text(angle = 90))
+
+dev.copy(pdf, "clusters/clonalproportion_clusters.pdf")
+dev.off()
+
+
+# Modules
+clonalProportion(tcr.modules, 
+                 split = split.var,
+                 cloneCall = "aa") + 
+  theme(axis.text.x = element_text(angle = 90))
+
+dev.copy(pdf, "modules/clonalproportion_modules.pdf")
+dev.off()
+
+
+
+####################
+# Clonal Overlap
+####################
+
+# Clusters
+clonalOverlap(tcr.clusters, 
+              cloneCall = "aa", 
+              method = "overlap") + 
+  theme(axis.text.x = element_text(angle = 90))
+
+dev.copy(pdf, "clusters/clonaloverlap_clusters.pdf")
+dev.off()
+
+# Modules
+clonalOverlap(tcr.modules, 
+              cloneCall = "aa", 
+              method = "overlap") + 
+  theme(axis.text.x = element_text(angle = 90))
+
+dev.copy(pdf, "modules/clonaloverlap_modules.pdf")
+dev.off()
+
+
+
+
+
+###################################
+# Split dataset by condition
+###################################
+
+Idents(seurat.tcr) <- seurat.tcr@meta.data$condition
+
+# US
+US.seurat.tcr <- subset(seurat.tcr, ident = "US")
+tcr.clusters.US <- expression2List.mod(US.seurat.tcr, group = "seurat_clusters")
+
+# Stimulated
+Stim.seurat.tcr <- subset(seurat.tcr, ident = "Stim")
+tcr.clusters.Stim <- expression2List.mod(Stim.seurat.tcr, group = "seurat_clusters")
+
+
+
+
+p1 <- clonalOverlap(tcr.clusters.US, 
+                    cloneCall = "aa", 
+                    method = "overlap") + 
+  theme(axis.text.x = element_text(angle = 90))
+
+p2 <- clonalOverlap(tcr.clusters.Stim, 
+                    cloneCall = "aa", 
+                    method = "overlap") + 
+  theme(axis.text.x = element_text(angle = 90))
+
+
+p1|p2
+
+
+
+rm(US.seurat.tcr, tcr.clusters.US, Stim.seurat.tcr, tcr.clusters.Stim, tcr.modules, tcr.clusters)
+
+
+# reset to working dir
+setwd(working.dir)
+```
+
+### Clonotype frequency on UMAP
+```{r Clonotype_freq}
+
+# Ensure dir back in working
+setwd(working.dir)
+
+# Create output directory
+if(!dir.exists("output/figures/TCRseq/Binned_clonotype_expansion_plots")){
+  dir.create("output/figures/TCRseq/Binned_clonotype_expansion_plots",
+             recursive = T)}
+
+output.dir <- "output/figures/TCRseq/Binned_clonotype_expansion_plots"
+setwd(output.dir)
+
+###################################
+# Plot dataset on UMAP projection
+###################################
+
+Idents(seurat.tcr) <- seurat.tcr@meta.data$seurat_clusters
+
+clonetype.col <- c("Red", "Black", "blue", "orange", "lightblue")
+
+# Vis clonotype size on UMAP
+UMAPPlot(seurat.tcr, 
+         group.by = "cloneType", 
+         pt.size = 1) +
+  scale_color_manual(values = clonetype.col, 
+                     na.value="grey")
+
+
+dev.copy(pdf, "Clonotype_size_UMAP.pdf")
+dev.off()
+
+# Split by condition
+UMAPPlot(seurat.tcr, 
+         group.by = "cloneType", 
+         split.by = "condition", 
+         pt.size = 1) +
+  scale_color_manual(values = clonetype.col, 
+                     na.value="grey")
+
+dev.copy(pdf, "Clonotype_size_UMAP_split_condition.pdf")
+dev.off()
+
+
+# Split by cloneType visualise clusters
+UMAPPlot(seurat.tcr, 
+         group.by = "seurat_clusters", 
+         split.by = "cloneType", 
+         pt.size = 1, 
+         cols = clust.cols) 
+
+dev.copy(pdf, "Clonotype_size_UMAP_split_cloneType_Clusters.pdf")
+dev.off()
+
+# Split by cloneType visualise clusters
+UMAPPlot(seurat.tcr, 
+         group.by = "Module", 
+         split.by = "cloneType", 
+         pt.size = 1,
+         cols = module.cols) 
+
+dev.copy(pdf, "Clonotype_size_UMAP_split_cloneType_Modules.pdf")
+dev.off()
+
+# Ensure dir back in working
+setwd(working.dir)
+```
+
+## TCR analysis - cluster-specific clonotypes {.tabset}
+
+### Get clonotypes function
+```{r Get_clonotypes_function}
+
+get.clonotypes <- function(input.seurat, identity.column, ident.id){
+  
+  # identitiy column = cluster or module 
+  # ident.id = a specific module or cluster ID
+  
+  # This function identifies all clonotypes in a specified cluster/module subset and then pulls out all occurances of these clonotypes
+  
+  
+  
+  # set idents
+  Idents(input.seurat) <- input.seurat@meta.data[ , paste0(identity.column)]
+  
+  # Subset by ident.id
+  Ident.specific.seurat <- subset(input.seurat, idents = paste0(ident.id))
+  
+  # get list of clonotypes in selected cluster/module
+  Ident.specific.clones <- sort(table(Ident.specific.seurat@meta.data$CTaa), decreasing = TRUE)
+  
+  # Find all cells that have these clonotypes
+  keep.logic <- input.seurat@meta.data$CTaa %in% names(Ident.specific.clones)
+  cells.with.ident.sp.clones <- rownames(input.seurat@meta.data)[keep.logic]
+  
+  # Subset seurat by these cell IDs
+  seurat.ident.specific.clones <- subset(input.seurat, cells = cells.with.ident.sp.clones)
+  
+  
+  return(seurat.ident.specific.clones)
+  
+}
+
+```
+
+## Reduce dataset to clonotypes per cluster
+```{r Cluster_clonotypes}
+
+# set working dir
+setwd(working.dir)
+
+# Create output directories
+if(!dir.exists("output/figures/TCRseq/Cluster_clonotypes")){
+  dir.create("output/figures/TCRseq/Cluster_clonotypes",
+             recursive = T)}
+
+output.dir <- "output/figures/TCRseq/Cluster_clonotypes"
+setwd(output.dir)
+
+##########################################################
+# Keep only one occurrence of a clonotype in each cluster
+##########################################################
+
+uniq.clonotypes <- seurat.tcr@meta.data %>% 
+  dplyr::distinct(seurat_clusters, CTaa) %>%
+  rownames()
+
+clust.clonotypes.seurat <- subset(seurat.tcr, cells = uniq.clonotypes)
+#3773 clonotypes 
+
+# Set Idents
+Idents(clust.clonotypes.seurat) <- clust.clonotypes.seurat@meta.data$seurat_clusters
+
+# Cluster Clonotypes
+UMAPPlot(clust.clonotypes.seurat, 
+         pt.size = 1, 
+         group.by = "seurat_clusters", 
+         cols = clust.cols) + 
+  ggtitle("Pts = Cluster clonotypes")
+
+dev.copy(pdf, "Cluster_clonotypes.pdf")
+dev.off()
+
+# Cluster Clonotypes // No legend
+UMAPPlot(clust.clonotypes.seurat, 
+         pt.size = 1, 
+         group.by = "seurat_clusters", 
+         label = TRUE,
+         label.size = 6,
+         cols = clust.cols) + 
+  ggtitle("Pts = Cluster clonotypes") + 
+  NoLegend()
+
+dev.copy(pdf, "Cluster_clonotypes_NoLegend.pdf")
+dev.off()
+
+
+# Plot number of clonotypes per cluster
+x <- table(clust.clonotypes.seurat@meta.data$seurat_clusters)
+
+barplot(x, 
+        las = 2, 
+        ylim = c(0, 1000), 
+        ylab = "# of clonotypes",
+        main = "# of clonotypes per cluster")
+
+dev.copy(pdf, "Barplot_Num_Cluster_clonotypes.pdf")
+dev.off()
+
+
+
+############################################
+# Scale pt size with clonotype frequency
+############################################
+
+Total.clonotype.scale <- clust.clonotypes.seurat@meta.data$Total_clonotype_scaled 
+
+# Total dataset
+UMAPPlot(clust.clonotypes.seurat, 
+         pt.size = Total.clonotype.scale, 
+         group.by = "seurat_clusters", 
+         cols = clust.cols) + 
+    ggtitle("Clonotypes - scaled by total occurrence")
+
+dev.copy(pdf, "Cluster_clonotypes_scaled_by_occurrence.pdf")
+dev.off()
+
+
+
+# Total dataset // No legend
+UMAPPlot(clust.clonotypes.seurat, 
+         pt.size = Total.clonotype.scale, 
+         group.by = "seurat_clusters", 
+         label = TRUE, 
+         label.size = 4,
+         cols = clust.cols) + 
+      ggtitle("Clonotypes - scaled by total occurrence") +
+  NoLegend()
+
+dev.copy(pdf, "Cluster_clonotypes_scaled_by_occurrence_Nolegend.pdf")
+dev.off()
+
+
+# Remove seurat
+rm(clust.clonotypes.seurat)
+
+
+# set working dir
+setwd(working.dir)
+
+```
+ 
+## Reduce dataset to clonotypes per cluster per condition
+```{r Cluster_condition_clonotypes}
+
+# set working dir
+setwd(working.dir)
+
+# Create output directories
+if(!dir.exists("output/figures/TCRseq/Cluster_condition_clonotypes")){
+  dir.create("output/figures/TCRseq/Cluster_condition_clonotypes",
+             recursive = T)}
+
+output.dir <- "output/figures/TCRseq/Cluster_condition_clonotypes"
+setwd(output.dir)
+
+
+############################################################################
+# Keep only one occurrence of a clonotype in each cluster per condition
+############################################################################
+
+uniq.clonotypes <- seurat.tcr@meta.data %>% 
+  dplyr::distinct(seurat_clusters, CTaa, condition) %>%
+  rownames()
+
+clust.cond.clonotypes.seurat <- subset(seurat.tcr, cells = uniq.clonotypes)
+# 4093 clonotypes
+
+# Set Idents
+Idents(clust.cond.clonotypes.seurat) <- clust.cond.clonotypes.seurat@meta.data$seurat_clusters
+
+
+# Cluster & Condition clonotypes
+UMAPPlot(clust.cond.clonotypes.seurat, 
+         pt.size = 1, 
+         group.by = "seurat_clusters", 
+         split.by = "condition",
+         cols = clust.cols) + 
+  ggtitle("Pts = Cluster and condition clonotypes")
+
+dev.copy(pdf, "Cluster_condition_clonotypes.pdf")
+dev.off()
+
+# Split by condition // no legend
+UMAPPlot(clust.cond.clonotypes.seurat, 
+         pt.size = 1, 
+         group.by = "seurat_clusters", 
+         split.by = "condition",
+         label = TRUE, 
+         label.size = 4,
+         cols = clust.cols) + 
+  ggtitle("Pts = Cluster and condition clonotypes") + 
+  NoLegend()
+
+dev.copy(pdf, "Cluster_condition_clonotypes_Nolegend.pdf")
+dev.off()
+
+
+# Barplot of # of unique clonotypes per clust per condition
+
+x <- table(clust.cond.clonotypes.seurat@meta.data$seurat_clusters, clust.cond.clonotypes.seurat@meta.data$condition)
+
+
+barplot(t(x),
+        las = 2,
+        beside = TRUE,
+        col = Condition.cols,
+        legend = TRUE,
+        ylim = c(0, 600),
+        ylab = "# of clonotypes", 
+        main = "# of unique clonotypes per cluster per condition")
+
+dev.copy(pdf, "Barplot_Num_Cluster_condition_clonotypes.pdf")
+dev.off()
+
+
+############################################
+# Scale pt size with clonotype frequency
+############################################
+
+Condition.clonotype.scale <- clust.cond.clonotypes.seurat@meta.data$Clone_Clust_conditionwise_scaled 
+
+# Split by condition
+UMAPPlot(clust.cond.clonotypes.seurat, 
+         pt.size = Condition.clonotype.scale, 
+         group.by = "seurat_clusters", 
+         split.by = "condition",
+         cols = clust.cols) + 
+    ggtitle("Clust/Cond Clonotype - by normed condition freq")
+
+dev.copy(pdf, "Cluster_condition_clonotypes_scaled_by_normalised_conditionwise_freq.pdf")
+dev.off()
+
+
+# Split by condition // No legend
+UMAPPlot(clust.cond.clonotypes.seurat, 
+         pt.size = Condition.clonotype.scale, 
+         group.by = "seurat_clusters", 
+         split.by = "condition",
+         label = TRUE, 
+         label.size = 4,
+         cols = clust.cols) + 
+    ggtitle("Clust/Cond Clonotype - by normed condition freq") + 
+  NoLegend()
+
+dev.copy(pdf, "Cluster__condition_clonotypes_scaled_by_normalised_conditionwise_freq_Nolegend.pdf")
+dev.off()
+
+
+# set working dir
+setwd(working.dir)
+
+```
+ 
+### Cluster-condition-specific clonotypes
+```{r Cluster_condition_specific_clonotypes}
+
+# Create output directories
+setwd(working.dir)
+
+if(!dir.exists("output/figures/TCRseq/Cluster_condition__specific_clonotypes")){
+  dir.create("output/figures/TCRseq/Cluster_condition__specific_clonotypes",
+             recursive = T)}
+
+output.dir <- "output/figures/TCRseq/Cluster_condition__specific_clonotypes"
+setwd(output.dir)
+
+
+# Set Idents to Cluster ID
+Idents(clust.cond.clonotypes.seurat) <- clust.cond.clonotypes.seurat@meta.data$seurat_clusters
+
+
+
+# Get x and y lims for UMAP plots
+z <- UMAPPlot(clust.cond.clonotypes.seurat, 
+                 pt.size = 1,
+                 group.by = "seurat_clusters",
+                 split.by = "condition",
+                 cols = clust.cols)
+
+# extract x and y lims
+umap.x.lim <- layer_scales(z)$x$range$range
+umap.y.lim <- layer_scales(z)$y$range$range
+
+
+###################################
+# get Cluster specific clonotypes
+###################################
+
+Cluster.vect <- unique(clust.cond.clonotypes.seurat@meta.data$condition_clust)
+
+for(i in 1:length(Cluster.vect)){
+  
+  print(paste0("Performing analysis for Cluster = ", Cluster.vect[i]))
+  
+  
+  # Extract clonotypes found in a specific clust/condition
+  clonotype.seurat <- get.clonotypes(clust.cond.clonotypes.seurat, "condition_clust", Cluster.vect[i])
+  
+  
+  ########################
+  # Visualisation 
+  ########################
+  
+  # Overall distribution of clonotypes 
+  print(UMAPPlot(clonotype.seurat, 
+                 pt.size = 1,
+                 group.by = "seurat_clusters",
+                 split.by = "condition",
+                 cols = clust.cols) + 
+          xlim(umap.x.lim) + ylim(umap.y.lim) + 
+          ggtitle(paste0("Clonotypes found in ", Cluster.vect[i])))
+  
+  dev.copy(pdf, 
+           paste0("Clonotypes_found_in_", Cluster.vect[i], ".pdf"))
+  dev.off()
+  
+  
+  # Scale clonotype size
+  print(UMAPPlot(clonotype.seurat, 
+                 pt.size = clonotype.seurat@meta.data$Clone_Clust_conditionwise_scaled,
+                 group.by = "seurat_clusters", 
+                 split.by = "condition",
+                 cols = clust.cols) +
+          xlim(umap.x.lim) + ylim(umap.y.lim) + 
+          ggtitle(paste0("Clonotypes found in ", Cluster.vect[i])))
+  
+  dev.copy(pdf, 
+           paste0("Clonotypes_found_in_", Cluster.vect[i], "_pt_scaled.pdf"))
+  dev.off()
+  
+
+############
+# Barplots
+############
+  
+# Number of unique clones
+n.clonotypes <- table(clonotype.seurat@meta.data$seurat_clusters)
+
+print(barplot(n.clonotypes, 
+              ylim = c(0, 1000),
+              ylab = "# of clonotypes",
+              main = paste0("# clonotypes found in Cluster ", Cluster.vect[i]), 
+              cex.names = 0.7, 
+              las = 2))   
+
+  dev.copy(pdf, 
+           paste0("Barplot_of_clonotypes_found_in_", Cluster.vect[i], ".pdf"))
+  dev.off()
+  
+  
+  # Freq of clone overlap
+  n.clonotypes <- table(clonotype.seurat@meta.data$seurat_clusters, clonotype.seurat@meta.data$condition)
+  total.n.clonotypes <- table(clust.cond.clonotypes.seurat@meta.data$seurat_clusters, clust.cond.clonotypes.seurat@meta.data$condition)
+  
+  x <- (n.clonotypes/total.n.clonotypes)*100
+  
+  print(barplot(t(x), 
+                ylim = c(0, 100),
+                ylab = "% of clonotype overlap",
+                main = paste0("% of clonotypes present in ", Cluster.vect[i]), 
+                cex.names = 0.9, 
+                col = Condition.cols,
+                legend = TRUE,
+                beside = TRUE,
+                las = 2))   
+  
+  dev.copy(pdf, paste0("Barplot_freq_of_clonotypes_found_in_", Cluster.vect[i], ".pdf"))
+  dev.off()
+  
+  
+  # Remove unneeded variable
+  rm(clonotype.seurat)
+}
+
+
+setwd(working.dir)
+
+
+  
+  
+```
+
+### Venn overlap of clonotypes
+```{r Unique_shared_clonotypes_Venn}
+
+# Create output directories
+setwd(working.dir)
+
+if(!dir.exists("output/figures/TCRseq/Venn_overlap")){
+  dir.create("output/figures/TCRseq/Venn_overlap",
+             recursive = T)}
+
+output.dir <- "output/figures/TCRseq/Venn_overlap"
+setwd(output.dir)
+
+# Load package
+library("RVenn")
+
+####################################
+# Overlap of all clonotypes
+####################################
+
+# Get vector of clonotypes found in US cells
+US.clonotypes <- seurat.tcr@meta.data %>%
+  dplyr::filter(condition == "US") %>%
+  dplyr::select(CTaa)
+
+US.clonotypes <- unique(US.clonotypes$CTaa)
+
+length(US.clonotypes) # 1,845 clonotypes
+
+# Get vector of clonotypes found in US cells
+Stim.clonotypes <- seurat.tcr@meta.data %>%
+  dplyr::filter(condition == "Stim") %>%
+  dplyr::select(CTaa)
+
+Stim.clonotypes <- unique(Stim.clonotypes$CTaa)
+
+length(Stim.clonotypes) # 1,754 clonotypes
+
+# Venn clonotypes
+
+clonotype.list <- list(US = US.clonotypes, 
+                       Stim = Stim.clonotypes)
+
+clonotype.list <- Venn(clonotype.list)
+
+
+ggvenn(clonotype.list,
+       fill = rev(Condition.cols),
+       thickness = 0) + 
+  ggtitle("All Clonotypes") 
+
+dev.copy(pdf, "Venn_overlap_All_clonotypes.pdf")
+dev.off()
+
+# Extract vectors
+shared.clonotypes <- overlap(clonotype.list)
+unique.US <- discern(clonotype.list, "US")
+unique.Stim <- discern(clonotype.list, "Stim")
+
+####################
+# Add to metadata
+####################
+meta.data.vec <- seurat.tcr@meta.data %>%
+  dplyr::mutate(Clonotype_overlap = case_when(CTaa %in% shared.clonotypes ~ "Shared", 
+                                              CTaa %in% unique.US ~ "US", 
+                                              CTaa %in% unique.Stim ~ "Stim")) %>%
+  dplyr::select(Clonotype_overlap)
+
+
+seurat.tcr <- AddMetaData(seurat.tcr, meta.data.vec$Clonotype_overlap, "Clonotype_overlap")
+
+
+###########################
+# Abundant clonotypes only
+###########################
+
+condition.min <- 20
+
+# Get vector of clonotypes found in US cells
+US.clonotypes <- seurat.tcr@meta.data %>%
+  dplyr::filter(condition == "US" & Clone_conditionwise_n >= condition.min) %>%
+  dplyr::select(CTaa)
+
+US.clonotypes <- unique(US.clonotypes$CTaa)
+
+length(US.clonotypes) #
+
+# Get vector of clonotypes found in US cells
+Stim.clonotypes <- seurat.tcr@meta.data %>%
+  dplyr::filter(condition == "Stim" & Clone_conditionwise_n >= condition.min) %>%
+  dplyr::select(CTaa)
+
+Stim.clonotypes <- unique(Stim.clonotypes$CTaa)
+
+length(Stim.clonotypes) #
+
+# Venn overlap
+clonotype.list <- list(US = US.clonotypes, 
+                       Stim = Stim.clonotypes)
+
+clonotype.list <- Venn(clonotype.list)
+
+ggvenn(clonotype.list,
+       fill = rev(Condition.cols),
+       thickness = 0) + 
+  ggtitle("Abundant clonotypes") 
+
+dev.copy(pdf, "Venn_overlap_abundant_clonotypes.pdf")
+dev.off()
+
+
+################
+# Singletons
+################
+
+# Get vector of clonotypes found in US cells
+US.clonotypes <- seurat.tcr@meta.data %>%
+  dplyr::filter(condition == "US" & Clone_conditionwise_n == 1) %>%
+  dplyr::select(CTaa)
+
+US.clonotypes <- unique(US.clonotypes$CTaa)
+
+length(US.clonotypes)
+
+# Get vector of clonotypes found in US cells
+Stim.clonotypes <- seurat.tcr@meta.data %>%
+  dplyr::filter(condition == "Stim" & Clone_conditionwise_n == 1) %>%
+  dplyr::select(CTaa)
+
+Stim.clonotypes <- unique(Stim.clonotypes$CTaa)
+
+length(Stim.clonotypes)
+
+# Venn overlap
+clonotype.list <- list(US = US.clonotypes, 
+                       Stim = Stim.clonotypes)
+
+clonotype.list <- Venn(clonotype.list)
+
+ggvenn(clonotype.list,
+       fill = rev(Condition.cols),
+       thickness = 0) + 
+  ggtitle("Singletons") 
+
+dev.copy(pdf, "Venn_overlap_singleton_clonotypes.pdf")
+dev.off()
+
+
+##############################################
+# Low abundance in US and abundant in Stim
+##############################################
+
+# Get vector of clonotypes found in US cells
+US.clonotypes <- seurat.tcr@meta.data %>%
+  dplyr::filter(condition == "US" & Clone_conditionwise_n <= 5) %>%
+  dplyr::select(CTaa)
+
+US.clonotypes <- unique(US.clonotypes$CTaa)
+
+length(US.clonotypes)
+
+# Get vector of clonotypes found in US cells
+Stim.clonotypes <- seurat.tcr@meta.data %>%
+  dplyr::filter(condition == "Stim" & Clone_conditionwise_n >= 30) %>%
+  dplyr::select(CTaa)
+
+Stim.clonotypes <- unique(Stim.clonotypes$CTaa)
+
+length(Stim.clonotypes)
+
+# Venn overlap 
+clonotype.list <- list(US = US.clonotypes, 
+                       Stim = Stim.clonotypes)
+
+clonotype.list <- Venn(clonotype.list)
+
+ggvenn(clonotype.list,
+       fill = rev(Condition.cols),
+       thickness = 0) + 
+  ggtitle("US <= 5 and Stim >= 30") 
+
+dev.copy(pdf, "Venn_overlap_low_US_high_Stim_abundance_clonotypes.pdf")
+dev.off()
+
+```
+ 
+

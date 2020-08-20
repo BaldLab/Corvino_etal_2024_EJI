@@ -8,20 +8,18 @@
 - Data acquired was transcript expression, ADT (antibody expression), and TCRA & B sequences
 - This analysis uses just Transcript and TCR data
 
-# Message to Thomas Watkins
-- I have annotated bits of code with @Thomas: please read 
-- for all analysis even bash/python could you please save a .txt file with the commands called and upload to repo, best for collaborative working etc and reproducibility
+# Outstanding tasks
+- Track clonotypes - for each cluster in US do clones increase/decrease and/or move between clusters 
 
 # scTCRseq tasks
 - Estimate epitope specificities with vdjdb tools
 - GLIPH analysis - note there is now a Gliph V2 algorithm 
 - GLIPH visualisation 
 - Logo TCR motif generation 
-- Rarefacation analysis across clusters - cumulative diversity vs. clonotypeID
 
 # scRNAseq tasks
 - Transcription factor network analysis
 - Establish a signature for TypeI-IFN cluster
 - Apply TypeI-IFN signature to other TIL datasets and look for presence/absence of these cells across HNSCC and other cancer entities
-- Velocity analysis - semi-started this
+- Velocity analysis
 
