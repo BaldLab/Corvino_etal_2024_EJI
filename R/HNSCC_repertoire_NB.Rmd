@@ -216,7 +216,7 @@ plot <- ggplot(data = lodes, aes(x = x, stratum = stratum,
             stat = "alluvium", lode.guidance = "forward") + 
         labs(fill = "Cluster") + 
     scale_fill_manual(values = clust.cols) 
-ggsave(path = dir, file = paste0(files[i], "_Stimulated_TCRalluvial.pdf"), height=4, width=6)
+ggsave(path = dir, file = paste0(files[i], "_TCRalluvial.pdf"), height=4, width=6)
 }
 
 ```
