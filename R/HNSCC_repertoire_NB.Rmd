@@ -147,57 +147,19 @@ For the most part the function `getCircles()` does all the processing.
 
 ```{r}
 library(circlize)
-Stim <- subset(meta.list[[1]], condition == "Stim")
-US <- subset(meta.list[[1]], condition == "US")
 
+source("~/Documents/GitHub/HNSCC_Descriptive/R/getCircles.R")
 
-getCircles <- function(data) {
-    test <- data[, c("CTaa", "seurat_clusters")]
-    dTest <- reshape2::dcast(test, CTaa ~ seurat_clusters)
-    dTest <- dTest[apply(dTest[,-1], 1, function(x) !all(x==0)),]
-    dTest <- dTest[-1]
-    matrix_out <- matrix(ncol = ncol(dTest), nrow = ncol(dTest))
-    for (x in seq_len(ncol(dTest))) {
-        for (y in seq_len(ncol(dTest)) ){
-            matrix_out[y,x] <- length(which(dTest[,x] >= 1 & dTest[,y] >= 1))
-        }
-    }
-    colnames(matrix_out) <- colnames(dTest)
-    rownames(matrix_out) <- colnames(dTest)
-    #Need to subtract extra cells - will take the difference of the sum of the column minus and the respective cell and subtract that from the respective cell
-    for (y in seq_len(ncol(matrix_out))) {
-        matrix_out[y,y] <- matrix_out[y,y] - (sum(matrix_out[,y])-matrix_out[y,y])
-        if (matrix_out[y,y] < 0) {
-            df[y,y] <- 0
-        }
-    }
-    # Reduces the clonotypes in half - this will allow for accurate depiction by total number of cells in cluster
-    for (i in seq_len(ncol(matrix_out))) {
-        for (j in seq_len(ncol(matrix_out))) {
-            matrix_out[i,j] <- as.integer(matrix_out[i,j]/2)
-        }
-    }
-    output <- data.frame(from = rep(rownames(matrix_out), times = ncol(matrix_out)),
-    to = rep(colnames(matrix_out), each = nrow(matrix_out)),
-    value = as.vector(matrix_out),
-    stringsAsFactors = FALSE)
-    # Reorder columns to eliminate redundant comparisons
-    for (k in 1:nrow(output)) {
-            max <- order(output[k,1:2])[1] #which is first alphabetically
-            max <- output[k,max]
-            min <- order(output[k,1:2])[2] #which is second alphabetically
-            min <- output[k,min]
-            output[k,1] <- max
-            output[k,2] <- min
-        }
-        unique <- rownames(unique(output[,1:2])) #removing redundant comparisons
-        output <- output[rownames(output) %in% unique, ]
-    
-    return(output)
+Chord.list <- list()
+for (i in seq_along(meta.list)) {
+    Stim <- subset(meta.list[[i]], condition == "Stim")
+    US <- subset(meta.list[[i]], condition == "US")
+    Stim <- getCircles(Stim)
+    US <- getCircles(US)
+    Chord.list[[i]] <- list(Stim, US)
+    names(Chord.list[[i]]) <- c("Stim", "US")
 }
-Stim.process <- getCircles(Stim)
-US.process <- getCircles(US)
-    
+
 
 #Defining grid colors
 grid.cols = c(Naive_like_1_CM = "#E41A1C",
@@ -221,10 +183,13 @@ grid.cols = c(Naive_like_1_CM = "#E41A1C",
 dir.create("~/Documents/GitHub/HNSCC_Descriptive/Visualizations")
 dir <- "~/Documents/GitHub/HNSCC_Descriptive/Visualizations/"
 
+files <- c("nofilter", "NAfilter", "Orgfilter")
+
 #Slight alteration in ciros.track to produce labels that are perpindicular to the circle instead of parallel
-pdf(paste0(dir, "Stimulated_TCRcircos.pdf"), height=10, width=10)
-chordDiagram(Stim.process, grid.col = grid.cols, self.link = 1, annotationTrack = "grid", 
-    preAllocateTracks = list(track.height = max(strwidth(unlist(dimnames(Stim.process))))))
+for (i in seq_along(Chord.list)) {
+    pdf(paste0(dir, files[i], "_Stimulated_TCRcircos.pdf"), height=10, width=10)
+chordDiagram(Chord.list[[i]][["Stim"]], grid.col = grid.cols, self.link = 1, annotationTrack = "grid", 
+    preAllocateTracks = list(track.height = max(strwidth(unlist(dimnames(Chord.list[[i]][["Stim"]]))))))
 circos.track(track.index = 1, panel.fun = function(x, y) {
     xlim = get.cell.meta.data("xlim")
     xplot = get.cell.meta.data("xplot")
@@ -235,9 +200,9 @@ circos.track(track.index = 1, panel.fun = function(x, y) {
         niceFacing = TRUE, adj = c(0, 0.5)) }, bg.border = NA)
 dev.off()
 
-pdf(paste0(dir, "Untimulated_TCRcircos.pdf"), height=10, width=10)
-chordDiagram(US.process, grid.col = grid.cols, self.link = 1, annotationTrack = "grid", 
-    preAllocateTracks = list(track.height = max(strwidth(unlist(dimnames(US.process))))))
+pdf(paste0(dir, files[i], "_Untimulated_TCRcircos.pdf"), height=10, width=10)
+chordDiagram(Chord.list[[i]][["US"]], grid.col = grid.cols, self.link = 1, annotationTrack = "grid", 
+    preAllocateTracks = list(track.height = max(strwidth(unlist(dimnames(Chord.list[[i]][["US"]]))))))
 circos.track(track.index = 1, panel.fun = function(x, y) {
     xlim = get.cell.meta.data("xlim")
     xplot = get.cell.meta.data("xplot")
@@ -247,5 +212,7 @@ circos.track(track.index = 1, panel.fun = function(x, y) {
     circos.text(mean(xlim), ylim[1], sector.name, facing = "clockwise",
         niceFacing = TRUE, adj = c(0, 0.5)) }, bg.border = NA)
 dev.off()
+}
+
 ```
 
