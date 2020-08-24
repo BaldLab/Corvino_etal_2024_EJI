@@ -1,0 +1,251 @@
+---
+title: "Repertoire Analysis"
+author: "Nick Borcherding"
+date: "8/21/2020"
+output: html_document
+---
+# Loading Data
+
+## Read filtered contig
+```{r}
+S1.contig <- read.csv("~/Documents/GitHub/HNSCC_Descriptive/Data/VDJ_data/Sample1_filtered_contig_annotations.csv")
+S2.contig <- read.csv("~/Documents/GitHub/HNSCC_Descriptive/Data/VDJ_data/Sample2_filtered_contig_annotations.csv")
+S3.contig <- read.csv("~/Documents/GitHub/HNSCC_Descriptive/Data/VDJ_data/Sample3_filtered_contig_annotations.csv")
+S4.contig <- read.csv("~/Documents/GitHub/HNSCC_Descriptive/Data/VDJ_data/Sample4_filtered_contig_annotations.csv")
+```
+
+
+### Combined TCR
+
+Going to go with 3 seperate combinations - unfiltered (combined), remove NA (combined_NA), and how it was originally called (combined.org)
+
+```{r}
+library(scRepertoire)
+combined <- combineTCR(list(S1.contig, S2.contig, S3.contig, S4.contig), samples = c("S1", "S2", "S3", "S4"), ID = c("US", "US", "S", "S"), cells = "T-AB")
+
+combined_NA <- combineTCR(list(S1.contig, S2.contig, S3.contig, S4.contig), samples = c("S1", "S2", "S3", "S4"), ID = c("US", "US", "S", "S"), cells = "T-AB", removeNA = TRUE)
+
+combined_Org <- combineTCR(list(S1.contig, S2.contig, S3.contig, S4.contig), samples = c("S1", "S2", "S3", "S4"), ID = c("US", "US", "S", "S"), cells = "T-AB", removeNA = TRUE, filterMulti = TRUE)
+
+```
+
+## Loading seurat object
+
+```{r}
+library(Seurat)
+seurat.combined <- readRDS("~/Documents/GitHub/HNSCC_Descriptive/Data/seurat_combined.rds")
+```
+
+
+### Checking barcodes
+
+```{r}
+head(rownames(seurat.combined[[]])) #seurat.combined[[]] grabs the meta.data
+head(combined[[3]]$barcode) 
+```
+
+### Fixing barcode issue
+
+This has been a consistent issue with the ID variable leading to a mismatch in barcodes compared to a seurat object. Just going to loop the gsub across all three combined objects.
+
+```{r}
+combined.list <- list(combined, combined_NA, combined_Org)
+
+for (i in seq_along(combined.list)) {
+    combined.list[[i]][[1]][["barcode"]] <- gsub('S1_US', 'S1', combined.list[[i]][[1]][["barcode"]]) #replaces S1_US with S1_
+    combined.list[[i]][[2]][["barcode"]] <- gsub('S2_US', 'S2', combined.list[[i]][[2]][["barcode"]])
+    combined.list[[i]][[3]][["barcode"]] <- gsub('S3_S', 'S3', combined.list[[i]][[3]][["barcode"]])
+    combined.list[[i]][[4]][["barcode"]] <- gsub('S4_S', 'S4', combined.list[[i]][[4]][["barcode"]])
+}
+```
+
+
+### Extracting and cleaning meta.data
+
+Looking at the meta data - there is already columns for the TCR information. In addition, as we are going to loop over the 3 combinedTCR objects, I will just extract the meta.data and work with it. I am saving all the vectors from "group" to the end of the data frame.
+
+```{r}
+meta.data <- seurat.combined[[]][,which(colnames(meta.data) == "group"):ncol(seurat.combined[[]])]
+```
+
+## Merging data
+
+Because we are using the meta data in lieu of the seurat object - I am going to modify the functions of scRepertoire a little and use them.
+
+Here I used the `combineExpression()` and stripped out the parameters - now `combineMeta()` takes the combinedTCR() object, meta.data and the cloneTypes and calculated frequency by condition and the amino acid sequence. 
+
+*Based on reading the code - the assumption I am making here is you want to group frequencies by condition instead of samples* 
+
+
+```{r}
+source("~/Documents/GitHub/HNSCC_Descriptive/R/combineMeta.R")
+
+meta.list <- list()
+
+for (i in seq_along(combined.list)){
+    meta.list[[i]] <- combineMeta(combined.list[[i]], meta = meta.data)
+}
+```
+
+***
+
+# Data visualization
+
+Now we have the meta data from seurat.combined merged with the TCR data we can perform the alluvial comparisons.
+
+## Load Libraries
+```{r}
+library(ggplot2)
+library(ggalluvial)
+library(ggfittext)
+```
+
+```{r}
+clust.cols <- c("#E41A1C", # Naive_like_1_CM
+                "#A6761D", # Naive_like_2_SC
+                "#8DA0CB", # Naive_like_3
+                "#666666", # Cytotoxic
+                "#A6D854", # Type_I_IFN
+                "#984EA3", # Stimulated_1
+                "#1B9E77", # Stimulated_exhausted
+                "#D95F02", # Exhausted_1
+                "#7570B3", # Exhausted_2
+                "#E7298A", # TRM
+                "#E6AB02", # gd_T_g9d2
+                "#8DD3C7", # gd_T_non_g9d2
+                "#FF7F00", # MAIT 
+                "#E78AC3")
+
+graph.df <- meta.list[[1]]
+graph.df$barcodes <- rownames(graph.df)
+
+y.axes <- unique(c("condition", "seurat_clusters"))
+set.axes <- seq_along(y.axes)
+tmp <- graph.df[,c("condition", "seurat_clusters", "CTaa", "barcodes")]
+lodes <- to_lodes_form(tmp, key = "x", value = "stratum", 
+        id = "alluvium", axes = set.axes, diffuse = "seurat_clusters")
+
+ggplot(data = lodes, aes(x = x, stratum = stratum, 
+                alluvium = alluvium, label = stratum)) +
+        geom_stratum() + theme_classic() +
+        geom_fit_text(stat = "stratum", infer.label = FALSE, reverse = TRUE) +
+        theme(axis.title.x = element_blank(), axis.ticks.x = element_blank()) + 
+        geom_flow(aes(fill = lodes[,"seurat_clusters"]), 
+            stat = "alluvium", lode.guidance = "forward") + 
+        labs(fill = "Cluster") + 
+    scale_fill_manual(values = clust.cols)
+
+```
+
+
+
+## Chord Diagrams 
+
+Here is a little more inuitive for me, seperate the Stim and US cells, create a matrix that counts the shared clonotype by clusters, correct for overcounting and visuaize both conditions using Chord Diagrams. 
+
+For the most part the function `getCircles()` does all the processing. 
+
+```{r}
+library(circlize)
+Stim <- subset(meta.list[[1]], condition == "Stim")
+US <- subset(meta.list[[1]], condition == "US")
+
+
+getCircles <- function(data) {
+    test <- data[, c("CTaa", "seurat_clusters")]
+    dTest <- reshape2::dcast(test, CTaa ~ seurat_clusters)
+    dTest <- dTest[apply(dTest[,-1], 1, function(x) !all(x==0)),]
+    dTest <- dTest[-1]
+    matrix_out <- matrix(ncol = ncol(dTest), nrow = ncol(dTest))
+    for (x in seq_len(ncol(dTest))) {
+        for (y in seq_len(ncol(dTest)) ){
+            matrix_out[y,x] <- length(which(dTest[,x] >= 1 & dTest[,y] >= 1))
+        }
+    }
+    colnames(matrix_out) <- colnames(dTest)
+    rownames(matrix_out) <- colnames(dTest)
+    #Need to subtract extra cells - will take the difference of the sum of the column minus and the respective cell and subtract that from the respective cell
+    for (y in seq_len(ncol(matrix_out))) {
+        matrix_out[y,y] <- matrix_out[y,y] - (sum(matrix_out[,y])-matrix_out[y,y])
+        if (matrix_out[y,y] < 0) {
+            df[y,y] <- 0
+        }
+    }
+    # Reduces the clonotypes in half - this will allow for accurate depiction by total number of cells in cluster
+    for (i in seq_len(ncol(matrix_out))) {
+        for (j in seq_len(ncol(matrix_out))) {
+            matrix_out[i,j] <- as.integer(matrix_out[i,j]/2)
+        }
+    }
+    output <- data.frame(from = rep(rownames(matrix_out), times = ncol(matrix_out)),
+    to = rep(colnames(matrix_out), each = nrow(matrix_out)),
+    value = as.vector(matrix_out),
+    stringsAsFactors = FALSE)
+    # Reorder columns to eliminate redundant comparisons
+    for (k in 1:nrow(output)) {
+            max <- order(output[k,1:2])[1] #which is first alphabetically
+            max <- output[k,max]
+            min <- order(output[k,1:2])[2] #which is second alphabetically
+            min <- output[k,min]
+            output[k,1] <- max
+            output[k,2] <- min
+        }
+        unique <- rownames(unique(output[,1:2])) #removing redundant comparisons
+        output <- output[rownames(output) %in% unique, ]
+    
+    return(output)
+}
+Stim.process <- getCircles(Stim)
+US.process <- getCircles(US)
+    
+
+#Defining grid colors
+grid.cols = c(Naive_like_1_CM = "#E41A1C",
+                Naive_like_2_SC = "#A6761D",
+                Naive_like_3 = "#8DA0CB", 
+                Cytotoxic = "#666666", 
+                Type_I_IFN = "#A6D854", 
+                Stimulated_1= "#984EA3", 
+                Stimulated_exhausted = "#1B9E77", 
+                Exhausted_1 = "#D95F02", 
+                Exhausted_2 = "#7570B3", 
+                TRM = "#E7298A", 
+                gd_T_g9d2 = "#E6AB02", 
+                gd_T_non_g9d2 = "#8DD3C7", 
+                MAIT = "#FF7F00", 
+                Proliferatice = "#E78AC3")
+```
+
+## Plotting Chord Diagrams
+```{r}
+dir.create("~/Documents/GitHub/HNSCC_Descriptive/Visualizations")
+dir <- "~/Documents/GitHub/HNSCC_Descriptive/Visualizations/"
+
+#Slight alteration in ciros.track to produce labels that are perpindicular to the circle instead of parallel
+pdf(paste0(dir, "Stimulated_TCRcircos.pdf"), height=10, width=10)
+chordDiagram(Stim.process, grid.col = grid.cols, self.link = 1, annotationTrack = "grid", 
+    preAllocateTracks = list(track.height = max(strwidth(unlist(dimnames(Stim.process))))))
+circos.track(track.index = 1, panel.fun = function(x, y) {
+    xlim = get.cell.meta.data("xlim")
+    xplot = get.cell.meta.data("xplot")
+    ylim = get.cell.meta.data("ylim")
+    sector.name = get.cell.meta.data("sector.index")
+
+    circos.text(mean(xlim), ylim[1], sector.name, facing = "clockwise",
+        niceFacing = TRUE, adj = c(0, 0.5)) }, bg.border = NA)
+dev.off()
+
+pdf(paste0(dir, "Untimulated_TCRcircos.pdf"), height=10, width=10)
+chordDiagram(US.process, grid.col = grid.cols, self.link = 1, annotationTrack = "grid", 
+    preAllocateTracks = list(track.height = max(strwidth(unlist(dimnames(US.process))))))
+circos.track(track.index = 1, panel.fun = function(x, y) {
+    xlim = get.cell.meta.data("xlim")
+    xplot = get.cell.meta.data("xplot")
+    ylim = get.cell.meta.data("ylim")
+    sector.name = get.cell.meta.data("sector.index")
+
+    circos.text(mean(xlim), ylim[1], sector.name, facing = "clockwise",
+        niceFacing = TRUE, adj = c(0, 0.5)) }, bg.border = NA)
+dev.off()
+```
+
