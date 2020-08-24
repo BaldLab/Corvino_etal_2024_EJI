@@ -100,45 +100,6 @@ library(ggalluvial)
 library(ggfittext)
 ```
 
-```{r}
-clust.cols <- c("#E41A1C", # Naive_like_1_CM
-                "#A6761D", # Naive_like_2_SC
-                "#8DA0CB", # Naive_like_3
-                "#666666", # Cytotoxic
-                "#A6D854", # Type_I_IFN
-                "#984EA3", # Stimulated_1
-                "#1B9E77", # Stimulated_exhausted
-                "#D95F02", # Exhausted_1
-                "#7570B3", # Exhausted_2
-                "#E7298A", # TRM
-                "#E6AB02", # gd_T_g9d2
-                "#8DD3C7", # gd_T_non_g9d2
-                "#FF7F00", # MAIT 
-                "#E78AC3")
-
-graph.df <- meta.list[[1]]
-graph.df$barcodes <- rownames(graph.df)
-
-y.axes <- unique(c("condition", "seurat_clusters"))
-set.axes <- seq_along(y.axes)
-tmp <- graph.df[,c("condition", "seurat_clusters", "CTaa", "barcodes")]
-lodes <- to_lodes_form(tmp, key = "x", value = "stratum", 
-        id = "alluvium", axes = set.axes, diffuse = "seurat_clusters")
-
-ggplot(data = lodes, aes(x = x, stratum = stratum, 
-                alluvium = alluvium, label = stratum)) +
-        geom_stratum() + theme_classic() +
-        geom_fit_text(stat = "stratum", infer.label = FALSE, reverse = TRUE) +
-        theme(axis.title.x = element_blank(), axis.ticks.x = element_blank()) + 
-        geom_flow(aes(fill = lodes[,"seurat_clusters"]), 
-            stat = "alluvium", lode.guidance = "forward") + 
-        labs(fill = "Cluster") + 
-    scale_fill_manual(values = clust.cols)
-
-```
-
-
-
 ## Chord Diagrams 
 
 Here is a little more inuitive for me, seperate the Stim and US cells, create a matrix that counts the shared clonotype by clusters, correct for overcounting and visuaize both conditions using Chord Diagrams. 
@@ -216,3 +177,46 @@ dev.off()
 
 ```
 
+## Alluvial Plots
+
+Still working on this code
+
+```{r}
+clust.cols <- c("#E41A1C", # Naive_like_1_CM
+                "#A6761D", # Naive_like_2_SC
+                "#8DA0CB", # Naive_like_3
+                "#666666", # Cytotoxic
+                "#A6D854", # Type_I_IFN
+                "#984EA3", # Stimulated_1
+                "#1B9E77", # Stimulated_exhausted
+                "#D95F02", # Exhausted_1
+                "#7570B3", # Exhausted_2
+                "#E7298A", # TRM
+                "#E6AB02", # gd_T_g9d2
+                "#8DD3C7", # gd_T_non_g9d2
+                "#FF7F00", # MAIT 
+                "#E78AC3")
+
+for (i in seq_along(meta.list)) {
+graph.df <- meta.list[[i]]
+graph.df$barcodes <- rownames(graph.df)
+
+y.axes <- unique(c("condition", "seurat_clusters"))
+set.axes <- seq_along(y.axes)
+tmp <- graph.df[,c("condition", "seurat_clusters", "CTaa", "barcodes")]
+lodes <- to_lodes_form(tmp, key = "x", value = "stratum", 
+        id = "alluvium", axes = set.axes, diffuse = c("seurat_clusters", "condition"))
+
+plot <- ggplot(data = lodes, aes(x = x, stratum = stratum, 
+                alluvium = alluvium, label = stratum)) +
+        geom_stratum() + theme_classic() +
+        geom_fit_text(stat = "stratum", infer.label = FALSE, reverse = TRUE) +
+        theme(axis.title.x = element_blank(), axis.ticks.x = element_blank()) + 
+        geom_flow(aes(fill = lodes[,"seurat_clusters"]), 
+            stat = "alluvium", lode.guidance = "forward") + 
+        labs(fill = "Cluster") + 
+    scale_fill_manual(values = clust.cols) 
+ggsave(path = dir, file = paste0(files[i], "_Stimulated_TCRalluvial.pdf"), height=4, width=6)
+}
+
+```
