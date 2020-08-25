@@ -14,7 +14,6 @@ output:
 editor_options: 
   chunk_output_type: console
 ---
-
 Built with R version `r getRversion()`
 
 ## Setup {.tabset}
@@ -4763,6 +4762,8 @@ devtools::load_all("~/Documents/Work/Sciebo/Scripts/Packages/scRepertoire/")
 ```
  
 ### Format data with scRepertoire
+
+**Note: You do not need to strip the frequency calulcation (although you did it super elegantly). When using `combineExpression()`, your groupBy == "ID" will calculate across your condition of stimulated or unstimulated**
 ```{r Format_data_with_scRep}
 #################################
 # Read in and format data
@@ -4830,6 +4831,8 @@ rm(combined.contig, contig.list, S1.contig, S2.contig, S3.contig, S4.contig)
 ```
 
 ### Count clonotype frequencies and normalise
+
+**Note: Love the scaling idea you have here!!**
 ```{r Count_and_normalise_clonotype_frequencies}
 
 ####################################################################################
@@ -4976,6 +4979,8 @@ if(quick.load){
 ## TCR analysis - General analysis {.tabset}
 
 ### Heatmaps VJ gene usage
+
+**Note: Just would add the packages for heatmap.2 (gplots) and your color pallete (RColorBrewer)
 ```{r V_J_usage_heatmaps}
 
 # Move to working dir
@@ -5121,6 +5126,8 @@ setwd(working.dir)
 ```
 
 ### Heatmap of top clonotypes
+
+**Note: This is a very cool way of looking at overlapping clonotypes and it seems consistent from all iterations that Stimulate_1/Cytotoxic/Type_1_interferon are related and more to the point you mentioned Exhusted_1 vs Stimulated_Exhuasted has a greater overlap than Exhusated_2 vs Stimulated_Exhuasted. However it is interesting that the major clonotype in Exhuasted_2 is seen in Stimulated_exhuasted, Exhuasted_1 and proliferative?**
 ```{r Heatmap_top_clonotypes}
 
 # Move to working dir
@@ -5570,6 +5577,8 @@ setwd(working.dir)
 ```
 
 ### Clonotype frequency on UMAP
+
+**Note: To me this also is interesting that you have 2 distinct clusters in the stimulation - one comprised of expanded clonotypes (presumably from the ehuasted clusters) and one of non-expanded clonotypes**
 ```{r Clonotype_freq}
 
 # Ensure dir back in working
