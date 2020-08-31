@@ -57,7 +57,7 @@ gc() # Free memory
 
 # pipeline variables
 start.time <- Sys.time()
-quick.load <- TRUE
+quick.load <- FALSE
 long.compute <- FALSE
 
 ###################
@@ -1619,7 +1619,7 @@ if(long.compute){
 
 # set default assay back to RNA
 DefaultAssay(seurat.combined) <- "RNA"
-
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
 
 ```
 
@@ -4404,7 +4404,404 @@ if(long.compute){
  
  
  
+## Transcription factor analysis {.tabset}
 
+### Progeny Analysis
+```{r Progeny_analysis}
+
+#BiocManager::install("progeny")
+
+
+library(progeny)
+library(dplyr)
+library(Seurat)
+library(ggplot2)
+library(tidyr)
+library(readr)
+library(pheatmap)
+library(tibble)
+
+
+
+
+## We compute the Progeny activity scores and add them to our Seurat object
+## as a new assay called Progeny. 
+
+DefaultAssay(seurat.combined) <- "RNA"
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+
+seurat.combined <- progeny(seurat.combined, 
+                           scale = FALSE, 
+                           organism = "Human", 
+                           top = 500,
+                           perm = 1,
+                           return_assay = TRUE)
+
+
+## We can now directly apply Seurat functions in our Progeny scores. 
+## For instance, we scale the pathway activity scores. 
+seurat.combined <- Seurat::ScaleData(seurat.combined, assay = "progeny")
+
+## We transform Progeny scores into a data frame to better handling the results
+progeny_scores_df <-
+    as.data.frame(t(GetAssayData(seurat.combined, slot = "scale.data",
+        assay = "progeny"))) %>%
+    rownames_to_column("Cell") %>%
+    gather(Pathway, Activity, -Cell)
+
+
+## We create a data frame with the specification of the cells that belong to 
+## each cluster to match with the Progeny scores.
+CellsClusters <- data.frame(Cell = names(Idents(seurat.combined)),
+                            CellType = as.character(Idents(seurat.combined)),
+                            stringsAsFactors = FALSE)
+
+
+
+
+## We match Progeny scores with the cell clusters.
+progeny_scores_df <- inner_join(progeny_scores_df, CellsClusters)
+
+## We summarize the Progeny scores by cellpopulation
+summarized_progeny_scores <- progeny_scores_df %>%
+  group_by(Pathway, CellType) %>%
+  summarise(avg = mean(Activity), std = sd(Activity))
+
+
+## We prepare the data for the plot
+summarized_progeny_scores_df <- summarized_progeny_scores %>%
+  dplyr::select(-std) %>%
+  spread(Pathway, avg) %>%
+  data.frame(row.names = 1, check.names = FALSE, stringsAsFactors = FALSE)
+
+paletteLength = 100
+myColor = colorRampPalette(c("Darkblue", "white","red"))(paletteLength)
+
+progenyBreaks = c(seq(min(summarized_progeny_scores_df), 0,
+                      length.out=ceiling(paletteLength/2) + 1),
+                  seq(max(summarized_progeny_scores_df)/paletteLength,
+                      max(summarized_progeny_scores_df),
+                      length.out=floor(paletteLength/2)))
+
+
+progeny_hmap = pheatmap(t(summarized_progeny_scores_df[,-1]),fontsize=14,
+                        fontsize_row = 10,
+                        color=myColor, breaks = progenyBreaks,
+                        main = "PROGENy (500)", angle_col = 45,
+                        treeheight_col = 0,  border_color = NA)
+
+
+unique(progeny_scores_df$Pathway)
+
+DefaultAssay(seurat.combined) <- "RNA"
+
+```
+ 
+### Exporting metadata for velocity analysis
+```{r exporting_metadata}
+# export metadata for velocity analysis 
+meta.data <- seurat.combined@meta.data
+
+colnames(meta.data)
+head(meta.data)
+
+# Remove non-necessary columns 
+meta.data <- meta.data %>%
+  dplyr::select(group, condition, seurat_clusters, UMAP_1, UMAP_2, PCA_1, PCA_2, Module, condition_clust, condition_module)
+
+# Create new barcode columns 
+meta.data$uniq_barcode <- rownames(meta.data)
+
+meta.data$barcode <- gsub(".*_", "", rownames(meta.data))
+
+write.table(meta.data, "output/tables/Meta_data.txt", sep = "\t", row.names = F, quote = F)
+
+
+
+```
+
+
+
+
+
+### RcisTarget
+```{r TF_regulation}
+
+# Create output directory 
+if(!dir.exists("output/figures/RcisTarget")){
+  dir.create("output/figures/RcisTarget",
+             recursive = TRUE)}
+
+if(!dir.exists("output/tables/RcisTarget")){
+  dir.create("output/tables/RcisTarget",
+             recursive = TRUE)}
+
+
+# load library
+library("RcisTarget")
+
+# To support paralell execution:
+#BiocManager::install(c("doMC", "doRNG"))
+
+# Visualisations may require 
+#BiocManager::install(c("DT", "visNetwork"))
+
+
+
+###################################
+# Generate input gene lists 
+###################################
+
+# Liver ILC1 vs. NK 
+ILC1.up <- combined.df %>%
+  dplyr::filter(FDR_Liver_ILC1_vs_NK < 0.05 & logFC_Liver_ILC1_vs_NK > 0) %>%
+  rownames()
+
+ILC1.dn <- combined.df %>%
+  dplyr::filter(FDR_Liver_ILC1_vs_NK < 0.05 & logFC_Liver_ILC1_vs_NK < 0) %>%
+  rownames()
+
+# Spleen CD160Pos vs CD160Neg
+SpPos.up <- combined.df %>%
+  dplyr::filter(FDR_Spleen_Pos_vs_Neg < 0.05 & logFC_Spleen_Pos_vs_Neg > 0) %>%
+  rownames()
+
+SpPos.dn <- combined.df %>%
+  dplyr::filter(FDR_Spleen_Pos_vs_Neg < 0.05 & logFC_Spleen_Pos_vs_Neg < 0) %>%
+  rownames()
+
+# BM CD160Pos vs CD160Neg
+BMPos.up <- combined.df %>%
+  dplyr::filter(FDR_BM_Pos_vs_Neg < 0.05 & logFC_BM_Pos_vs_Neg > 0) %>%
+  rownames()
+
+BMPos.dn <- combined.df %>%
+  dplyr::filter(FDR_BM_Pos_vs_Neg < 0.05 & logFC_BM_Pos_vs_Neg < 0) %>%
+  rownames()
+
+
+
+geneLists <- list(Liver_ILC1up = ILC1.up, 
+                  Liver_ILC1dn = ILC1.dn, 
+                  Spleen_Posup = SpPos.up, 
+                  Spleen_Posdn = SpPos.dn, 
+                  BM_Posup = BMPos.up, 
+                  BM_Posdn = BMPos.dn)
+
+
+
+# Available motif databased - in order of narrow -> large search space
+# available datasets can be found at = https://resources.aertslab.org/cistarget/
+
+# mm9-500bp-upstream-7species.mc9nr.feather
+# mm9-tss-centered-5kb-7species.mc9nr.feather
+# mm9-tss-centered-10kb-7species.mc9nr.feather
+
+# Download database
+#featherURL <- "https://resources.aertslab.org/cistarget/databases/mus_musculus/mm9/refseq_r45/mc9nr/gene_based/mm9-tss-centered-10kb-7species.mc9nr.feather" 
+
+#download.file(featherURL, destfile=basename(featherURL)) # saved in current dir
+
+
+# Read in database
+motifRankings <- importRankings("RcisTarget_feather_files/mm9-tss-centered-10kb-7species.mc9nr.feather")
+
+# Load mouse motif annotations
+data(motifAnnotations_mgi)
+
+#motifAnnotations_mgi[199:202,]
+
+motifAnnotations_mgi[(TF %in% c("Zfp683")), ]
+
+TF.vec <- unique(motifAnnotations_mgi$TF)
+
+
+# perform analysis
+motifEnrichmentTable_wGenes <- cisTarget(geneLists, 
+                                         motifRankings,
+                                         motifAnnot = motifAnnotations_mgi, 
+                                         highlightTFs = c("Eomes", "Tbx21", "Zfp683", "Batf3"),
+                                         nCores = 4)
+
+# Using 4 cores.
+# Genes in the gene sets NOT available in the dataset: #
+#	Liver_ILC1up: 	36 (3% of 1359)
+#	Liver_ILC1dn: 	73 (5% of 1362)
+#	Spleen_Posup: 	30 (3% of 1194)
+#	Spleen_Posdn: 	32 (3% of 1053)
+#	BM_Posup: 	6 (1% of 420)
+#	BM_Posdn: 	11 (3% of 412)
+
+
+# Add motif logo to table
+motifEnrichmentTable_wGenes_wLogo <- addLogo(motifEnrichmentTable_wGenes)
+
+
+ 
+# to view output data 
+resultsSubset <- motifEnrichmentTable_wGenes_wLogo[1:50,]
+
+library(DT)
+datatable(resultsSubset[,-c("enrichedGenes", "TF_lowConf"), with=FALSE], 
+          escape = FALSE, # To show the logo
+          filter="top", options=list(pageLength=10))
+
+
+
+# Write data to file 
+write.csv(motifEnrichmentTable_wGenes_wLogo, "output/tables/RcisTarget/motif_enrichment_table_withLogo_10kb.csv")
+
+
+# Extract all high confidence transcription factors for each geneset
+anotatedTfs <- lapply(split(motifEnrichmentTable_wGenes$TF_highConf,
+                            motifEnrichmentTable_wGenes$geneSet),
+                      function(x) {
+                        genes <- gsub(" \\(.*\\). ", "; ", x, fixed=FALSE)
+                        genesSplit <- unique(unlist(strsplit(genes, "; ")))
+                        return(genesSplit)
+                        })
+                      
+
+fix.list.length <- function(input.list){
+  temp <- unlist(lapply(input.list, length))
+  x.max <- max(temp)
+  
+  output.list <- lapply(input.list, function(x){
+    
+    remain <- x.max - length(x)
+    return(paste0(c(x, rep(NA, remain))))
+  })
+  
+  return(output.list)
+}
+
+anotatedTfs.export <- fix.list.length(anotatedTfs)  
+
+# Write data to file 
+write.csv(anotatedTfs.export, "output/tables/RcisTarget/Transcription_factors_annotated_to_motifs_with_highConf.csv")
+rm(anotatedTfs.export)
+
+
+# Filter predicted TFs based on those that are also significantly DEGs
+
+index.vec <- names(geneLists)
+DEG.predicted.TFs <- list()
+
+for(i in 1:length(index.vec)){
+  
+  DEG.var <- geneLists[[paste0(index.vec[i])]]
+  TF.var <- anotatedTfs[[paste0(index.vec[i])]]
+  DEG.predicted.TFs[[paste0(index.vec[i])]]<- DEG.var[DEG.var %in% TF.var]
+  names(DEG.predicted.TFs)[i] <- paste0(index.vec[i])
+  print(DEG.predicted.TFs)
+}
+
+
+
+
+DEG.predicted.TFs.export <- fix.list.length(DEG.predicted.TFs)  
+
+# Write data to file 
+write.csv(DEG.predicted.TFs.export, "output/tables/RcisTarget/Transcription_factors_predicted_which_are_also_DEG.csv")
+rm(DEG.predicted.TFs.export)
+
+
+
+
+
+
+# Plot heatmaps of DEG predicted TFs
+
+for(i in 1:length(index.vec)){
+heatmap.data <- remove.stats(combined.df)
+
+sig.var <- DEG.predicted.TFs[[paste0(index.vec[i])]]
+
+logic.vec <- rownames(heatmap.data) %in% sig.var
+heatmap.data <- heatmap.data[logic.vec, ]
+
+heatmap.data <- heatmap.data[order(match(rownames(heatmap.data), sig.var)), ]
+
+#heatmap.data <- remove.sample(heatmap.data, "^BM.*")
+
+
+print(basic.heatmap(heatmap.data, 
+              title.var = paste0(index.vec[i]), 
+              Row.cluster = TRUE, 
+              Col.cluster = TRUE,
+              row.size = 0.7,
+              dist.method = "euclidean",
+              hclust.method = "ward.D2"))
+
+dev.copy(pdf, paste0("output/figures/RcisTarget/Heatmap_predicted_TFs_dif_expressed_", index.vec[i], ".pdf"))
+dev.off()
+
+}
+
+```
+ 
+ 
+### Searching for TFs
+```{r TF_analysis}
+
+# Create output dir
+if(!dir.exists("output/figures/Transcription_factors")){
+  dir.create("output/figures/Transcription_factors", 
+             recursive = T)}
+
+
+# Searching for TFs
+TF.ref.list <- read.delim("Data/TFcheckpoint.txt") # http://www.tfcheckpoint.org/index.php/browse
+
+dim(TF.ref.list) # 1020, 11
+colnames(TF.ref.list)
+head(TF.ref.list)
+
+Cluster.markers <- read.csv("output/tables/DEG_Clusters/Cluster_markers_unfiltered.csv", row.names = 1)
+
+
+
+# Up-regulated TFs
+sig.genes <- Cluster.markers %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::filter(avg_logFC > 0.5 | avg_logFC < -0.5) %>%
+  dplyr::select(gene)
+
+sig.genes <- unique(sig.genes$gene)
+TF.logic <- sig.genes %in% TF.ref.list$Gene_symbol
+
+TF.DEG <- sig.genes[TF.logic]
+
+
+
+
+########################################
+# Plot TFs differentially regulated 
+########################################
+
+
+seurat.combined.small <- subset(seurat.combined, downsample = 300)
+
+average.seurat <- AverageExpression(seurat.combined,
+                                    assay = "RNA",
+                                    slot = "data",
+                                    verbose = TRUE,
+                                    return.seurat = TRUE)
+
+DoHeatmap(average.seurat, 
+          features = TF.DEG, 
+          draw.lines = F)
+
+
+
+
+
+```
+ 
+ 
+ 
+ 
 ## SCENIC TF analysis {.tabset}
 
 ### SCENIC transcription factor analysis 
@@ -4459,8 +4856,6 @@ lfile$close_all()
 
 
 ```
-
-
 
 
 ## Trajectory analysis {.tabset}
