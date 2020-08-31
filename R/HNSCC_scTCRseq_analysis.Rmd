@@ -185,8 +185,7 @@ setwd(dirname(getActiveDocumentContext()$path))
 working.dir <- getwd()
 
 # since moving script from local to github - I want to adjust work dir to be main github dir - therefore 
-working.dir <- gsub("/R", "", working.dir)
-setwd(working.dir)
+setwd("..")
 
 # create output directories
 if(!dir.exists("Exported_RDS_files")){dir.create("Exported_RDS_files", recursive = T)}
@@ -662,7 +661,7 @@ library(ggalluvial)
 library(ggfittext)
 
 # Source function
-source("getCircles.R")
+source("R/getCircles.R")
 
 #Using seurat_clusters as value column: use value.var to override.
 #Aggregation function missing: defaulting to length

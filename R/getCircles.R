@@ -5,7 +5,7 @@ getCircles <- function(data, proportion = FALSE, clonotypesOnly = FALSE) {
     dTest <- dTest[-1]
     total <- nrow(dTest)
     ##This will prevent counting clonotypes by cell number
-    if (clonotypesOnly = TRUE) {
+    if (clonotypesOnly) {
         dTest[dTest > 1] <- 1
     }
     matrix_out <- matrix(ncol = ncol(dTest), nrow = ncol(dTest))
@@ -44,7 +44,7 @@ getCircles <- function(data, proportion = FALSE, clonotypesOnly = FALSE) {
     }
     unique <- rownames(unique(output[,1:2])) #removing redundant comparisons
     output <- output[rownames(output) %in% unique, ]
-    if (proportion = TRUE) {
+    if (proportion) {
         output$value <- output$value/total
     } 
     
@@ -61,7 +61,7 @@ getIntegratedCircle <- function(data, proportion = FALSE, clonotypesOnly = FALSE
     dTest <- dTest[apply(dTest[,-1], 1, function(x) !all(x==0)),]
     dTest <- dTest[,-1]
     ##This will prevent counting clonotypes by cell number
-    if (clonotypesOnly = TRUE) {
+    if (clonotypesOnly) {
         dTest[dTest > 1] <- 1
     }
     matrix_out <- matrix(ncol = ncol(dTest), nrow = ncol(dTest))
@@ -107,7 +107,7 @@ getIntegratedCircle <- function(data, proportion = FALSE, clonotypesOnly = FALSE
     output$to_group <- stringr::str_split(output$to, "_", simplify = T, n=2)[,1]
     output$from<- stringr::str_split(output$from, "_", simplify = T, n=2)[,2]
     output$to <- stringr::str_split(output$to, "_", simplify = T, n=2)[,2]
-    if (proportion = TRUE) {
+    if (proportion) {
         output$value <- ifelse(output$from == "US", output$value/totalUS, output$value/totalStim)
     }   
         
