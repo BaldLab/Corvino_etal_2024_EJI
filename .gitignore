@@ -41,3 +41,7 @@ vignettes/*.pdf
 
 # R Environment Variables
 .Renviron
+R/Archive/HNSCC_repertoire_NB.Rmd
+*.Rmd
+R/Archive/HNSCC_repertoire_NB.Rmd
+*.rds

@@ -33,7 +33,7 @@ combined_Org <- combineTCR(list(S1.contig, S2.contig, S3.contig, S4.contig), sam
 
 ```{r}
 library(Seurat)
-seurat.combined <- readRDS("~/Documents/GitHub/HNSCC_Descriptive/Data/seurat_combined.rds")
+seurat.combined <- readRDS("~/Documents/GitHub/HNSCC_Descriptive/Exported_RDS_files/seurat_combined.rds")
 ```
 
 
@@ -65,7 +65,7 @@ for (i in seq_along(combined.list)) {
 Looking at the meta data - there is already columns for the TCR information. In addition, as we are going to loop over the 3 combinedTCR objects, I will just extract the meta.data and work with it. I am saving all the vectors from "group" to the end of the data frame.
 
 ```{r}
-meta.data <- seurat.combined[[]][,which(colnames(meta.data) == "group"):ncol(seurat.combined[[]])]
+meta.data <- seurat.combined[[]][,which(colnames(seurat.combined[[]]) == "group"):ncol(seurat.combined[[]])]
 ```
 
 ## Merging data
@@ -139,6 +139,23 @@ grid.cols = c(Naive_like_1_CM = "#E41A1C",
                 Proliferatice = "#E78AC3")
 ```
 
+```{r}
+Stim <- subset(meta.list[[1]], condition == "Stim")
+US <- subset(meta.list[[1]], condition == "US")
+list <- list("Stim" = Stim, "US" = US)
+output <- getCollapsedCircle(list)
+chordDiagram(output, grid.col = grid.cols, self.link = 1,annotationTrack = "grid", 
+    preAllocateTracks = list(track.height = max(strwidth(unlist(dimnames(output))))))
+circos.track(track.index = 1, panel.fun = function(x, y) {
+    xlim = get.cell.meta.data("xlim")
+    xplot = get.cell.meta.data("xplot")
+    ylim = get.cell.meta.data("ylim")
+    sector.name = get.cell.meta.data("sector.index")
+
+    circos.text(mean(xlim), ylim[1], sector.name, facing = "clockwise",
+        niceFacing = TRUE, adj = c(0, 0.5)) }, bg.border = NA)
+```
+
 ## Plotting Chord Diagrams
 ```{r}
 dir.create("~/Documents/GitHub/HNSCC_Descriptive/Visualizations")
@@ -176,6 +193,205 @@ dev.off()
 }
 
 ```
+
+
+```{r}
+test <- data[, c("CTaa", "seurat_clusters")]
+
+    dTest <- reshape2::dcast(test, CTaa ~ seurat_clusters)
+
+    dTest <- dTest[apply(dTest[,-1], 1, function(x) !all(x==0)),]
+    dTest <- dTest[-1]
+    total <- nrow(dTest)
+    matrix_out <- matrix(ncol = ncol(dTest), nrow = ncol(dTest))
+    for (x in seq_len(ncol(dTest))) {
+        for (y in seq_len(ncol(dTest)) ){
+            matrix_out[y,x] <- length(which(dTest[,x] >= 1 & dTest[,y] >= 1))
+        }
+    }
+    colnames(matrix_out) <- colnames(dTest)
+    rownames(matrix_out) <- colnames(dTest)
+    #Need to subtract extra cells - will take the difference of the sum of the column minus and the respective cell and subtract that from the respective cell
+    for (y in seq_len(ncol(matrix_out))) {
+        matrix_out[y,y] <- matrix_out[y,y] - (sum(matrix_out[,y])-matrix_out[y,y])
+        if (matrix_out[y,y] < 0) {
+            matrix_out[y,y] <- 0
+        }
+    }
+    # Reduces the clonotypes in half - this will allow for accurate depiction by total number of cells in cluster
+    for (i in seq_len(ncol(matrix_out))) {
+        for (j in seq_len(ncol(matrix_out))) {
+            matrix_out[i,j] <- as.integer(matrix_out[i,j]/2)
+        }
+    }
+    output <- data.frame(from = rep(rownames(matrix_out), times = ncol(matrix_out)),
+                         to = rep(colnames(matrix_out), each = nrow(matrix_out)),
+                         value = as.vector(matrix_out),
+                         stringsAsFactors = FALSE)
+    # Reorder columns to eliminate redundant comparisons
+    for (k in 1:nrow(output)) {
+        max <- order(output[k,1:2])[1] #which is first alphabetically
+        max <- output[k,max]
+        min <- order(output[k,1:2])[2] #which is second alphabetically
+        min <- output[k,min]
+        output[k,1] <- max
+        output[k,2] <- min
+    }
+    unique <- rownames(unique(output[,1:2])) #removing redundant comparisons
+    output <- output[rownames(output) %in% unique, ]
+    
+    return(output)
+```
+
+```{r}
+test <- data[, c("CTaa", "seurat_clusters", "condition")]
+    dTest <- reshape2::dcast(test, CTaa ~ condition + seurat_clusters)
+    totalUS <- table(test$condition)[1]
+    totalStim <- table(test$condition)[2]
+    dTest <- dTest[apply(dTest[,-1], 1, function(x) !all(x==0)),]
+    dTest <- dTest[,-1]
+    dTest[dTest > 1] <- 1
+    matrix_out <- matrix(ncol = ncol(dTest), nrow = ncol(dTest))
+    for (x in seq_len(ncol(dTest))) {
+        for (y in seq_len(ncol(dTest)) ){
+            matrix_out[y,x] <- length(which(dTest[,x] >= 1 & dTest[,y] >= 1))
+        }
+    }
+    
+    colnames(matrix_out) <- colnames(dTest)
+    rownames(matrix_out) <- colnames(dTest)
+    #Need to subtract extra cells - will take the difference of the sum of the column minus and the respective cell and subtract that from the respective cell
+    for (y in seq_len(ncol(matrix_out))) {
+        matrix_out[y,y] <- matrix_out[y,y] - (sum(matrix_out[,y])-matrix_out[y,y])
+        if (matrix_out[y,y] < 0) {
+            matrix_out[y,y] <- 0
+        }
+    }
+    # Reduces the clonotypes in half - this will allow for accurate depiction by total number of cells in cluster
+    for (i in seq_len(ncol(matrix_out))) {
+        for (j in seq_len(ncol(matrix_out))) {
+            matrix_out[i,j] <- as.integer(matrix_out[i,j]/2)
+        }
+    }
+    output <- data.frame(from = rep(rownames(matrix_out), times = ncol(matrix_out)),
+                         to = rep(colnames(matrix_out), each = nrow(matrix_out)),
+                         value = as.vector(matrix_out),
+                         stringsAsFactors = FALSE)
+    # Reorder columns to eliminate redundant comparisons
+    for (k in 1:nrow(output)) {
+        max <- order(output[k,1:2])[1] #which is first alphabetically
+        max <- output[k,max]
+        min <- order(output[k,1:2])[2] #which is second alphabetically
+        min <- output[k,min]
+        output[k,1] <- max
+        output[k,2] <- min
+    }
+    unique <- rownames(unique(output[,1:2])) #removing redundant comparisons
+    output <- output[rownames(output) %in% unique, ]
+    
+     output$from_group <- stringr::str_split(output$from, "_", simplify = T, n=2)[,1]
+    output$to_group <- stringr::str_split(output$to, "_", simplify = T, n=2)[,1]
+    output$from<- stringr::str_split(output$from, "_", simplify = T, n=2)[,2]
+    output$to <- stringr::str_split(output$to, "_", simplify = T, n=2)[,2]
+    
+    output$value <- ifelse(output$from == "US", output$value/totalUS, output$value/totalStim)
+```
+
+
+```{r}
+combined_Org <- combined.list[[3]]
+seurat.combined <- combineExpression(combined_Org, seurat.combined, groupBy = "ID")
+data <- seurat.combined[[]]
+
+output <- getIntegratedCircle(data)
+
+#####Defined data frame that will use to graph
+df2 = data.frame(from = paste(output[[1]], output[[4]], sep = "|"),
+                 to = paste(output[[2]], output[[5]], sep = "|"),
+                 value = output[[3]], stringsAsFactors = FALSE)
+
+###Data frame for the extra track
+combined = data.frame(condition = c(output[[5]]), 
+    from = c(output[[1]]), to = c(output[[2]]), stringsAsFactors = FALSE)
+combined = combined[order(combined$from, combined$to, combined$condition), ]
+order = paste(combined$from, combined$condition, sep = "|")
+
+
+####Ploting
+chordDiagram(df2, self.link = 1, annotationTrack = c("grid", "axis"),
+    grid.col = grid.col, directional = TRUE,
+    order = order,
+    preAllocateTracks = list(
+        track.height = 0.04,
+        track.margin = c(0.05, 0)
+    )
+)
+for(species in unique(combined$from)) {
+    l = combined$from == species
+    sn = paste(combined$from[l], combined$condition[l], sep = "|")
+    highlight.sector(sn, track.index = 1, col = color_species[species], 
+        text = species, niceFacing = TRUE)
+}
+legend("bottomleft", pch = 15, col = color_regions, 
+    legend = names(color_regions), cex = 0.6)
+legend("bottomright", pch = 15, col = color_species, 
+    legend = names(color_species), cex = 0.6)
+
+circos.clear()
+
+#####Changing order of tracks for Clusters on the inside
+
+df2 = data.frame(from = paste(output[[4]], output[[1]], sep = "|"),
+                 to = paste(output[[5]], output[[2]], sep = "|"),
+                 value = output[[3]], stringsAsFactors = FALSE)
+
+###Data frame for the extra track
+combined = data.frame(condition = c(output[[5]]), 
+    from = c(output[[1]]), to = c(output[[2]]), stringsAsFactors = FALSE)
+combined = combined[order(combined$condition, combined$from, combined$to), ]
+order = paste(combined$condition, combined$from, sep = "|")
+grid.col = structure(color_species[combined$from], names = order)
+
+gap = rep(1, length(order))
+gap[which(!duplicated(combined$condition, fromLast = TRUE))] = 5
+
+####Ploting
+circos.par(gap.degree = gap)
+chordDiagram(df2, self.link = 1, annotationTrack = c("grid", "axis"),
+    grid.col = grid.col, directional = TRUE,
+    order = order,
+    preAllocateTracks = list(
+        track.height = 0.04,
+        track.margin = c(0.05, 0)
+    )
+)
+
+
+for(region in unique(combined$condition)) {
+    l = combined$condition == region
+    sn = paste(combined$condition[l], combined$from[l], sep = "|")
+    highlight.sector(sn, track.index = 1, col = color_regions[region], 
+        text = region, niceFacing = TRUE)
+}
+legend("bottomleft", pch = 15, col = color_regions, 
+    legend = names(color_regions), cex = 0.6)
+legend("bottomright", pch = 15, col = color_species, 
+    legend = names(color_species), cex = 0.6)
+
+circos.clear()
+```
+
+```{r}
+library(RColorBrewer)
+getPalette1 <- colorRampPalette(brewer.pal(9, "Set1"))
+getPalette2 <- colorRampPalette(brewer.pal(9, "Set2"))
+all_species = unique(output[[1]])
+color_species = structure(getPalette1(length(all_species)), names = all_species)
+all_regions = unique(output[[4]])
+color_regions = structure(getPalette2(length(all_regions)), names = all_regions)
+grid.col = structure(color_regions[combined$condition], names = order)
+```
+
 
 ## Alluvial Plots
 
