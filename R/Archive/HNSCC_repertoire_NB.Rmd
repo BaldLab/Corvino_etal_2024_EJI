@@ -196,6 +196,7 @@ dev.off()
 
 
 ```{r}
+data <- meta.list[[3]]
 test <- data[, c("CTaa", "seurat_clusters")]
 
     dTest <- reshape2::dcast(test, CTaa ~ seurat_clusters)
@@ -294,11 +295,12 @@ test <- data[, c("CTaa", "seurat_clusters", "condition")]
     output$from<- stringr::str_split(output$from, "_", simplify = T, n=2)[,2]
     output$to <- stringr::str_split(output$to, "_", simplify = T, n=2)[,2]
     
-    output$value <- ifelse(output$from == "US", output$value/totalUS, output$value/totalStim)
+    #output$value <- ifelse(output$from == "US", output$value/totalUS, output$value/totalStim)
 ```
 
 
 ```{r}
+library(circlize)
 combined_Org <- combined.list[[3]]
 seurat.combined <- combineExpression(combined_Org, seurat.combined, groupBy = "ID")
 data <- seurat.combined[[]]
@@ -315,11 +317,12 @@ combined = data.frame(condition = c(output[[5]]),
     from = c(output[[1]]), to = c(output[[2]]), stringsAsFactors = FALSE)
 combined = combined[order(combined$from, combined$to, combined$condition), ]
 order = paste(combined$from, combined$condition, sep = "|")
-
+grid.col = structure(color_regions[combined$condition], names = order)
 
 ####Ploting
-chordDiagram(df2, self.link = 1, annotationTrack = c("grid", "axis"),
-    grid.col = grid.col, directional = TRUE,
+pdf("TwoVariables_test_Circos2.pdf", height=10, width=10)
+chordDiagram(df2, self.link = 1, annotationTrack = c("grid"),
+    grid.col = grid.col,
     order = order,
     preAllocateTracks = list(
         track.height = 0.04,
@@ -338,6 +341,7 @@ legend("bottomright", pch = 15, col = color_species,
     legend = names(color_species), cex = 0.6)
 
 circos.clear()
+dev.off()
 
 #####Changing order of tracks for Clusters on the inside
 
@@ -352,13 +356,12 @@ combined = combined[order(combined$condition, combined$from, combined$to), ]
 order = paste(combined$condition, combined$from, sep = "|")
 grid.col = structure(color_species[combined$from], names = order)
 
-gap = rep(1, length(order))
-gap[which(!duplicated(combined$condition, fromLast = TRUE))] = 5
+
 
 ####Ploting
-circos.par(gap.degree = gap)
-chordDiagram(df2, self.link = 1, annotationTrack = c("grid", "axis"),
-    grid.col = grid.col, directional = TRUE,
+pdf("TwoVariables_test_Circos1.pdf", height=10, width=10)
+chordDiagram(df2, self.link = 1, annotationTrack = c("grid"),
+    grid.col = grid.col,
     order = order,
     preAllocateTracks = list(
         track.height = 0.04,
@@ -379,12 +382,13 @@ legend("bottomright", pch = 15, col = color_species,
     legend = names(color_species), cex = 0.6)
 
 circos.clear()
+dev.off()
 ```
 
 ```{r}
 library(RColorBrewer)
-getPalette1 <- colorRampPalette(brewer.pal(9, "Set1"))
-getPalette2 <- colorRampPalette(brewer.pal(9, "Set2"))
+getPalette1 <- colorRampPalette(brewer.pal(8, "Set1"))
+getPalette2 <- colorRampPalette(brewer.pal(8, "Set2"))
 all_species = unique(output[[1]])
 color_species = structure(getPalette1(length(all_species)), names = all_species)
 all_regions = unique(output[[4]])
