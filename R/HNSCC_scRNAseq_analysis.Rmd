@@ -83,7 +83,7 @@ for(i in 1:length(pkgs)){
 }
 
 pkgs <- c("gplots", "fgsea", "biomaRt", "clusterProfiler", 
-          "GSEABase", "org.Hs.eg.db", "org.Mm.eg.db", "pcaMethods",
+          "GSEABase", "org.Hs.eg.db", "pcaMethods",
           "SingleCellExperiment", "batchelor", "DelayedArray", "DelayedMatrixStats",
           "limma", "SummarizedExperiment")
 
@@ -126,8 +126,6 @@ for(i in 1:length(pkgs)){
 
 #devtools::install_github("immunomind/immunarch")
 #devtools::install_github("Coolgenome/iTALK", build_vignettes = TRUE)
-
-#devtools::install_github("xmc811/Scillus", ref = "development")
 
 
 #devtools::install_github('satijalab/seurat-data')
