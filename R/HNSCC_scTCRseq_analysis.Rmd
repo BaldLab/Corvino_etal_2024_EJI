@@ -710,7 +710,7 @@ grid.cols = c(Naive_like_1_CM = "#E41A1C",
 ```{r chord_plots}
 #dir.create("output_tcr/figures/ChordVisualizations")
 #dir <- "output_tcr/figures/ChordVisualizations"
-
+library(circlize)
 
    # pdf(paste0(dir, "/Stimulated_TCRcircos_filt.pdf"), height=10, width=10)
 pdf("Stimulated_TCRcircos_filt.pdf", height=10, width=10)
@@ -766,9 +766,6 @@ color_species  = c(Naive_like_1_CM = "#E41A1C",
 Cytotoxic = "#666666", 
 Exhausted_1 = "#D95F02", 
 Exhausted_2 = "#7570B3", 
-gd_T_g9d2 = "#E6AB02", 
-gd_T_non_g9d2 = "#8DD3C7", 
-MAIT = "#FF7F00",
 Naive_like_2_SC = "#A6761D",
 Naive_like_3 = "#8DA0CB", 
 Type_I_IFN = "#A6D854", 
@@ -789,53 +786,24 @@ keep.clonotypes <- names(clonotypes)[clonotypes >= 3]
 
 filt.meta <- meta.tcr[meta.tcr$CTaa %in% keep.clonotypes, ]
 
+
+###Filtering out MAIT and gd Clusters
+filt.meta <- subset(filt.meta, seurat_clusters != "gd_T_non_g9d2" & seurat_clusters != "gd_T_g9d2" & seurat_clusters != "MAIT")
+
+#Removing clusters with < 5 cells
+filt.meta <- filt.meta %>%
+    group_by(condition, seurat_clusters) %>%
+    filter(n() > 5)
+
 ###Uses a slightly different function - getIntegratedCircle acr4oss both conditions
 ##proportion can be used as a parameter to proportion of clonotype/cell overlap by total size of condition
 ###clonotypesOnly can be used to just count the clonotypes shared between cluster (removes cell numbers from the equation)
 output <- getIntegratedCircle(filt.meta, proportion = FALSE, clonotypesOnly = FALSE)
 
-
-#####Defined data frame that will use to graph
-df2 = data.frame(from = paste(output[[1]], output[[4]], sep = "|"),
-                 to = paste(output[[2]], output[[5]], sep = "|"),
-                 value = output[[3]], stringsAsFactors = FALSE)
-
-###Data frame for the extra track
-combined = data.frame(condition = c(output[[5]]), 
-    from = c(output[[1]]), to = c(output[[2]]), stringsAsFactors = FALSE)
-combined = combined[order(combined$from, combined$to, combined$condition), ]
-order = paste(combined$from, combined$condition, sep = "|")
-grid.col = structure(color_regions[combined$condition], names = order)
-
-####Ploting
-pdf("TwoVariables_test_Circos2.pdf", height=10, width=10)
-chordDiagram(df2, self.link = 1, annotationTrack = c("grid"),
-    grid.col = grid.col,
-    order = order,
-    preAllocateTracks = list(
-        track.height = 0.04,
-        track.margin = c(0.05, 0)
-    )
-)
-for(species in unique(combined$from)) {
-    l = combined$from == species
-    sn = paste(combined$from[l], combined$condition[l], sep = "|")
-    highlight.sector(sn, track.index = 1, col = color_species[species], niceFacing = TRUE)
-}
-legend("bottomleft", pch = 15, col = color_regions, 
-    legend = names(color_regions), cex = 0.6)
-legend("bottomright", pch = 15, col = color_species, 
-    legend = names(color_species), cex = 0.6)
-
-circos.clear()
-dev.off()
-
-
-#####Changing order of tracks for Clusters on the inside###########
-
 df2 = data.frame(from = paste(output[[4]], output[[1]], sep = "|"),
                  to = paste(output[[5]], output[[2]], sep = "|"),
                  value = output[[3]], stringsAsFactors = FALSE)
+
 
 ###Data frame for the extra track
 combined = data.frame(condition = c(output[[5]]), 
@@ -848,6 +816,7 @@ grid.col = structure(color_species[combined$from], names = order)
 
 ####Ploting
 pdf("TwoVariables_test_Circos1.pdf", height=10, width=10)
+
 chordDiagram(df2, self.link = 1, annotationTrack = c("grid"),
     grid.col = grid.col,
     order = order,
@@ -860,9 +829,12 @@ chordDiagram(df2, self.link = 1, annotationTrack = c("grid"),
 for(region in unique(combined$condition)) {
     l = combined$condition == region
     sn = paste(combined$condition[l], combined$from[l], sep = "|")
+    sn <- sn[sn != "US|Stimulated_exhausted" & sn != "US|Stimulated_1"] #These get accidentally added
     highlight.sector(sn, track.index = 1, col = color_regions[region], 
         text = region, niceFacing = TRUE)
 }
+
+    
 legend("bottomleft", pch = 15, col = color_regions, 
     legend = names(color_regions), cex = 0.6)
 legend("bottomright", pch = 15, col = color_species, 
