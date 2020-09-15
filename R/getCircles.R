@@ -65,31 +65,68 @@ getIntegratedCircle <- function(data, proportion = FALSE, clonotypesOnly = FALSE
     if (clonotypesOnly == TRUE) {
         dTest[dTest > 1] <- 1
     }
-    matrix_out <- matrix(ncol = ncol(dTest), nrow = ncol(dTest))
+    matrix_out <- matrix(0,ncol = ncol(dTest), nrow = ncol(dTest))
     for (x in seq_len(ncol(dTest))) {
-        for (y in seq_len(ncol(dTest)) ){
+        for (y in seq_len(ncol(dTest))){
+            #matrix_out[y,x] <- matrix_out[y,x] + length(which(dTest[,x] >= 1 & dTest[,y] >= 1))
+        #} } 
+            matrix_out[y,x] <- matrix_out[y,x] + length(which(dTest[,x] >= 1 & dTest[,y] >= 1 & rowSums(dTest[,-c(x,y)]) == 0))
+            if (dTest[,x] >= 1 & dTest[,y] >= 1 & rowSums(dTest[,-c(x,y)]) != 0) {
+                others <- which(dTest[,x] >= 1 & dTest[,y] >= 1 & rowSums(dTest[,-c(x,y)]) != 0)
+                for (z in seq_along(others)) {
+                    float_integer <- which(dTest[z,] > 1)
+                    float_integer <- na.omit(float_integer[float_integer != c(x,y)])
+                    if (x == y) {
+                        for (a in seq_along(float_integer)) {
+                        matrix_out[a,x] = matrix_out[a,x] + 1
+                        matrix_out[x,a] = matrix_out[x,a] + 1
+                        }
+                    } else {
+                    for (a in seq_along(float_integer)) {
+                        matrix_out[a,x] = matrix_out[a,x] + 1
+                        matrix_out[a,y] = matrix_out[a,y] + 1
+                        matrix_out[x,a] = matrix_out[x,a] + 1
+                        matrix_out[y,a] = matrix_out[y,a] + 1
+                    }
+                    } 
+                }
+            }
+        
+        if (x == y) {
             matrix_out[y,x] <- length(which(dTest[,x] >= 1 & dTest[,y] >= 1))
         }
-    }
-    colnames(matrix_out) <- colnames(dTest)
-    rownames(matrix_out) <- colnames(dTest)
-    #Need to subtract extra cells - will take the difference of the sum of the column minus and the respective cell and subtract that from the respective cell
-    for (y in seq_len(ncol(matrix_out))) {
-        matrix_out[y,y] <- matrix_out[y,y] - (sum(matrix_out[,y])-matrix_out[y,y])
-        if (matrix_out[y,y] < 0) {
-            matrix_out[y,y] <- 0
         }
     }
+        
+    
+    colnames(matrix_out) <- colnames(dTest)
+    rownames(matrix_out) <- colnames(dTest)
+
     # Reduces the clonotypes in half - this will allow for accurate depiction by total number of cells in cluster
     for (i in seq_len(ncol(matrix_out))) {
         for (j in seq_len(ncol(matrix_out))) {
             matrix_out[i,j] <- as.integer(matrix_out[i,j]/2)
         }
     }
+    
+    #Need to subtract extra cells - will take the difference of the sum of the column minus and the respective cell and subtract that from the respective cell
+    for (y in seq_len(ncol(matrix_out))) {
+        row <- which(matrix_out[,y] > matrix_out[y,y])
+        matrix_out[row,y] <- matrix_out[y,y]
+        matrix_out[y,row] <- matrix_out[y,y]
+        
+        #matrix_out[y,y] <- matrix_out[y,y] - (sum(matrix_out[,y])-matrix_out[y,y])
+        #if (matrix_out[y,y] < 0) {
+          #  matrix_out[y,y] <- 0
+        #}
+   # }
+    
     output <- data.frame(from = rep(rownames(matrix_out), times = ncol(matrix_out)),
                          to = rep(colnames(matrix_out), each = nrow(matrix_out)),
                          value = as.vector(matrix_out),
                          stringsAsFactors = FALSE)
+    
+  
     # Reorder columns to eliminate redundant comparisons
     for (k in 1:nrow(output)) {
         max <- order(output[k,1:2])[1] #which is first alphabetically

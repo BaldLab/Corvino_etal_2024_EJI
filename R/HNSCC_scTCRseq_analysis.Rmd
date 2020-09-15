@@ -820,6 +820,8 @@ pdf("TwoVariables_test_Circos1.pdf", height=10, width=10)
 chordDiagram(df2, self.link = 1, annotationTrack = c("grid"),
     grid.col = grid.col,
     order = order,
+    directional = -1,
+    link.overlap = TRUE,
     preAllocateTracks = list(
         track.height = 0.04,
         track.margin = c(0.05, 0)
