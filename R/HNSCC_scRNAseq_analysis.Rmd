@@ -198,7 +198,6 @@ if(quick.load){
   seurat.combined <- readRDS("Exported_RDS_files/seurat_combined.rds")
 }
 
-
 ```
 
 ### Reading data
@@ -302,20 +301,8 @@ rm(Sample1.data,
 ## QC and Normalisation {.tabset}
 
 ### QC & Normalisation
-**Note: No need to normalize here if you are just going to combine and renormalize - doesn't effect results at all because the integration step is using counts.** 
+
 ```{r QC_and_normalisation}
-
-
-# QC metrics commonly used
-# The number of unique genes detected in each cell.
-# Low-quality cells or empty droplets will often have very few genes
-# Cell doublets or multiplets may exhibit an aberrantly high gene count
-
-# Similarly, the total number of molecules detected within a cell (correlates strongly with unique genes)
-
-# The percentage of reads that map to the mitochondrial genome
-# Low-quality / dying cells often exhibit extensive mitochondrial contamination
-
 
 ################################################
 #  Get percentage Mitochondria gene expression
@@ -332,22 +319,34 @@ Stim.seurat[["percent.mito"]] <- PercentageFeatureSet(Stim.seurat, pattern = "^M
 ##################################
 
 # nFeature & nCount & Mito (US)
-VlnPlot(object = US.seurat, features = c("nFeature_RNA", "nCount_RNA", "percent.mito"))
+VlnPlot(object = US.seurat, 
+        features = c("nFeature_RNA", "nCount_RNA", "percent.mito"), 
+        pt.size = 0)
+
 dev.copy(pdf, "output/QC/QC_nFeature_nCount_RNA_percentMito_US.pdf")
 dev.off()
 
 # Mito (US)
-VlnPlot(US.seurat, features = "percent.mito", y.max = 20)
+VlnPlot(US.seurat, 
+        features = "percent.mito", 
+        y.max = 20)
+
 dev.copy(pdf, "output/QC/QC_RNA_percentMito_US.pdf")
 dev.off()
 
 # nFeature & nCount & Mito (Stim)
-VlnPlot(object = Stim.seurat, features = c("nFeature_RNA", "nCount_RNA", "percent.mito"))
+VlnPlot(object = Stim.seurat, 
+        features = c("nFeature_RNA", "nCount_RNA", "percent.mito"), 
+        pt.size = 0)
+
 dev.copy(pdf, "output/QC/QC_nFeature_nCount_RNA_percentMito_Stim.pdf")
 dev.off()
 
 # Mito (Stim)
-VlnPlot(Stim.seurat, features = "percent.mito", y.max = 20)
+VlnPlot(Stim.seurat, 
+        features = "percent.mito",
+        y.max = 20)
+
 dev.copy(pdf, "output/QC/QC_RNA_percentMito_Stim.pdf")
 dev.off()
 
@@ -425,20 +424,26 @@ Stim.seurat.filt # 15,618 genes across 6,042 cells
 # Unstimulated
 
 # Before Filtering
-VlnPlot(object = US.seurat, features = c("nFeature_RNA", "nCount_RNA", "percent.mito"))
+VlnPlot(object = US.seurat, 
+        features = c("nFeature_RNA", "nCount_RNA", "percent.mito"))
 
 # After filtering
-VlnPlot(object = US.seurat.filt, features = c("nFeature_RNA", "nCount_RNA", "percent.mito"))
+VlnPlot(object = US.seurat.filt, 
+        features = c("nFeature_RNA", "nCount_RNA", "percent.mito"))
+
 dev.copy(pdf, "output/QC/QC_nFeature_nCount_RNA_percentMito_Post_filtering_US.pdf")
 dev.off()
 
 # Stimulated
 
 # Before Filtering
-VlnPlot(object = Stim.seurat, features = c("nFeature_RNA", "nCount_RNA", "percent.mito"))
+VlnPlot(object = Stim.seurat, 
+        features = c("nFeature_RNA", "nCount_RNA", "percent.mito"))
 
 # After filtering
-VlnPlot(object = Stim.seurat.filt, features = c("nFeature_RNA", "nCount_RNA", "percent.mito"))
+VlnPlot(object = Stim.seurat.filt, 
+        features = c("nFeature_RNA", "nCount_RNA", "percent.mito"))
+
 dev.copy(pdf, "output/QC/QC_nFeature_nCount_RNA_percentMito_Post_filtering_Stim.pdf")
 dev.off()
 
@@ -453,60 +458,48 @@ dev.off()
 #################
 
 # Normalise
-US.seurat.filt <- NormalizeData(
-  object = US.seurat.filt,
+US.seurat.filt <- NormalizeData(object = US.seurat.filt,
   assay = "RNA",
   normalization.method = "LogNormalize",
   scale.factor = 10000,
-  verbose = TRUE
-)
+  verbose = TRUE)
 
 # Find variable genes
-US.seurat.filt <- FindVariableFeatures(
-  object = US.seurat.filt,
-  verbose = TRUE
-)
+US.seurat.filt <- FindVariableFeatures(object = US.seurat.filt,
+  verbose = TRUE)
 
 # Scale data
-US.seurat.filt <- ScaleData(
-  object = US.seurat.filt,
+US.seurat.filt <- ScaleData(object = US.seurat.filt,
   assay = "RNA",
   vars.to.regress = c("nCount_RNA", "percent.mito"),
   model.use = "linear",
   do.scale = TRUE,
   do.center = TRUE,
-  verbose = TRUE
-)
+  verbose = TRUE)
 
 #################
 # Stimulated
 #################
 
 # Normalise
-Stim.seurat.filt <- NormalizeData(
-  object = Stim.seurat.filt,
+Stim.seurat.filt <- NormalizeData(object = Stim.seurat.filt,
   assay = "RNA",
   normalization.method = "LogNormalize",
   scale.factor = 10000,
-  verbose = TRUE
-)
+  verbose = TRUE)
 
 # Find variable genes
-Stim.seurat.filt <- FindVariableFeatures(
-  object = Stim.seurat.filt,
-  verbose = TRUE
-)
+Stim.seurat.filt <- FindVariableFeatures(object = Stim.seurat.filt,
+  verbose = TRUE)
 
 # Scale data
-Stim.seurat.filt <- ScaleData(
-  object = Stim.seurat.filt,
+Stim.seurat.filt <- ScaleData(object = Stim.seurat.filt,
   assay = "RNA",
   vars.to.regress = c("nCount_RNA", "percent.mito"),
   model.use = "linear",
   do.scale = TRUE,
   do.center = TRUE,
-  verbose = TRUE
-)
+  verbose = TRUE)
 
 
 ###############################
@@ -514,7 +507,6 @@ Stim.seurat.filt <- ScaleData(
 ###############################
 
 rm(US.seurat, Stim.seurat)
-
 
 ```
 
@@ -582,8 +574,6 @@ seurat.combined@meta.data$condition <- factor(seurat.combined@meta.data$conditio
 ## Clustering and dim reduction {.tabset}
 
 ### PCA and cluster identificaton
-**Note: What is the basis for the parameters you selected? Did you try others? Same for the UMAP below?**
-
 ```{r Cluster_data}
 
 DefaultAssay(seurat.combined) <- "integrated"
@@ -612,7 +602,6 @@ seurat.combined <- FindClusters(seurat.combined,
 ```
 
 ### Run UMAP
-**Note: If there are a number of samples pooled together for each sequencing run - is there a way to tell them apart in the data? I know you have S1, S2, etc, but each of these are comprise of multiple samples? How do you know we are not just seeing difference between patients?**
 ```{r UMAP}
 
 # Create output directory
