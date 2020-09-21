@@ -40,7 +40,6 @@ Built with R version `r getRversion()`
 ```
 
 ### Environment
-**Note: Wheneve possible using seq_along() or seq_len() instead of 1:length for your loops - they are more robust to error** 
 ```{r Environment_setup, message = FALSE}
 knitr::opts_chunk$set(
   echo = TRUE,
