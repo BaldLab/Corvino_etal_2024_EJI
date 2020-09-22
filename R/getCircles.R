@@ -1,7 +1,7 @@
 
 
 getCircles <- function(data, proportion = FALSE, clonotypesOnly = FALSE) {
-  
+
   # Reformat data to generate a clonotype by cluster matrix
   temp <- data[, c("CTaa", "seurat_clusters")]
   dTest <- reshape2::dcast(temp, CTaa ~ seurat_clusters)
@@ -13,46 +13,46 @@ getCircles <- function(data, proportion = FALSE, clonotypesOnly = FALSE) {
   matrix_out <- matrix(0, ncol = ncol(dTest), nrow = ncol(dTest))
 
   # Calculate overlap of clonotypes or # of cells with overlapping clonotypes for each clusterX_clusterY pair
-if (clonotypesOnly == TRUE) {
+  if (clonotypesOnly == TRUE) {
 
-  # Reduce data to a binary matrix representing presence or absence of each clonotype in a cluster
-  dTest[dTest > 1] <- 1
+    # Reduce data to a binary matrix representing presence or absence of each clonotype in a cluster
+    dTest[dTest > 1] <- 1
 
-  for (x in seq_len(ncol(dTest))) {
-    for (y in seq_len(ncol(dTest))) {
-      if (x == y) {
-        # when x == y calculate the number of clonotypes which are unique to the cluster and have no overlap
-        matrix_out[x, x] <- sum(dTest[, x] >= 1 & rowSums(dTest[, -x]) == 0)
-      } else {
-        # in all other instances, count the number of clonotypes which are present in both clusters under consideration
-        matrix_out[y, x] <- sum(dTest[, x] >= 1 & dTest[, y] >= 1)
-      }
-    }
-  }
-} else {
-  for (x in seq_len(ncol(dTest))) {
-    for (y in seq_len(ncol(dTest))) {
-      temp.vec <- NULL # ensure no carry over from previous loop // unsure if needed
-      if (x == y) {
-        # when x == y calculate the number of clonotypes which are unique to the cluster and have no overlap
-        temp.vec <- which(dTest[, x] >= 1 & rowSums(dTest[, -x]) == 0)
-        if (length(temp.vec) > 0) { # require a catch if() to detect if temp.vec is empty
-          matrix_out[x, x] <- sum(dTest[temp.vec, x])
+    for (x in seq_len(ncol(dTest))) {
+      for (y in seq_len(ncol(dTest))) {
+        if (x == y) {
+          # when x == y calculate the number of clonotypes which are unique to the cluster and have no overlap
+          matrix_out[x, x] <- sum(dTest[, x] >= 1 & rowSums(dTest[, -x]) == 0)
         } else {
-          matrix_out[y, x] <- 0
-        }
-      } else {
-        # get the every row where clonotypes overlap between x & y
-        temp.vec <- which(dTest[, x] >= 1 & dTest[, y] >= 1)
-        if (length(temp.vec) > 0) { # require a catch if() to detect if temp.vec is empty
-          matrix_out[y, x] <- sum(dTest[temp.vec, c(x, y)]) # Sum the number of cells across both X and Y columns
-        } else {
-          matrix_out[y, x] <- 0 # there are no overlaps between the clusters
+          # in all other instances, count the number of clonotypes which are present in both clusters under consideration
+          matrix_out[y, x] <- sum(dTest[, x] >= 1 & dTest[, y] >= 1)
         }
       }
     }
+  } else {
+    for (x in seq_len(ncol(dTest))) {
+      for (y in seq_len(ncol(dTest))) {
+        temp.vec <- NULL # ensure no carry over from previous loop // unsure if needed
+        if (x == y) {
+          # when x == y calculate the number of clonotypes which are unique to the cluster and have no overlap
+          temp.vec <- which(dTest[, x] >= 1 & rowSums(dTest[, -x]) == 0)
+          if (length(temp.vec) > 0) { # require a catch if() to detect if temp.vec is empty
+            matrix_out[x, x] <- sum(dTest[temp.vec, x])
+          } else {
+            matrix_out[y, x] <- 0
+          }
+        } else {
+          # get the every row where clonotypes overlap between x & y
+          temp.vec <- which(dTest[, x] >= 1 & dTest[, y] >= 1)
+          if (length(temp.vec) > 0) { # require a catch if() to detect if temp.vec is empty
+            matrix_out[y, x] <- sum(dTest[temp.vec, c(x, y)]) # Sum the number of cells across both X and Y columns
+          } else {
+            matrix_out[y, x] <- 0 # there are no overlaps between the clusters
+          }
+        }
+      }
+    }
   }
-}
   colnames(matrix_out) <- colnames(dTest)
   rownames(matrix_out) <- colnames(dTest)
 
@@ -83,6 +83,7 @@ if (clonotypesOnly == TRUE) {
 
 
 getIntegratedCircle <- function(data, proportion = FALSE, clonotypesOnly = FALSE) {
+  browser()
   output <- NULL
   test <- data[, c("CTaa", "seurat_clusters", "condition")]
   totalUS <- table(subset(test, !is.na(CTaa))$condition)[1]
@@ -92,26 +93,58 @@ getIntegratedCircle <- function(data, proportion = FALSE, clonotypesOnly = FALSE
   dTest <- dTest[apply(dTest[, -1], 1, function(x) !all(x == 0)), ]
   dTest <- dTest[, -1]
 
+
+
+  # Initialize output matrix
   matrix_out <- matrix(0, ncol = ncol(dTest), nrow = ncol(dTest))
-  # Create matrix of clonotype overlap between clusters - this reduces the dataset to a # of clonotypes overlap and ignores cell # info!!!
-  matrix_out <- matrix(0, ncol = ncol(dTest), nrow = ncol(dTest))
-  for (x in seq_len(ncol(dTest))) {
-    for (y in seq_len(ncol(dTest))) {
-      matrix_out[y, x] <- length(which(dTest[, x] >= 1 & dTest[, y] >= 1)) # need to consider adding up values obtained from which() to keep cell # info
+
+  # Calculate overlap of clonotypes or # of cells with overlapping clonotypes for each clusterX_clusterY pair
+  if (clonotypesOnly == TRUE) {
+
+    # Reduce data to a binary matrix representing presence or absence of each clonotype in a cluster
+    dTest[dTest > 1] <- 1
+
+    for (x in seq_len(ncol(dTest))) {
+      for (y in seq_len(ncol(dTest))) {
+        if (x == y) {
+          # when x == y calculate the number of clonotypes which are unique to the cluster and have no overlap
+          matrix_out[x, x] <- sum(dTest[, x] >= 1 & rowSums(dTest[, -x]) == 0)
+        } else {
+          # in all other instances, count the number of clonotypes which are present in both clusters under consideration
+          matrix_out[y, x] <- sum(dTest[, x] >= 1 & dTest[, y] >= 1)
+        }
+      }
+    }
+  } else {
+    for (x in seq_len(ncol(dTest))) {
+      for (y in seq_len(ncol(dTest))) {
+        temp.vec <- NULL # ensure no carry over from previous loop // unsure if needed
+        if (x == y) {
+          # when x == y calculate the number of clonotypes which are unique to the cluster and have no overlap
+          temp.vec <- which(dTest[, x] >= 1 & rowSums(dTest[, -x]) == 0)
+          if (length(temp.vec) > 0) { # require a catch if() to detect if temp.vec is empty
+            matrix_out[x, x] <- sum(dTest[temp.vec, x])
+          } else {
+            matrix_out[y, x] <- 0
+          }
+        } else {
+          # get the every row where clonotypes overlap between x & y
+          temp.vec <- which(dTest[, x] >= 1 & dTest[, y] >= 1)
+          if (length(temp.vec) > 0) { # require a catch if() to detect if temp.vec is empty
+            matrix_out[y, x] <- sum(dTest[temp.vec, c(x, y)]) # Sum the number of cells across both X and Y columns
+          } else {
+            matrix_out[y, x] <- 0 # there are no overlaps between the clusters
+          }
+        }
+      }
     }
   }
+
 
   colnames(matrix_out) <- colnames(dTest)
   rownames(matrix_out) <- colnames(dTest)
 
 
-  # Need to subtract extra cells - will take the difference of the sum of the column minus and the respective cell and subtract that from the respective cell
-  for (y in seq_len(ncol(matrix_out))) {
-    matrix_out[y, y] <- matrix_out[y, y] - (sum(matrix_out[, y]) - matrix_out[y, y])
-    if (matrix_out[y, y] < 0) {
-      matrix_out[y, y] <- 0
-    }
-  }
 
   output <- data.frame(
     from = rep(rownames(matrix_out), times = ncol(matrix_out)),

@@ -591,10 +591,10 @@ combined.contig$S4_Stim$barcode <- gsub("Stim_", "", combined.contig$S4_Stim$bar
 # Get metadata from seurat object
 meta.data <- seurat.combined[[]]
 
-
+# See my comment about this in the next code chunk - dataset filtering
 source("R/combineMeta.R")
 
-# Combined metadata with TCR info 
+# Combined metadata with TCR info
 meta.tcr <- combineMeta(combined.contig,
                          meta = meta.data, 
                          cloneTypes = c(None = 0,
@@ -638,22 +638,69 @@ seurat.tcr@meta.data$cloneType <- factor(seurat.tcr@meta.data$cloneType,
                                                     "Single (0 < X <= 1)"))
 
 # remove unneeded objects
-rm(combined.contig, contig.list, S1.contig, S2.contig, S3.contig, S4.contig)
+rm(combined.contig, contig.list, S1.contig, S2.contig, S3.contig, S4.contig, meta.data)
 
 ```
 
 ### Filter dataset 
 ```{r Filter_data}
 
+# NICK: 
+# What is the difference between seurat.tcr@meta.data and meta.tcr 
+# former created with combineExpression() and latter with combineMeta() 
+# they look almost identical except the clonetype annotation (single, ... hyperexpanded) is different 
+
+##################################################################################################
 # Created this code chuck to control the filtering parameters for TCR dataset
 # Keeps downstream analysis consistent 
 # also allows easy modification of any of the filtering parameters 
+##################################################################################################
 
-seurat.tcr
-meta.data
-meta.tcr
+###################
+# Filter dataset
+###################
+
+# Define filtering parameters 
+min.clonesize <- 3
+
+clonosize.per.clust <- FALSE # Should the min.clonesize use total dataset clonesize (FALSE) or cluster-wise clonesize (TRUE)
+
+remove.subsets <- c("gd_T_g9d2", 
+                    "gd_T_non_g9d2", 
+                    "MAIT")
+
+remove.self.ribbons <- FALSE # term used later in circos plot generation
+
+meta.tcr <- seurat.tcr@meta.data
+initial.n <- nrow(meta.tcr)
+init.clone.n <- length(unique(meta.tcr$CTaa))
 
 
+# Remove non-alpha/beta T cells and invariant subsets
+for(i in seq_along(remove.subsets)){
+  logic.vec <- meta.tcr$seurat_clusters == remove.subsets[i]
+  meta.tcr <- meta.tcr[!logic.vec, ]
+}
+
+# Remove small clonotypes (i.e, <= min.clonesize) 
+if(clonosize.per.clust){
+  # Filter min clone size in a per condition specific manner i.e must hit threshold within the condition not the entire dataset
+  clonotypes <- table(meta.tcr$CTaa, meta.tcr$condition)
+  keep.clonotypes <- rownames(clonotypes)[clonotypes[,1] > min.clonesize | clonotypes[,2] > min.clonesize]
+  meta.tcr <- meta.tcr[meta.tcr$CTaa %in% keep.clonotypes, ]
+}else{
+  clonotypes <- table(meta.tcr$CTaa)
+  keep.clonotypes <- names(clonotypes)[clonotypes > min.clonesize]
+  meta.tcr <- meta.tcr[meta.tcr$CTaa %in% keep.clonotypes, ]
+}
+
+filt.n <- nrow(meta.tcr)
+filt.clone.n <- length(unique(meta.tcr$CTaa))
+
+# Print info on filtering
+print(paste0("# of cells in dataset before filtering = ", initial.n, " and # of clonotypes = ", init.clone.n))
+print(paste0("# of cells in dataset after filtering = ", filt.n, " and # of clonotypes = ", filt.clone.n))
+print(paste0("# of cells removed in filtering process = ", initial.n - filt.n))
 
 
 ```
@@ -679,55 +726,14 @@ library(ggfittext)
 # Source functions
 source("R/getCircles.R")
 
-# Using seurat_clusters as value column: use value.var to override.
-# Aggregation function missing: defaulting to length
-
-
-###################
-# Filter dataset
-###################
-
-# Filtering parameters 
-min.clonesize <- 3
-
-remove.subsets <- c("gd_T_g9d2", 
-                    "gd_T_non_g9d2", 
-                    "MAIT")
-
-remove.self.ribbons <- FALSE
-
-
-
-# Remove non-alpha/beta T cell subsets from Circos plots
-initial.n <- nrow(meta.tcr) # 6,625
-
-for(i in seq_along(remove.subsets)){
-  logic.vec <- meta.tcr$seurat_clusters == remove.subsets[i]
-  meta.tcr <- meta.tcr[!logic.vec, ]
-}
-
-filt.n <- nrow(meta.tcr) # 6,320
-# therefore 305 cells filtered
-initial.n - filt.n
-
-
-
-# Remove small clonotypes (i.e, < min.clonesize) 
-clonotypes <- table(meta.tcr$CTaa)
-keep.clonotypes <- names(clonotypes)[clonotypes >= min.clonesize]
-filt.meta <- meta.tcr[meta.tcr$CTaa %in% keep.clonotypes, ]
-
-# This filtering step removes 
-filt.n-nrow(filt.meta) # 2,784 cells
-rm(filt.n)
 
 ### Proportion parameter to get getGircles(), will divide by total size of none-NA clonotypes
 ###clonotypesOnly can be used to just count the clonotypes shared between cluster (removes cell numbers from the equation)
     
 # Subset dataset by condition
-US <- subset(filt.meta, condition == "US")
+US <- subset(meta.tcr, condition == "US")
 
-Stim <- subset(filt.meta, condition == "Stim")
+Stim <- subset(meta.tcr, condition == "Stim")
 
   
 # Collect clonotype overlaps and format data for Circos plots
@@ -770,24 +776,6 @@ grid.cols <- c(Naive_like_1_CM = "#E41A1C",
 
 ## Plotting Chord Diagrams
 ```{r chord_plots}
-
-
-seurat.tcr@meta.data 
-filt.meta %>% 
-  dplyr::filter(condition == "US" & seurat_clusters == "Stimulated_1") %>%
-  dplyr::summarise(n())
-  
-  CIVAQAGTALIF_CSVIDRAAGELFF
-  
-  filt.meta %>% 
-  dplyr::filter(condition == "Stim" & CTaa == "CVVTSFESGNTPLVF_CASSQDLWDRNNEQFF") %>%
-  dplyr::summarise(n())
-  
-  
- # dplyr::select(seurat_clusters) %>% unique()
-
-
-
 
 # Create output directory
 dir.create("output_tcr/figures/ChordVisualizations")
@@ -865,8 +853,18 @@ dev.off()
 
 2020/09/01 Still needs adjustment for very small groups to get secondary track - as of now, the code will segregate the clusters between conditions, but errors at the **for(species in unique(combined$from))** loop
 
-```{r integrated_chord_setup}
+```{r integrated_chord}
 
+# Create output directory
+dir.create("output_tcr/figures/ChordVisualizations")
+dir <- "output_tcr/figures/ChordVisualizations"
+
+# Load required library & source custom functions
+library(circlize)
+source("R/getCircles.R")
+
+
+# Set colour scheme 
 color_species  = c(Naive_like_1_CM = "#E41A1C",
                    Cytotoxic = "#666666", 
                    Exhausted_1 = "#D95F02", 
@@ -881,34 +879,14 @@ color_species  = c(Naive_like_1_CM = "#E41A1C",
 
 color_regions  <- c(US = "turquoise", 
                     Stim = "red")
-```
-
-```{r integrated_chord}
-
-# I dont think this is doing what is advertised
-# Removing clonotypes with < 5 cells
-#filt.meta <- 
-  filt.meta %>%
-    group_by(condition, seurat_clusters) %>%
-    filter(n() > 5)
 
 
 
 
-
-
-
-
-
-
-
-
-###Uses a slightly different function - getIntegratedCircle acr4oss both conditions
-##proportion can be used as a parameter to proportion of clonotype/cell overlap by total size of condition
-###clonotypesOnly can be used to just count the clonotypes shared between cluster (removes cell numbers from the equation)
-output <- getIntegratedCircle(filt.meta, 
+# Calculate overlap
+output <- getIntegratedCircle(meta.tcr, 
                               proportion = TRUE, 
-                              clonotypesOnly = TRUE)
+                              clonotypesOnly = TRUE) # clonotypesOnly will ignore cell # and just count the # of clonotypes that overlap
 
 df2 <- data.frame(from = paste(output[[4]], output[[1]], sep = "|"),
                  to = paste(output[[5]], output[[2]], sep = "|"),
