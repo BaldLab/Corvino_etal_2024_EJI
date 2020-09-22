@@ -798,7 +798,7 @@ filt.meta <- filt.meta %>%
 ###Uses a slightly different function - getIntegratedCircle acr4oss both conditions
 ##proportion can be used as a parameter to proportion of clonotype/cell overlap by total size of condition
 ###clonotypesOnly can be used to just count the clonotypes shared between cluster (removes cell numbers from the equation)
-output <- getIntegratedCircle(filt.meta, proportion = FALSE, clonotypesOnly = FALSE)
+output <- getIntegratedCircle(filt.meta, proportion = FALSE)
 
 df2 = data.frame(from = paste(output[[4]], output[[1]], sep = "|"),
                  to = paste(output[[5]], output[[2]], sep = "|"),
