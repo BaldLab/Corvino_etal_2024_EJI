@@ -1,125 +1,147 @@
 
 
 getCircles <- function(data, proportion = FALSE, clonotypesOnly = FALSE) {
+  
+  # Reformat data to generate a clonotype by cluster matrix
+  temp <- data[, c("CTaa", "seurat_clusters")]
+  dTest <- reshape2::dcast(temp, CTaa ~ seurat_clusters)
+  dTest <- dTest[apply(dTest[, -1], 1, function(x) !all(x == 0)), ]
+  dTest <- dTest[-1]
+  total <- nrow(dTest)
 
-    test <- data[, c("CTaa", "seurat_clusters")]
-    dTest <- reshape2::dcast(test, CTaa ~ seurat_clusters)
-    dTest <- dTest[apply(dTest[,-1], 1, function(x) !all(x==0)),]
-    dTest <- dTest[-1]
-    total <- nrow(dTest)
+  # Initialize output matrix
+  matrix_out <- matrix(0, ncol = ncol(dTest), nrow = ncol(dTest))
 
+  # Calculate overlap of clonotypes or # of cells with overlapping clonotypes for each clusterX_clusterY pair
+if (clonotypesOnly == TRUE) {
 
-    matrix_out <- matrix(ncol = ncol(dTest), nrow = ncol(dTest))
+  # Reduce data to a binary matrix representing presence or absence of each clonotype in a cluster
+  dTest[dTest > 1] <- 1
 
-    
-    # This will prevent counting clonotypes by cell number
-    if (clonotypesOnly == TRUE) {
-        dTest[dTest > 1] <- 1
+  for (x in seq_len(ncol(dTest))) {
+    for (y in seq_len(ncol(dTest))) {
+      if (x == y) {
+        # when x == y calculate the number of clonotypes which are unique to the cluster and have no overlap
+        matrix_out[x, x] <- sum(dTest[, x] >= 1 & rowSums(dTest[, -x]) == 0)
+      } else {
+        # in all other instances, count the number of clonotypes which are present in both clusters under consideration
+        matrix_out[y, x] <- sum(dTest[, x] >= 1 & dTest[, y] >= 1)
+      }
     }
-    
-    # Create matrix of clonotype overlap between clusters - this reduces the dataset to a # of clonotypes overlap and ignores cell # info!!!
-    matrix_out <- matrix(0, ncol = ncol(dTest), nrow = ncol(dTest))
-    for (x in seq_len(ncol(dTest))) {
-        for (y in seq_len(ncol(dTest)) ){
-            matrix_out[y,x] <- length(which(dTest[,x] >= 1 & dTest[,y] >= 1)) # need to consider adding up values obtained from which() to keep cell # info
+  }
+} else {
+  for (x in seq_len(ncol(dTest))) {
+    for (y in seq_len(ncol(dTest))) {
+      temp.vec <- NULL # ensure no carry over from previous loop // unsure if needed
+      if (x == y) {
+        # when x == y calculate the number of clonotypes which are unique to the cluster and have no overlap
+        temp.vec <- which(dTest[, x] >= 1 & rowSums(dTest[, -x]) == 0)
+        if (length(temp.vec) > 0) { # require a catch if() to detect if temp.vec is empty
+          matrix_out[x, x] <- sum(dTest[temp.vec, x])
+        } else {
+          matrix_out[y, x] <- 0
         }
-    }
-    
-    colnames(matrix_out) <- colnames(dTest)
-    rownames(matrix_out) <- colnames(dTest)
-    
-
-    # Need to subtract extra cells - will take the difference of the sum of the column minus and the respective cell and subtract that from the respective cell
-    for (y in seq_len(ncol(matrix_out))) {
-        matrix_out[y,y] <- matrix_out[y,y] - (sum(matrix_out[,y])-matrix_out[y,y])
-        if (matrix_out[y,y] < 0) {
-            matrix_out[y,y] <- 0
+      } else {
+        # get the every row where clonotypes overlap between x & y
+        temp.vec <- which(dTest[, x] >= 1 & dTest[, y] >= 1)
+        if (length(temp.vec) > 0) { # require a catch if() to detect if temp.vec is empty
+          matrix_out[y, x] <- sum(dTest[temp.vec, c(x, y)]) # Sum the number of cells across both X and Y columns
+        } else {
+          matrix_out[y, x] <- 0 # there are no overlaps between the clusters
         }
+      }
     }
+  }
+}
+  colnames(matrix_out) <- colnames(dTest)
+  rownames(matrix_out) <- colnames(dTest)
 
-    output <- data.frame(from = rep(rownames(matrix_out), times = ncol(matrix_out)),
-                         to = rep(colnames(matrix_out), each = nrow(matrix_out)),
-                         value = as.vector(matrix_out),
-                         stringsAsFactors = FALSE)
-    
-    # Reorder columns to eliminate redundant comparisons
-    for (k in 1:nrow(output)) {
-        max <- order(output[k,1:2])[1] #which is first alphabetically
-        max <- output[k,max]
-        min <- order(output[k,1:2])[2] #which is second alphabetically
-        min <- output[k,min]
-        output[k,1] <- max
-        output[k,2] <- min
-    }
-    unique.rows <- rownames(unique(output[,1:2])) #removing redundant comparisons
-    output <- output[rownames(output) %in% unique.rows, ]
-    if (proportion == TRUE) {
-        output$value <- output$value/total
-    } 
-    
-    return(output)
+  output <- data.frame(
+    from = rep(rownames(matrix_out), times = ncol(matrix_out)),
+    to = rep(colnames(matrix_out), each = nrow(matrix_out)),
+    value = as.vector(matrix_out),
+    stringsAsFactors = FALSE
+  )
+
+  # Reorder columns to eliminate redundant comparisons
+  for (k in 1:nrow(output)) {
+    max <- order(output[k, 1:2])[1] # which is first alphabetically
+    max <- output[k, max]
+    min <- order(output[k, 1:2])[2] # which is second alphabetically
+    min <- output[k, min]
+    output[k, 1] <- max
+    output[k, 2] <- min
+  }
+  unique.rows <- rownames(unique(output[, 1:2])) # removing redundant comparisons
+  output <- output[rownames(output) %in% unique.rows, ]
+  if (proportion == TRUE) {
+    output$value <- output$value / total
+  }
+
+  return(output)
 }
 
 
 getIntegratedCircle <- function(data, proportion = FALSE, clonotypesOnly = FALSE) {
+  output <- NULL
+  test <- data[, c("CTaa", "seurat_clusters", "condition")]
+  totalUS <- table(subset(test, !is.na(CTaa))$condition)[1]
+  totalStim <- table(subset(test, !is.na(CTaa))$condition)[2]
 
-    output <- NULL
-    test <- data[, c("CTaa", "seurat_clusters", "condition")]
-    totalUS <- table(subset(test, !is.na(CTaa))$condition)[1]
-    totalStim <- table(subset(test, !is.na(CTaa))$condition)[2]
-    
-    dTest <- reshape2::dcast(test, CTaa ~ condition + seurat_clusters)
-    dTest <- dTest[apply(dTest[,-1], 1, function(x) !all(x==0)),]
-    dTest <- dTest[,-1]
+  dTest <- reshape2::dcast(test, CTaa ~ condition + seurat_clusters)
+  dTest <- dTest[apply(dTest[, -1], 1, function(x) !all(x == 0)), ]
+  dTest <- dTest[, -1]
 
-    matrix_out <- matrix(0,ncol = ncol(dTest), nrow = ncol(dTest))
-    # Create matrix of clonotype overlap between clusters - this reduces the dataset to a # of clonotypes overlap and ignores cell # info!!!
-    matrix_out <- matrix(0, ncol = ncol(dTest), nrow = ncol(dTest))
-    for (x in seq_len(ncol(dTest))) {
-        for (y in seq_len(ncol(dTest)) ){
-            matrix_out[y,x] <- length(which(dTest[,x] >= 1 & dTest[,y] >= 1)) # need to consider adding up values obtained from which() to keep cell # info
-        }
+  matrix_out <- matrix(0, ncol = ncol(dTest), nrow = ncol(dTest))
+  # Create matrix of clonotype overlap between clusters - this reduces the dataset to a # of clonotypes overlap and ignores cell # info!!!
+  matrix_out <- matrix(0, ncol = ncol(dTest), nrow = ncol(dTest))
+  for (x in seq_len(ncol(dTest))) {
+    for (y in seq_len(ncol(dTest))) {
+      matrix_out[y, x] <- length(which(dTest[, x] >= 1 & dTest[, y] >= 1)) # need to consider adding up values obtained from which() to keep cell # info
     }
-    
-    colnames(matrix_out) <- colnames(dTest)
-    rownames(matrix_out) <- colnames(dTest)
-    
-    
-    # Need to subtract extra cells - will take the difference of the sum of the column minus and the respective cell and subtract that from the respective cell
-    for (y in seq_len(ncol(matrix_out))) {
-        matrix_out[y,y] <- matrix_out[y,y] - (sum(matrix_out[,y])-matrix_out[y,y])
-        if (matrix_out[y,y] < 0) {
-            matrix_out[y,y] <- 0
-        }
+  }
+
+  colnames(matrix_out) <- colnames(dTest)
+  rownames(matrix_out) <- colnames(dTest)
+
+
+  # Need to subtract extra cells - will take the difference of the sum of the column minus and the respective cell and subtract that from the respective cell
+  for (y in seq_len(ncol(matrix_out))) {
+    matrix_out[y, y] <- matrix_out[y, y] - (sum(matrix_out[, y]) - matrix_out[y, y])
+    if (matrix_out[y, y] < 0) {
+      matrix_out[y, y] <- 0
     }
-    
-    output <- data.frame(from = rep(rownames(matrix_out), times = ncol(matrix_out)),
-                         to = rep(colnames(matrix_out), each = nrow(matrix_out)),
-                         value = as.vector(matrix_out),
-                         stringsAsFactors = FALSE)
-    
-  
-    # Reorder columns to eliminate redundant comparisons
-    for (k in 1:nrow(output)) {
-        max <- order(output[k,1:2])[1] #which is first alphabetically
-        max <- output[k,max]
-        min <- order(output[k,1:2])[2] #which is second alphabetically
-        min <- output[k,min]
-        output[k,1] <- max
-        output[k,2] <- min
-    }
-    unique <- rownames(unique(output[,1:2])) #removing redundant comparisons
-    output <- output[rownames(output) %in% unique, ]
-    #output <- output[which(output$from != output$to),]
-    
-    
-    output$from_group <- stringr::str_split(output$from, "_", simplify = T, n=2)[,1]
-    output$to_group <- stringr::str_split(output$to, "_", simplify = T, n=2)[,1]
-    output$from<- stringr::str_split(output$from, "_", simplify = T, n=2)[,2]
-    output$to <- stringr::str_split(output$to, "_", simplify = T, n=2)[,2]
-    if (proportion == TRUE) {
-        output$value <- ifelse(output$from == "US", output$value/totalUS, output$value/totalStim)
-    }   
-        
-    return(output)
+  }
+
+  output <- data.frame(
+    from = rep(rownames(matrix_out), times = ncol(matrix_out)),
+    to = rep(colnames(matrix_out), each = nrow(matrix_out)),
+    value = as.vector(matrix_out),
+    stringsAsFactors = FALSE
+  )
+
+
+  # Reorder columns to eliminate redundant comparisons
+  for (k in 1:nrow(output)) {
+    max <- order(output[k, 1:2])[1] # which is first alphabetically
+    max <- output[k, max]
+    min <- order(output[k, 1:2])[2] # which is second alphabetically
+    min <- output[k, min]
+    output[k, 1] <- max
+    output[k, 2] <- min
+  }
+  unique <- rownames(unique(output[, 1:2])) # removing redundant comparisons
+  output <- output[rownames(output) %in% unique, ]
+  # output <- output[which(output$from != output$to),]
+
+
+  output$from_group <- stringr::str_split(output$from, "_", simplify = T, n = 2)[, 1]
+  output$to_group <- stringr::str_split(output$to, "_", simplify = T, n = 2)[, 1]
+  output$from <- stringr::str_split(output$from, "_", simplify = T, n = 2)[, 2]
+  output$to <- stringr::str_split(output$to, "_", simplify = T, n = 2)[, 2]
+  if (proportion == TRUE) {
+    output$value <- ifelse(output$from == "US", output$value / totalUS, output$value / totalStim)
+  }
+
+  return(output)
 }

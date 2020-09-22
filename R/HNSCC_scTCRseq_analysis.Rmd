@@ -642,6 +642,25 @@ rm(combined.contig, contig.list, S1.contig, S2.contig, S3.contig, S4.contig)
 
 ```
 
+### Filter dataset 
+```{r Filter_data}
+
+# Created this code chuck to control the filtering parameters for TCR dataset
+# Keeps downstream analysis consistent 
+# also allows easy modification of any of the filtering parameters 
+
+seurat.tcr
+meta.data
+meta.tcr
+
+
+
+
+```
+
+
+
+
 ## Circos AKA Chord Diagrams {.tabset}
 
 ### Set up data for chord diagrams 
@@ -747,40 +766,28 @@ grid.cols <- c(Naive_like_1_CM = "#E41A1C",
                 TRM = "#E7298A",
                 Proliferative = "#E78AC3")
 
-
-
-# Questions for Nick 
-#Need to subtract extra cells - will take the difference of the sum of the column minus and the respective cell and subtract that from the respective cell
-   # for (y in seq_len(ncol(matrix_out))) {
-  ##      matrix_out[y,y] <- matrix_out[y,y] - (sum(matrix_out[,y])-matrix_out[y,y])
-  #      if (matrix_out[y,y] < 0) {
-  #          matrix_out[y,y] <- 0
-  #      }
-  #  }
-
-# Reduces the clonotypes in half - this will allow for accurate depiction by total number of cells in cluster
- #   for (i in seq_len(ncol(matrix_out))) {
-#        for (j in seq_len(ncol(matrix_out))) {
-#            matrix_out[i,j] <- as.integer(matrix_out[i,j]/2)
-#        }
-#    }
-
-
-
-
-
-
-
-
-
-
-
-
-
 ```
 
 ## Plotting Chord Diagrams
 ```{r chord_plots}
+
+
+seurat.tcr@meta.data 
+filt.meta %>% 
+  dplyr::filter(condition == "US" & seurat_clusters == "Stimulated_1") %>%
+  dplyr::summarise(n())
+  
+  CIVAQAGTALIF_CSVIDRAAGELFF
+  
+  filt.meta %>% 
+  dplyr::filter(condition == "Stim" & CTaa == "CVVTSFESGNTPLVF_CASSQDLWDRNNEQFF") %>%
+  dplyr::summarise(n())
+  
+  
+ # dplyr::select(seurat_clusters) %>% unique()
+
+
+
 
 # Create output directory
 dir.create("output_tcr/figures/ChordVisualizations")
