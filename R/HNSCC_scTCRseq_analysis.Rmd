@@ -40,7 +40,6 @@ Built with R version `r getRversion()`
 ```
 
 ### Environment
-**Note: Wheneve possible using seq_along() or seq_len() instead of 1:length for your loops - they are more robust to error** 
 ```{r Environment_setup, message = FALSE}
 knitr::opts_chunk$set(
   echo = TRUE,
@@ -552,8 +551,6 @@ setwd(working.dir)
 ## TCR analysis - formatting {.tabset}
 
 ### Format data with scRepertoire
-**Note: You do not need to strip the frequency calulcation (although you did it super elegantly). When using `combineExpression()`, your groupBy == "ID" will calculate across your condition of stimulated or unstimulated**
-
 ```{r Format_data_with_scRep}
 
 #################################
@@ -645,14 +642,14 @@ rm(combined.contig, contig.list, S1.contig, S2.contig, S3.contig, S4.contig)
 
 ```
 
+## Circos AKA Chord Diagrams {.tabset}
 
-## Chord Diagrams 
-
-Here is a little more inuitive for me, seperate the Stim and US cells, create a matrix that counts the shared clonotype by clusters, correct for overcounting and visuaize both conditions using Chord Diagrams. 
-
-For the most part the function `getCircles()` does all the processing. 
 ### Set up data for chord diagrams 
 ```{r setup_chord}
+
+#Here is a little more inuitive for me, seperate the Stim and US cells, create a matrix that counts the shared clonotype by clusters, correct for overcounting and visuaize both conditions using Chord Diagrams. 
+
+#For the most part the function `getCircles()` does all the processing. 
 
 # Load libraries
 library(circlize)
@@ -660,39 +657,88 @@ library(ggplot2)
 library(ggalluvial)
 library(ggfittext)
 
-# Source function
+# Source functions
 source("R/getCircles.R")
 
-#Using seurat_clusters as value column: use value.var to override.
-#Aggregation function missing: defaulting to length
+# Using seurat_clusters as value column: use value.var to override.
+# Aggregation function missing: defaulting to length
+
+
+###################
+# Filter dataset
+###################
+
+# Filtering parameters 
+min.clonesize <- 3
+
+remove.subsets <- c("gd_T_g9d2", 
+                    "gd_T_non_g9d2", 
+                    "MAIT")
+
+remove.self.ribbons <- FALSE
 
 
 
-# filter metadata to only have clonotypes bigger than 3 
+# Remove non-alpha/beta T cell subsets from Circos plots
+initial.n <- nrow(meta.tcr) # 6,625
+
+for(i in seq_along(remove.subsets)){
+  logic.vec <- meta.tcr$seurat_clusters == remove.subsets[i]
+  meta.tcr <- meta.tcr[!logic.vec, ]
+}
+
+filt.n <- nrow(meta.tcr) # 6,320
+# therefore 305 cells filtered
+initial.n - filt.n
+
+
+
+# Remove small clonotypes (i.e, < min.clonesize) 
 clonotypes <- table(meta.tcr$CTaa)
-
-keep.clonotypes <- names(clonotypes)[clonotypes >= 3]
-
+keep.clonotypes <- names(clonotypes)[clonotypes >= min.clonesize]
 filt.meta <- meta.tcr[meta.tcr$CTaa %in% keep.clonotypes, ]
+
+# This filtering step removes 
+filt.n-nrow(filt.meta) # 2,784 cells
+rm(filt.n)
 
 ### Proportion parameter to get getGircles(), will divide by total size of none-NA clonotypes
 ###clonotypesOnly can be used to just count the clonotypes shared between cluster (removes cell numbers from the equation)
-    Stim <- subset(filt.meta, condition == "Stim")
-    US <- subset(filt.meta, condition == "US")
-    Stim <- getCircles(Stim, proportion = FALSE, clonotypesOnly = FALSE)
-    US <- getCircles(US, proportion = FALSE, clonotypesOnly = FALSE)
-    Chord.list <- list(Stim, US)
     
-    names(Chord.list) <- c("Stim", "US")
+# Subset dataset by condition
+US <- subset(filt.meta, condition == "US")
+
+Stim <- subset(filt.meta, condition == "Stim")
+
+  
+# Collect clonotype overlaps and format data for Circos plots
+US <- getCircles(US, 
+                 proportion = TRUE, 
+                 clonotypesOnly = TRUE)
+
+Stim <- getCircles(Stim,
+                   proportion = TRUE, 
+                   clonotypesOnly = TRUE)
+
+Chord.list <- list(US, Stim)
+
+names(Chord.list) <- c("US", "Stim")
+
+
+# Remove ribbons originating and ending in the same cluster
+if(remove.self.ribbons){
+  for(i in seq_along(names(Chord.list))){
+    logic.vec <- Chord.list[[i]][ ,1] == Chord.list[[i]][ ,2]
+    Chord.list[[i]] <- Chord.list[[i]][!logic.vec, ]
+  }
+}
+
 
 # Defining grid colors
-grid.cols = c(Naive_like_1_CM = "#E41A1C",
+grid.cols <- c(Naive_like_1_CM = "#E41A1C",
                 Cytotoxic = "#666666", 
                 Exhausted_1 = "#D95F02", 
                 Exhausted_2 = "#7570B3", 
-                gd_T_g9d2 = "#E6AB02", 
-                gd_T_non_g9d2 = "#8DD3C7", 
-                MAIT = "#FF7F00",
                 Naive_like_2_SC = "#A6761D",
                 Naive_like_3 = "#8DA0CB", 
                 Type_I_IFN = "#A6D854", 
@@ -703,57 +749,108 @@ grid.cols = c(Naive_like_1_CM = "#E41A1C",
 
 
 
+# Questions for Nick 
+#Need to subtract extra cells - will take the difference of the sum of the column minus and the respective cell and subtract that from the respective cell
+   # for (y in seq_len(ncol(matrix_out))) {
+  ##      matrix_out[y,y] <- matrix_out[y,y] - (sum(matrix_out[,y])-matrix_out[y,y])
+  #      if (matrix_out[y,y] < 0) {
+  #          matrix_out[y,y] <- 0
+  #      }
+  #  }
+
+# Reduces the clonotypes in half - this will allow for accurate depiction by total number of cells in cluster
+ #   for (i in seq_len(ncol(matrix_out))) {
+#        for (j in seq_len(ncol(matrix_out))) {
+#            matrix_out[i,j] <- as.integer(matrix_out[i,j]/2)
+#        }
+#    }
+
+
+
+
+
+
+
+
+
+
+
+
 
 ```
 
 ## Plotting Chord Diagrams
 ```{r chord_plots}
-#dir.create("output_tcr/figures/ChordVisualizations")
-#dir <- "output_tcr/figures/ChordVisualizations"
+
+# Create output directory
+dir.create("output_tcr/figures/ChordVisualizations")
+dir <- "output_tcr/figures/ChordVisualizations"
+
+# Load required library & source custom functions
 library(circlize)
+source("R/getCircles.R")
 
-   # pdf(paste0(dir, "/Stimulated_TCRcircos_filt.pdf"), height=10, width=10)
-pdf("Stimulated_TCRcircos_filt.pdf", height=10, width=10)
-chordDiagram(Chord.list[["Stim"]], grid.col = grid.cols, self.link = 1, annotationTrack = "grid", 
-    preAllocateTracks = list(track.height = max(strwidth(unlist(dimnames(Chord.list[["Stim"]]))))))
+####################
+# Plot US dataset
+####################
+
+pdf(paste0(dir, "/Unstimulated_TCRcircos_filt.pdf"), height=10, width=10)
+
+chordDiagram(Chord.list[["US"]], 
+             grid.col = grid.cols, 
+             self.link = 1, 
+             annotationTrack = "grid", 
+             preAllocateTracks = list(track.height = max(strwidth(unlist(dimnames(Chord.list[["US"]]))))))
 
 
-circos.track(track.index = 1, panel.fun = function(x, y) {
+circos.track(track.index = 1, 
+             panel.fun = function(x, y) {
     xlim = get.cell.meta.data("xlim")
     xplot = get.cell.meta.data("xplot")
     ylim = get.cell.meta.data("ylim")
     sector.name = get.cell.meta.data("sector.index")
 
-    circos.text(mean(xlim), ylim[1], sector.name, facing = "clockwise",
-        niceFacing = TRUE, adj = c(0, 0.5)) }, bg.border = NA)
+    circos.text(mean(xlim), 
+                ylim[1], 
+                sector.name, 
+                facing = "clockwise",
+        niceFacing = TRUE, 
+        adj = c(0, 0.5)) 
+    }, 
+    bg.border = NA)
+
 dev.off()
 
-#pdf(paste0(dir, "/Untimulated_TCRcircos_filt.pdf"), height=10, width=10)
-pdf(paste0("Untimulated_TCRcircos_filt.pdf"), height=10, width=10)
-chordDiagram(Chord.list[["US"]], grid.col = grid.cols, self.link = 1, annotationTrack = "grid", 
-    preAllocateTracks = list(track.height = max(strwidth(unlist(dimnames(Chord.list[["US"]]))))))
-circos.track(track.index = 1, panel.fun = function(x, y) {
-    xlim = get.cell.meta.data("xlim")
-    xplot = get.cell.meta.data("xplot")
-    ylim = get.cell.meta.data("ylim")
-    sector.name = get.cell.meta.data("sector.index")
+####################
+# Plot Stim dataset
+####################
 
-    circos.text(mean(xlim), ylim[1], sector.name, facing = "clockwise",
-        niceFacing = TRUE, adj = c(0, 0.5)) }, bg.border = NA)
+pdf(paste0(dir, "/Stimulated_TCRcircos_filt.pdf"), height=10, width=10)
+
+chordDiagram(Chord.list[["Stim"]], 
+             grid.col = grid.cols, 
+             self.link = 1, 
+             annotationTrack = "grid", 
+             preAllocateTracks = list(track.height = max(strwidth(unlist(dimnames(Chord.list[["Stim"]]))))))
+
+circos.track(track.index = 1, 
+             panel.fun = function(x, y) {
+               xlim = get.cell.meta.data("xlim")
+               xplot = get.cell.meta.data("xplot")
+               ylim = get.cell.meta.data("ylim")
+               sector.name = get.cell.meta.data("sector.index")
+               
+               circos.text(mean(xlim), 
+                           ylim[1], 
+                           sector.name, 
+                           facing = "clockwise",
+                           niceFacing = TRUE, 
+                           adj = c(0, 0.5)) 
+             }, 
+             bg.border = NA)
+
 dev.off()
 
-pdf(paste0("Untimulated_TCRcircos_filt_Proportion.pdf"), height=10, width=10)
-chordDiagram(Chord.list3[["US"]], grid.col = grid.cols, self.link = 1, annotationTrack = "grid", 
-    preAllocateTracks = list(track.height = max(strwidth(unlist(dimnames(Chord.list3[["US"]]))))))
-circos.track(track.index = 1, panel.fun = function(x, y) {
-    xlim = get.cell.meta.data("xlim")
-    xplot = get.cell.meta.data("xplot")
-    ylim = get.cell.meta.data("ylim")
-    sector.name = get.cell.meta.data("sector.index")
-
-    circos.text(mean(xlim), ylim[1], sector.name, facing = "clockwise",
-        niceFacing = TRUE, adj = c(0, 0.5)) }, bg.border = NA)
-dev.off()
 
 ```
 
@@ -761,79 +858,180 @@ dev.off()
 
 2020/09/01 Still needs adjustment for very small groups to get secondary track - as of now, the code will segregate the clusters between conditions, but errors at the **for(species in unique(combined$from))** loop
 
-```{r}
-color_species  = c(Naive_like_1_CM = "#E41A1C",
-Cytotoxic = "#666666", 
-Exhausted_1 = "#D95F02", 
-Exhausted_2 = "#7570B3", 
-Naive_like_2_SC = "#A6761D",
-Naive_like_3 = "#8DA0CB", 
-Type_I_IFN = "#A6D854", 
-Stimulated_1= "#984EA3", 
-Stimulated_exhausted = "#1B9E77", 
-TRM = "#E7298A",
- Proliferative = "#E78AC3")
+```{r integrated_chord_setup}
 
-color_regions  <- c(US = "turquoise", Stim = "red")
+color_species  = c(Naive_like_1_CM = "#E41A1C",
+                   Cytotoxic = "#666666", 
+                   Exhausted_1 = "#D95F02", 
+                   Exhausted_2 = "#7570B3", 
+                   Naive_like_2_SC = "#A6761D",
+                   Naive_like_3 = "#8DA0CB", 
+                   Type_I_IFN = "#A6D854", 
+                   Stimulated_1= "#984EA3", 
+                   Stimulated_exhausted = "#1B9E77", 
+                   TRM = "#E7298A",
+                   Proliferative = "#E78AC3")
+
+color_regions  <- c(US = "turquoise", 
+                    Stim = "red")
 ```
 
-```{r}
-meta.tcr <- seurat.tcr[[]]
+```{r integrated_chord}
 
-clonotypes <- table(meta.tcr$CTaa)
-
-keep.clonotypes <- names(clonotypes)[clonotypes >= 3]
-
-filt.meta <- meta.tcr[meta.tcr$CTaa %in% keep.clonotypes, ]
-
-
-###Filtering out MAIT and gd Clusters
-filt.meta <- subset(filt.meta, seurat_clusters != "gd_T_non_g9d2" & seurat_clusters != "gd_T_g9d2" & seurat_clusters != "MAIT")
-
-#Removing clusters with < 5 cells
-filt.meta <- filt.meta %>%
+# I dont think this is doing what is advertised
+# Removing clonotypes with < 5 cells
+#filt.meta <- 
+  filt.meta %>%
     group_by(condition, seurat_clusters) %>%
     filter(n() > 5)
+
+
+
+
+
+
+
+
+
+
+
 
 ###Uses a slightly different function - getIntegratedCircle acr4oss both conditions
 ##proportion can be used as a parameter to proportion of clonotype/cell overlap by total size of condition
 ###clonotypesOnly can be used to just count the clonotypes shared between cluster (removes cell numbers from the equation)
-output <- getIntegratedCircle(filt.meta, proportion = FALSE)
+output <- getIntegratedCircle(filt.meta, 
+                              proportion = TRUE, 
+                              clonotypesOnly = TRUE)
 
-df2 = data.frame(from = paste(output[[4]], output[[1]], sep = "|"),
+df2 <- data.frame(from = paste(output[[4]], output[[1]], sep = "|"),
                  to = paste(output[[5]], output[[2]], sep = "|"),
-                 value = output[[3]], stringsAsFactors = FALSE)
+                 value = output[[3]], 
+                 stringsAsFactors = FALSE)
+
+# Filter out within condition ribbons 
+df3 <- output[output$from_group != output$to_group, ]
 
 
-###Data frame for the extra track
-combined = data.frame(condition = c(output[[5]]), 
-    from = c(output[[1]]), to = c(output[[2]]), stringsAsFactors = FALSE)
-combined = combined[order(combined$condition, combined$from, combined$to), ]
-order = paste(combined$condition, combined$from, sep = "|")
-grid.col = structure(color_species[combined$from], names = order)
+df3 <- data.frame(from = paste(df3[[4]], df3[[1]], sep = "|"),
+                 to = paste(df3[[5]], df3[[2]], sep = "|"),
+                 value = df3[[3]],
+                 stringsAsFactors = FALSE)
+
+
+
+
+
+
+
+
+
+# Data frame for the extra track
+# Nick: Code below used to read data.frame(condition = c(output[[5]]))
+# This takes the condition of the to_group column. 
+# I think this is a typo and should be output[[4]] i.e the from_group column.
+# Please advise if incorrect
+
+combined <- data.frame(condition = c(output[[4]]), 
+                       from = c(output[[1]]), 
+                       to = c(output[[2]]), 
+                       stringsAsFactors = FALSE)
+
+combined <- combined[order(combined$condition, combined$from, combined$to), ]
+order.val <- paste(combined$condition, combined$from, sep = "|")
+grid.col <- structure(color_species[combined$from], names = order.val)
 
 
 
 ####Ploting
-pdf("TwoVariables_test_Circos1.pdf", height=10, width=10)
+#pdf("TwoVariables_test_Circos1.pdf", height=10, width=10)
 
-chordDiagram(df2, self.link = 1, annotationTrack = c("grid"),
-    grid.col = grid.col,
-    order = order,
-    directional = -1,
-    link.overlap = TRUE,
-    preAllocateTracks = list(
-        track.height = 0.04,
-        track.margin = c(0.05, 0)
-    )
+order.val <- rev(order.val)
+
+order.val <- unique(df2$from)
+order.val <- sort(order.val, decreasing = T)
+
+
+chordDiagram(df2, 
+             self.link = 1, 
+             annotationTrack = c("grid"),
+             grid.col = grid.col,
+             order = order.val,
+             directional = -1,
+             link.overlap = TRUE,
+             preAllocateTracks = list(
+               track.height = 0.04,
+               track.margin = c(0.05, 0)
+             )
 )
 
-for(region in unique(combined$condition)) {
-    l = combined$condition == region
-    sn = paste(combined$condition[l], combined$from[l], sep = "|")
-    sn <- sn[sn != "US|Stimulated_exhausted" & sn != "US|Stimulated_1"] #These get accidentally added
-    highlight.sector(sn, track.index = 1, col = color_regions[region], 
-        text = region, niceFacing = TRUE)
+
+circos.track(track.index = 1, 
+             panel.fun = function(x, y) {
+    xlim = get.cell.meta.data("xlim")
+    xplot = get.cell.meta.data("xplot")
+    ylim = get.cell.meta.data("ylim")
+    sector.name = get.cell.meta.data("sector.index")
+
+    circos.text(mean(xlim), 
+                ylim[1], 
+                sector.name, 
+                facing = "clockwise",
+        niceFacing = TRUE, 
+        adj = c(0, 0.5)) 
+    }, 
+    bg.border = NA)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## ORIGINAL BELOW
+
+
+
+
+
+
+
+
+
+
+
+
+chordDiagram(df2, 
+             self.link = 1, 
+             annotationTrack = c("grid"),
+             grid.col = grid.col,
+             order = order.val,
+             directional = -1,
+             link.overlap = TRUE,
+             preAllocateTracks = list(
+               track.height = 0.04,
+               track.margin = c(0.05, 0)
+             )
+)
+
+for(i in seq_along(unique(combined$condition))) {
+  region <- unique(combined$condition)[i]
+  l <- combined$condition == region
+  sn <- paste(combined$condition[l], combined$from[l], sep = "|")
+  sn <- sn[sn != "US|Stimulated_exhausted" & sn != "US|Stimulated_1"] #These get accidentally added
+  highlight.sector(sn, 
+                   track.index = 1, 
+                   col = color_regions[region], 
+                   text = region, 
+                   niceFacing = TRUE)
 }
 
     
@@ -2855,4 +3053,3 @@ print(compute.time-start.time)
 
 
 ```
-
