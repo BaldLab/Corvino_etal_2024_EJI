@@ -74,6 +74,7 @@ getCircles <- function(data, proportion = FALSE, clonotypesOnly = FALSE) {
   }
   unique.rows <- rownames(unique(output[, 1:2])) # removing redundant comparisons
   output <- output[rownames(output) %in% unique.rows, ]
+  
   if (proportion == TRUE) {
     output$value <- output$value / total
   }
@@ -83,7 +84,7 @@ getCircles <- function(data, proportion = FALSE, clonotypesOnly = FALSE) {
 
 
 getIntegratedCircle <- function(data, proportion = FALSE, clonotypesOnly = FALSE) {
-  browser()
+  #browser()
   output <- NULL
   test <- data[, c("CTaa", "seurat_clusters", "condition")]
   totalUS <- table(subset(test, !is.na(CTaa))$condition)[1]
@@ -158,22 +159,22 @@ getIntegratedCircle <- function(data, proportion = FALSE, clonotypesOnly = FALSE
   for (k in 1:nrow(output)) {
     max <- order(output[k, 1:2])[1] # which is first alphabetically
     max <- output[k, max]
-    min <- order(output[k, 1:2])[2] # which is second alphabetically
+  min <- order(output[k, 1:2])[2] # which is second alphabetically
     min <- output[k, min]
     output[k, 1] <- max
     output[k, 2] <- min
   }
-  unique <- rownames(unique(output[, 1:2])) # removing redundant comparisons
-  output <- output[rownames(output) %in% unique, ]
-  # output <- output[which(output$from != output$to),]
-
+  unique.rows <- rownames(unique(output[, 1:2])) # removing redundant comparisons
+  output <- output[rownames(output) %in% unique.rows, ]
+  
 
   output$from_group <- stringr::str_split(output$from, "_", simplify = T, n = 2)[, 1]
   output$to_group <- stringr::str_split(output$to, "_", simplify = T, n = 2)[, 1]
   output$from <- stringr::str_split(output$from, "_", simplify = T, n = 2)[, 2]
   output$to <- stringr::str_split(output$to, "_", simplify = T, n = 2)[, 2]
+  
   if (proportion == TRUE) {
-    output$value <- ifelse(output$from == "US", output$value / totalUS, output$value / totalStim)
+    output$value <- ifelse(output$from_group == "US", output$value / totalUS, output$value / totalStim)
   }
 
   return(output)

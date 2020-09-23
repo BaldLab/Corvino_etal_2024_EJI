@@ -850,10 +850,10 @@ dev.off()
 ```
 
 ## Plotting Integrated Chord Diagram
-
-2020/09/01 Still needs adjustment for very small groups to get secondary track - as of now, the code will segregate the clusters between conditions, but errors at the **for(species in unique(combined$from))** loop
-
 ```{r integrated_chord}
+
+#2020/09/01 Still needs adjustment for very small groups to get secondary track - as of now, the code will segregate the clusters between #conditions, but errors at the **for(species in unique(combined$from))** loop
+
 
 # Create output directory
 dir.create("output_tcr/figures/ChordVisualizations")
@@ -885,55 +885,56 @@ color_regions  <- c(US = "turquoise",
 
 # Calculate overlap
 output <- getIntegratedCircle(meta.tcr, 
-                              proportion = TRUE, 
+                              proportion = F, 
                               clonotypesOnly = TRUE) # clonotypesOnly will ignore cell # and just count the # of clonotypes that overlap
 
-df2 <- data.frame(from = paste(output[[4]], output[[1]], sep = "|"),
-                 to = paste(output[[5]], output[[2]], sep = "|"),
+dim(output) # 253
+
+# Remove intra-condition links 
+#output <- output[output$from_group != output$to_group, ]
+dim(output) # 121 This value makes sense 11 clusters * 11 clusters 
+
+# Extract the clonotypes which are unique to a cluster/condition combination
+output <- output[output$from == output$to & output$from_group == output$to_group, ]
+# Note there are very few clonotypes which have no overlap within or across conditions 
+# out of 257 clonotypes only 6 are unique to a specific clonotype and condition within the entire dataset
+colSums(dTest[rowSums(dTest) == 1, ])
+nrow(dTest)
+
+
+# note there is no directionality in the dataset - simply overlap between clusters in conditions 
+df2 <- data.frame(clust_1 = paste(output[[5]], output[[2]], sep = "|"),
+                  clust_2 = paste(output[[4]], output[[1]], sep = "|"),
                  value = output[[3]], 
                  stringsAsFactors = FALSE)
 
-# Filter out within condition ribbons 
-df3 <- output[output$from_group != output$to_group, ]
 
 
-df3 <- data.frame(from = paste(df3[[4]], df3[[1]], sep = "|"),
-                 to = paste(df3[[5]], df3[[2]], sep = "|"),
-                 value = df3[[3]],
-                 stringsAsFactors = FALSE)
+###### to delete
+#combined <- data.frame(condition = c(output[[4]]), 
+#                       from = c(output[[1]]), 
+#                       to = c(output[[2]]), 
+#                       stringsAsFactors = FALSE)
 
-
-
-
-
+#combined <- combined[order(combined$condition, combined$from, combined$to), ]
+#order.val <- paste(combined$condition, combined$from, sep = "|")
+#grid.col <- structure(color_species[combined$from], names = order.val)
 
 
 
 
-# Data frame for the extra track
-# Nick: Code below used to read data.frame(condition = c(output[[5]]))
-# This takes the condition of the to_group column. 
-# I think this is a typo and should be output[[4]] i.e the from_group column.
-# Please advise if incorrect
+df2 <- df2 %>%
+  dplyr::arrange(clust_1, clust_2)
 
-combined <- data.frame(condition = c(output[[4]]), 
-                       from = c(output[[1]]), 
-                       to = c(output[[2]]), 
-                       stringsAsFactors = FALSE)
-
-combined <- combined[order(combined$condition, combined$from, combined$to), ]
-order.val <- paste(combined$condition, combined$from, sep = "|")
-grid.col <- structure(color_species[combined$from], names = order.val)
+order.val <- c(df2$clust_2, df2$clust_1)
+x <- gsub(paste0(c("^US\\|", "^Stim\\|"), collapse = "|"), "", order.val)
+grid.col <- structure(color_species[x], names = order.val)
 
 
+length(grid.col)
 
 ####Ploting
 #pdf("TwoVariables_test_Circos1.pdf", height=10, width=10)
-
-order.val <- rev(order.val)
-
-order.val <- unique(df2$from)
-order.val <- sort(order.val, decreasing = T)
 
 
 chordDiagram(df2, 
@@ -941,8 +942,8 @@ chordDiagram(df2,
              annotationTrack = c("grid"),
              grid.col = grid.col,
              order = order.val,
-             directional = -1,
-             link.overlap = TRUE,
+             directional = 1,
+             link.overlap = FALSE,
              preAllocateTracks = list(
                track.height = 0.04,
                track.margin = c(0.05, 0)
