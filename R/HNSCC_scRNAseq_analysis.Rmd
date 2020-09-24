@@ -40,7 +40,6 @@ Built with R version `r getRversion()`
 ```
 
 ### Environment
-**Note: Wheneve possible using seq_along() or seq_len() instead of 1:length for your loops - they are more robust to error** 
 ```{r Environment_setup, message = FALSE}
 knitr::opts_chunk$set(
   echo = TRUE,
@@ -57,8 +56,8 @@ gc() # Free memory
 
 # pipeline variables
 start.time <- Sys.time()
-quick.load <- TRUE
-long.compute <- FALSE
+quick.load <- FALSE
+long.compute <- TRUE
 
 ###################
 # Install packages
@@ -302,7 +301,6 @@ rm(Sample1.data,
 ## QC and Normalisation {.tabset}
 
 ### QC & Normalisation
-**Note: No need to normalize here if you are just going to combine and renormalize - doesn't effect results at all because the integration step is using counts.** 
 ```{r QC_and_normalisation}
 
 
@@ -332,22 +330,36 @@ Stim.seurat[["percent.mito"]] <- PercentageFeatureSet(Stim.seurat, pattern = "^M
 ##################################
 
 # nFeature & nCount & Mito (US)
-VlnPlot(object = US.seurat, features = c("nFeature_RNA", "nCount_RNA", "percent.mito"))
+VlnPlot(object = US.seurat, 
+        features = c("nFeature_RNA", "nCount_RNA", "percent.mito"), 
+        pt.size = 0.1)
+
 dev.copy(pdf, "output/QC/QC_nFeature_nCount_RNA_percentMito_US.pdf")
 dev.off()
 
 # Mito (US)
-VlnPlot(US.seurat, features = "percent.mito", y.max = 20)
+VlnPlot(US.seurat, 
+        features = "percent.mito", 
+        y.max = 20,
+        pt.size = 0.1)
+
 dev.copy(pdf, "output/QC/QC_RNA_percentMito_US.pdf")
 dev.off()
 
 # nFeature & nCount & Mito (Stim)
-VlnPlot(object = Stim.seurat, features = c("nFeature_RNA", "nCount_RNA", "percent.mito"))
+VlnPlot(object = Stim.seurat, 
+        features = c("nFeature_RNA", "nCount_RNA", "percent.mito"), 
+        pt.size = 0.1)
+
 dev.copy(pdf, "output/QC/QC_nFeature_nCount_RNA_percentMito_Stim.pdf")
 dev.off()
 
 # Mito (Stim)
-VlnPlot(Stim.seurat, features = "percent.mito", y.max = 20)
+VlnPlot(Stim.seurat, 
+        features = "percent.mito",
+        y.max = 20, 
+        pt.size = 0.1)
+
 dev.copy(pdf, "output/QC/QC_RNA_percentMito_Stim.pdf")
 dev.off()
 
@@ -360,14 +372,16 @@ dev.off()
 # Unstimulated
 plot1 <- FeatureScatter(US.seurat, feature1 = "nCount_RNA", feature2 = "percent.mito")
 plot2 <- FeatureScatter(US.seurat, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
-CombinePlots(plots = list(plot1, plot2))
+plot1|plot2
+
 dev.copy(pdf, "output/QC/QC_RNA_percentMito_nCount_nFeature_corr_US.pdf")
 dev.off()
 
 # Stimulated
 plot1 <- FeatureScatter(Stim.seurat, feature1 = "nCount_RNA", feature2 = "percent.mito")
 plot2 <- FeatureScatter(Stim.seurat, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
-CombinePlots(plots = list(plot1, plot2))
+plot1|plot2
+
 dev.copy(pdf, "output/QC/QC_RNA_percentMito_nCount_nFeature_corr_Stim.pdf")
 dev.off()
 
@@ -425,20 +439,30 @@ Stim.seurat.filt # 15,618 genes across 6,042 cells
 # Unstimulated
 
 # Before Filtering
-VlnPlot(object = US.seurat, features = c("nFeature_RNA", "nCount_RNA", "percent.mito"))
+VlnPlot(object = US.seurat,
+        features = c("nFeature_RNA", "nCount_RNA", "percent.mito"), 
+        pt.size = 0.1)
 
 # After filtering
-VlnPlot(object = US.seurat.filt, features = c("nFeature_RNA", "nCount_RNA", "percent.mito"))
+VlnPlot(object = US.seurat.filt,
+        features = c("nFeature_RNA", "nCount_RNA", "percent.mito"),
+        pt.size = 0.1)
+
 dev.copy(pdf, "output/QC/QC_nFeature_nCount_RNA_percentMito_Post_filtering_US.pdf")
 dev.off()
 
 # Stimulated
 
 # Before Filtering
-VlnPlot(object = Stim.seurat, features = c("nFeature_RNA", "nCount_RNA", "percent.mito"))
+VlnPlot(object = Stim.seurat, 
+        features = c("nFeature_RNA", "nCount_RNA", "percent.mito"),
+        pt.size = 0.1)
 
 # After filtering
-VlnPlot(object = Stim.seurat.filt, features = c("nFeature_RNA", "nCount_RNA", "percent.mito"))
+VlnPlot(object = Stim.seurat.filt,
+        features = c("nFeature_RNA", "nCount_RNA", "percent.mito"),
+        pt.size = 0.1)
+
 dev.copy(pdf, "output/QC/QC_nFeature_nCount_RNA_percentMito_Post_filtering_Stim.pdf")
 dev.off()
 
@@ -576,14 +600,14 @@ rm(Stim.seurat.filt)
 seurat.combined@meta.data$condition <- factor(seurat.combined@meta.data$condition, levels = c("US", "Stim"))
 
 
+# Remove unneeded data
+rm(immune.anchors, seurat.list)
 
 ```
 
 ## Clustering and dim reduction {.tabset}
 
 ### PCA and cluster identificaton
-**Note: What is the basis for the parameters you selected? Did you try others? Same for the UMAP below?**
-
 ```{r Cluster_data}
 
 DefaultAssay(seurat.combined) <- "integrated"
@@ -612,7 +636,6 @@ seurat.combined <- FindClusters(seurat.combined,
 ```
 
 ### Run UMAP
-**Note: If there are a number of samples pooled together for each sequencing run - is there a way to tell them apart in the data? I know you have S1, S2, etc, but each of these are comprise of multiple samples? How do you know we are not just seeing difference between patients?**
 ```{r UMAP}
 
 # Create output directory
@@ -635,7 +658,7 @@ seurat.combined <- RunUMAP(object = seurat.combined,
 # Plot UMAP projection
 UMAPPlot(object = seurat.combined,
          label = TRUE, 
-         label.size = 6) + ggtitle("Integrated (n.neigh = 30 & min.dist = 0.3)")
+         label.size = 6) + ggtitle("Integrated (n.neigh = 30 & min.dist = 0.3)") + NoLegend()
 
 dev.copy(pdf, "output/figures/UMAP_no_clusts_removed/UMAP_clusts_clust.pdf")
 dev.off()
@@ -747,21 +770,15 @@ Clust.15.Markers <- FindMarkers(seurat.combined,
 ###################
 
 # Downsample for heatmap vis
-seurat.combined.small <- subset(seurat.combined, downsample = 300)
+#seurat.combined.small <- subset(seurat.combined, downsample = 300)
 
 # Heatmap of Clust 13 markers
 sig.genes <- Clust.13.Markers[Clust.13.Markers$p_val_adj < 0.1, ]
 
 
 
-
 # Heatmap of Clust 15 markers
 sig.genes <- Clust.15.Markers[Clust.15.Markers$p_val_adj < 0.1, ]
-
-
-
-
-
 
 
 
@@ -804,7 +821,8 @@ print(plot_cor_heatmap(cor_mat = res))
 dev.copy(pdf, "output/figures/Cell_type_annotation/Clustifyr/Heatmap_cluster_annotations.pdf")
 dev.off()
 
-
+# Remove unneeded data
+rm(mouse.ref, res, res2)
 ```
 
 ### Use various SingleR databases to call cluster identities
@@ -818,7 +836,10 @@ if(!dir.exists("output/figures/Cell_type_annotation/SingleR")){
 
 # Load package
 #BiocManager::install("SingleR")
+#BiocManager::install("celldex")
+
 library(SingleR)
+library("celldex")
 
 ################################################################
 # Use a couple databased to get broad overview of clusters 
@@ -829,7 +850,7 @@ library(SingleR)
 ##################################
 # Info: Human, Microarray, 713 samples, 37 main labels, 157 fine lables, Non-specific focus
 
-HumanPrimaryCellAtlasData.data <- HumanPrimaryCellAtlasData()
+HumanPrimaryCellAtlasData.data <- celldex::HumanPrimaryCellAtlasData()
 
 
 # First calcualte cell ID using all available labels
@@ -851,7 +872,7 @@ dev.off()
 ##########################
 # Info: Human, RNAseq, 259 samples, 24 main labels, 43 fine lables, Non-specific focus
 
-BlueprintEncodeData.data <- BlueprintEncodeData()
+BlueprintEncodeData.data <- celldex::BlueprintEncodeData()
 
 
 # First calcualte cell ID using all available labels
@@ -873,7 +894,7 @@ dev.off()
 ##########################################
 # Info: Human, Microarray, 211 samples, 17 main labels, 38 fine lables, Hematopoietic & Immune focus
 
-NovershternHematopoieticData.data <- NovershternHematopoieticData()
+NovershternHematopoieticData.data <- celldex::NovershternHematopoieticData()
 
 
 # First calcualte cell ID using all available labels
@@ -896,7 +917,7 @@ dev.off()
 #####################
 # Info: Mouse, Microarray, 830 samples, 20 main labels, 253 fine lables, Hematopoietic & Immune focus
 
-ImmGen.data <- ImmGenData()
+ImmGen.data <- celldex::ImmGenData()
 
 # Convert GeneID to match human
 ImmGen.data.counts <- ImmGen.data@assays@data$logcounts
@@ -929,7 +950,7 @@ dev.off()
 # Use MonacoImmuneData
 #########################
 # Info: Human, RNAseq, 114 samples, 11 main labels, 29 fine lables, Immune cell focus
-Immune.data <- MonacoImmuneData()
+Immune.data <- celldex::MonacoImmuneData()
 
 
 # First calcualte cell ID using all available labels
@@ -970,6 +991,13 @@ plotScoreHeatmap(SingleR.pred,
 dev.copy(pdf, "output/figures/Cell_type_annotation/SingleR/Heatmap_cluster_annotations_limited_labels_Monaco_db.pdf")
 dev.off()
 
+# Remove unneeded datasets
+rm(HumanPrimaryCellAtlasData.data,
+   BlueprintEncodeData.data,
+   NovershternHematopoieticData.data,
+   ImmGen.data, ImmGen.data.counts,
+   Immune.data, Immune.data.counts,
+   SingleR.pred)
 
 ```
 
@@ -4581,6 +4609,12 @@ if(long.compute){
 ### Progeny Analysis
 ```{r Progeny_analysis}
 
+# Create output directory
+if(!dir.exists("output/figures/GO_analysis/Progeny")){
+  dir.create("output/figures/GO_analysis/Progeny", 
+             recursive = TRUE)}
+
+
 #BiocManager::install("progeny")
 
 
@@ -4663,6 +4697,8 @@ progeny_hmap = pheatmap(t(summarized_progeny_scores_df[,-1]),fontsize=14,
                         main = "PROGENy (500)", angle_col = 45,
                         treeheight_col = 0,  border_color = NA)
 
+dev.copy(pdf, "output/figures/GO_analysis/Progeny/Progeny_heatmap.pdf")
+dev.off()
 
 unique(progeny_scores_df$Pathway)
 
@@ -4670,33 +4706,66 @@ DefaultAssay(seurat.combined) <- "RNA"
 
 ```
  
-### Exporting metadata for velocity analysis
-```{r exporting_metadata}
-# export metadata for velocity analysis 
-meta.data <- seurat.combined@meta.data
+### Searching for TFs
+```{r TF_analysis}
 
-colnames(meta.data)
-head(meta.data)
+# Create output dir
+if(!dir.exists("output/figures/Transcription_factors")){
+  dir.create("output/figures/Transcription_factors", 
+             recursive = T)}
 
-# Remove non-necessary columns 
-meta.data <- meta.data %>%
-  dplyr::select(group, condition, seurat_clusters, UMAP_1, UMAP_2, PCA_1, PCA_2, Module, condition_clust, condition_module)
 
-# Create new barcode columns 
-meta.data$uniq_barcode <- rownames(meta.data)
+# Searching for TFs
+TF.ref.list <- read.delim("Data/TFcheckpoint.txt") # http://www.tfcheckpoint.org/index.php/browse
 
-meta.data$barcode <- gsub(".*_", "", rownames(meta.data))
+dim(TF.ref.list) # 1020, 11
+colnames(TF.ref.list)
+head(TF.ref.list)
 
-write.table(meta.data, "output/tables/Meta_data.txt", sep = "\t", row.names = F, quote = F)
+Cluster.markers <- read.csv("output/tables/DEG_Clusters/Cluster_markers_unfiltered.csv", row.names = 1)
+
+
+
+# Up-regulated TFs
+sig.genes <- Cluster.markers %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::filter(avg_logFC > 0.5 | avg_logFC < -0.5) %>%
+  dplyr::select(gene)
+
+sig.genes <- unique(sig.genes$gene)
+TF.logic <- sig.genes %in% TF.ref.list$Gene_symbol
+
+TF.DEG <- sig.genes[TF.logic]
+
+
+
+
+########################################
+# Plot TFs differentially regulated 
+########################################
+
+
+seurat.combined.small <- subset(seurat.combined, downsample = 300)
+
+average.seurat <- AverageExpression(seurat.combined,
+                                    assay = "RNA",
+                                    slot = "data",
+                                    verbose = TRUE,
+                                    return.seurat = TRUE)
+
+DoHeatmap(average.seurat, 
+          features = TF.DEG, 
+          draw.lines = F)
+
+dev.copy(pdf, "output/figures/Transcription_factors/Heatmap_of_TF_diff_expressed.pdf")
+dev.off()
 
 
 
 ```
-
-
-
-
-
+ 
+ 
+# NOT WRITTEN FOR THIS DATASET
 ### RcisTarget
 ```{r TF_regulation}
 
@@ -4914,125 +4983,25 @@ dev.off()
 ```
  
  
-### Searching for TFs
-```{r TF_analysis}
-
-# Create output dir
-if(!dir.exists("output/figures/Transcription_factors")){
-  dir.create("output/figures/Transcription_factors", 
-             recursive = T)}
-
-
-# Searching for TFs
-TF.ref.list <- read.delim("Data/TFcheckpoint.txt") # http://www.tfcheckpoint.org/index.php/browse
-
-dim(TF.ref.list) # 1020, 11
-colnames(TF.ref.list)
-head(TF.ref.list)
-
-Cluster.markers <- read.csv("output/tables/DEG_Clusters/Cluster_markers_unfiltered.csv", row.names = 1)
-
-
-
-# Up-regulated TFs
-sig.genes <- Cluster.markers %>%
-  dplyr::filter(p_val_adj < 0.05) %>%
-  dplyr::filter(avg_logFC > 0.5 | avg_logFC < -0.5) %>%
-  dplyr::select(gene)
-
-sig.genes <- unique(sig.genes$gene)
-TF.logic <- sig.genes %in% TF.ref.list$Gene_symbol
-
-TF.DEG <- sig.genes[TF.logic]
-
-
-
-
-########################################
-# Plot TFs differentially regulated 
-########################################
-
-
-seurat.combined.small <- subset(seurat.combined, downsample = 300)
-
-average.seurat <- AverageExpression(seurat.combined,
-                                    assay = "RNA",
-                                    slot = "data",
-                                    verbose = TRUE,
-                                    return.seurat = TRUE)
-
-DoHeatmap(average.seurat, 
-          features = TF.DEG, 
-          draw.lines = F)
-
-
-
-
-
-```
  
  
  
  
-## SCENIC TF analysis {.tabset}
-
-### SCENIC transcription factor analysis 
-
-```{r SCENIC_analysis}
-
-# SCENIC analysis performed using python script as this is considerably faster then R based analysis
-
-# Analysis performed as outlined in Sande et al., 2020 Nature Protocols manuscript
-
-# Input into SCENIC analysis is a .loom file 
-
-# Export seurat object as Loom file
-
-# Generate loom file for SCENIC analysis 
-
-#devtools::install_github(repo = "hhoeflin/hdf5r", force = TRUE)
-#devtools::install_github(repo = "mojaveazure/loomR", ref = "develop")
-
-library(loomR)
-
-library(SCENIC)
-library(SCopeLoomR)
-
-pyScenicLoomFile <- file.path("../Additional_Analysis/Velocity_loom/GEX1_20200121_BaldNextSeq_CountsOnly.loom")
-loom <- open_loom(pyScenicLoomFile, mode="r")
+ 
+ 
+ 
+ 
 
 
 
 
-Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
 
-DefaultAssay(seurat.combined) <- "RNA"
+ 
 
-
-as.loom(seurat.combined, 
-        assay = "RNA",
-        filename = "seurat_combined.loom",
-        overwrite = FALSE,
-        verbose = TRUE)
-
-dim(seurat.combined@assays$RNA)
-
-
-lfile <- connect(filename = "seurat_combined.loom", mode = "r+")
-
-lfile[["matrix"]]
-
-lfile$close_all()
-
-
-
-
-```
-
+ 
+ 
 
 ## Trajectory analysis {.tabset}
-
-
 
 
 ## Need to amend root node settings etc 
@@ -5267,11 +5236,11 @@ dev.off()
 
 
 # Rename milestone labels
-#milestone.labels <- c("Naive_memory", "Exhausted", "Activated", "Stem-like")
-#names(milestone.labels) <- c(1, 2, 3, 4)
+milestone.labels <- c("Naive_memory", "Cytotoxic", "Stem-like", "Exhausted")
+names(milestone.labels) <- c(1, 2, 3, 4)
 
-#slingshot <- label_milestones(slingshot, 
-#                                 labelling = milestone.labels)
+slingshot <- label_milestones(slingshot, 
+                                 labelling = milestone.labels)
 
 dynplot::plot_dimred(slingshot, 
                      dimred = UMAP.dims,
@@ -5279,6 +5248,9 @@ dynplot::plot_dimred(slingshot,
                      grouping = group.vect,
                      label_milestones = TRUE,
                      color_cells = "grouping")
+
+dev.copy(pdf, "output/figures/Trajectories/Slingshot/Slingshot_named_milestones.pdf")
+dev.off()
 
 
 # Cacluate trajectory feature importance
@@ -5400,40 +5372,72 @@ rm(trajectory.val)
 ### Monocle trajectory
 ```{r Monocle_analysis}
 
+# Create output directory
+if(!dir.exists("output/figures/Trajectories/monocle")){
+  dir.create("output/figures/Trajectories/monocle",
+             recursive = T)}
+
+# Load library
 library("monocle")
 
-
+# Set assay and idents
 DefaultAssay(seurat.combined) <- "integrated"
 Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
 
 unique(Idents(seurat.combined))
 
+# convert seurat object to a cell data set
+cds <- SeuratWrappers::as.cell_data_set(seurat.combined, 
+                                        group.by = "seurat_clusters")
 
-cds <- SeuratWrappers::as.cell_data_set(seurat.combined, group.by = "seurat_clusters")
+# Cluster cells
+cds <- monocle3::cluster_cells(cds, 
+                               reduction_method = "UMAP")
 
-cds <- monocle3::cluster_cells(cds, reduction_method = "UMAP")
-
+# Plot cell partition
 p1 <- monocle3::plot_cells(cds, show_trajectory_graph = FALSE)
 p2 <- monocle3::plot_cells(cds, color_cells_by = "partition", show_trajectory_graph = FALSE)
 
 p1|p2
 
+# Learn graph
 cds <- monocle3::learn_graph(cds)
 
+# Plot monocle trajectory
+monocle3::plot_cells(cds,
+                     label_groups_by_cluster = FALSE, 
+                     label_leaves = FALSE, 
+                     label_branch_points = FALSE)
 
-monocle3::plot_cells(cds, label_groups_by_cluster = FALSE, label_leaves = FALSE, label_branch_points = FALSE)
+dev.copy(pdf, "output/figures/Trajectories/monocle/Monocle_trajectory.pdf")
+dev.off()
 
 
-monocle3::plot_cells(cds, label_groups_by_cluster = F, label_leaves = T, label_branch_points = T)
+# Plot monocle trajectory with leaves and branch points labelled
+monocle3::plot_cells(cds, 
+                     label_groups_by_cluster = FALSE,
+                     label_leaves = TRUE, 
+                     label_branch_points = TRUE)
+
+dev.copy(pdf, "output/figures/Trajectories/monocle/Monocle_trajectory_branchpoints_labelled.pdf")
+dev.off()
 
 
+
+
+
+
+
+####### WORK in progress ################
 cds <- monocle3::order_cells(cds)
 
 
-monocle3::plot_cells(cds, color_cells_by = "pseudotime", label_cell_groups = FALSE, label_leaves = FALSE, 
-    label_branch_points = FALSE)
+monocle3::plot_cells(cds, 
+                     color_cells_by = "pseudotime", 
+                     label_cell_groups = FALSE,
+                     label_leaves = FALSE, 
+                     label_branch_points = FALSE)
 
-?find_gene_modules
 
 gene_module_df <- monocle3::find_gene_modules(cds, resolution = 1e-2)
 
@@ -5477,9 +5481,38 @@ ciliated_cds_pr_test_res <- monocle3::graph_test(cds, neighbor_graph="principal_
 pr_deg_ids <- row.names(subset(ciliated_cds_pr_test_res, q_value < 0.05))
 
 
+```
+ 
+ 
+ 
+ 
+### Exporting metadata for velocity analysis
+```{r exporting_metadata}
+# export metadata for velocity analysis 
+meta.data <- seurat.combined@meta.data
+
+colnames(meta.data)
+head(meta.data)
+
+# Remove non-necessary columns 
+meta.data <- meta.data %>%
+  dplyr::select(group, condition, seurat_clusters, UMAP_1, UMAP_2, PCA_1, PCA_2, Module, condition_clust, condition_module)
+
+# Create new barcode columns 
+meta.data$uniq_barcode <- rownames(meta.data)
+
+meta.data$barcode <- gsub(".*_", "", rownames(meta.data))
+
+write.table(meta.data, "output/tables/Meta_data.txt", sep = "\t", row.names = F, quote = F)
+
 
 
 ```
+
+ 
+ 
+ 
+ 
  
  
 
