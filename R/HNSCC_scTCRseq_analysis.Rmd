@@ -109,48 +109,13 @@ for(i in 1:length(pkgs)){
 # GITHUB_PAT = "d8207153aef7b295cdf66eb1e1b2a2ed38b0ca18"
 # R_MAX_VSIZE = 30Gb
 
-# celltalker
-#devtools::install_github("arc85/celltalker")
-
-# Scillus 
-#devtools::install_github("xmc811/Scillus", ref = "development")
-
-
-#devtools::install_github("velocyto-team/velocyto.R")
-
-#devtools::install_github("dynverse/dyno")
-
-#devtools::install_github('cole-trapnell-lab/leidenbase')
-#devtools::install_github('cole-trapnell-lab/monocle3')
-
 #devtools::install_github("immunomind/immunarch")
-#devtools::install_github("Coolgenome/iTALK", build_vignettes = TRUE)
-
-#devtools::install_github("xmc811/Scillus", ref = "development")
-
-
-#devtools::install_github('satijalab/seurat-data')
-#devtools::install_github('satijalab/seurat-wrappers')
-#library("SeuratWrappers")
-
 
 #devtools::install_github("ncborcherding/scRepertoire")
 #library(scRepertoire)
 
 #.rs.restartR()
 
-#########################
-# Failed installations
-#########################
-
-# Failed
-#remotes::install_git("https://gitlab.unil.ch/carmona/ProjecTILs.git", ref = "v0.4.1")
-
-# TILPRED install works, but only currently for mouse datasets
-#remotes::install_github("carmonalab/TILPRED")
-
-# If a package is not installing properly, can use this trick to get the package functions available. just download the package repo from github and then use: 
-#devtools::load_all("~/Documents/Work/Sciebo/Scripts/Packages/scRepertoire/")
 
 ####################
 # Colour scheme
@@ -181,10 +146,10 @@ module.cols <- c("#E41A1C", # Naive_Stem
 
 # Set working directory to source file location
 setwd(dirname(getActiveDocumentContext()$path))
-working.dir <- getwd()
 
 # since moving script from local to github - I want to adjust work dir to be main github dir - therefore 
 setwd("..")
+working.dir <- getwd()
 
 # create output directories
 if(!dir.exists("Exported_RDS_files")){dir.create("Exported_RDS_files", recursive = T)}
@@ -553,6 +518,9 @@ setwd(working.dir)
 ### Format data with scRepertoire
 ```{r Format_data_with_scRep}
 
+# Ensure set to working dir
+setwd(working.dir)
+
 #################################
 # Read in and format data
 #################################
@@ -638,831 +606,8 @@ seurat.tcr@meta.data$cloneType <- factor(seurat.tcr@meta.data$cloneType,
                                                     "Single (0 < X <= 1)"))
 
 # remove unneeded objects
-rm(combined.contig, contig.list, S1.contig, S2.contig, S3.contig, S4.contig, meta.data)
+rm(contig.list, S1.contig, S2.contig, S3.contig, S4.contig, meta.data)
 
-```
-
-### Filter dataset 
-```{r Filter_data}
-
-# NICK: 
-# What is the difference between seurat.tcr@meta.data and meta.tcr 
-# former created with combineExpression() and latter with combineMeta() 
-# they look almost identical except the clonetype annotation (single, ... hyperexpanded) is different 
-
-##################################################################################################
-# Created this code chuck to control the filtering parameters for TCR dataset
-# Keeps downstream analysis consistent 
-# also allows easy modification of any of the filtering parameters 
-##################################################################################################
-
-###################
-# Filter dataset
-###################
-
-# Define filtering parameters 
-min.clonesize <- 3
-
-clonosize.per.clust <- FALSE # Should the min.clonesize use total dataset clonesize (FALSE) or cluster-wise clonesize (TRUE)
-
-remove.subsets <- c("gd_T_g9d2", 
-                    "gd_T_non_g9d2", 
-                    "MAIT")
-
-remove.self.ribbons <- FALSE # term used later in circos plot generation
-
-meta.tcr <- seurat.tcr@meta.data
-initial.n <- nrow(meta.tcr)
-init.clone.n <- length(unique(meta.tcr$CTaa))
-
-
-# Remove non-alpha/beta T cells and invariant subsets
-for(i in seq_along(remove.subsets)){
-  logic.vec <- meta.tcr$seurat_clusters == remove.subsets[i]
-  meta.tcr <- meta.tcr[!logic.vec, ]
-}
-
-# Remove small clonotypes (i.e, <= min.clonesize) 
-if(clonosize.per.clust){
-  # Filter min clone size in a per condition specific manner i.e must hit threshold within the condition not the entire dataset
-  clonotypes <- table(meta.tcr$CTaa, meta.tcr$condition)
-  keep.clonotypes <- rownames(clonotypes)[clonotypes[,1] > min.clonesize | clonotypes[,2] > min.clonesize]
-  meta.tcr <- meta.tcr[meta.tcr$CTaa %in% keep.clonotypes, ]
-}else{
-  clonotypes <- table(meta.tcr$CTaa)
-  keep.clonotypes <- names(clonotypes)[clonotypes > min.clonesize]
-  meta.tcr <- meta.tcr[meta.tcr$CTaa %in% keep.clonotypes, ]
-}
-
-filt.n <- nrow(meta.tcr)
-filt.clone.n <- length(unique(meta.tcr$CTaa))
-
-# Print info on filtering
-print(paste0("# of cells in dataset before filtering = ", initial.n, " and # of clonotypes = ", init.clone.n))
-print(paste0("# of cells in dataset after filtering = ", filt.n, " and # of clonotypes = ", filt.clone.n))
-print(paste0("# of cells removed in filtering process = ", initial.n - filt.n))
-
-
-```
-
-
-
-
-## Circos AKA Chord Diagrams {.tabset}
-
-### Set up data for chord diagrams 
-```{r setup_chord}
-
-#Here is a little more inuitive for me, seperate the Stim and US cells, create a matrix that counts the shared clonotype by clusters, correct for overcounting and visuaize both conditions using Chord Diagrams. 
-
-#For the most part the function `getCircles()` does all the processing. 
-
-# Load libraries
-library(circlize)
-library(ggplot2)
-library(ggalluvial)
-library(ggfittext)
-
-# Source functions
-source("R/getCircles.R")
-
-
-### Proportion parameter to get getGircles(), will divide by total size of none-NA clonotypes
-###clonotypesOnly can be used to just count the clonotypes shared between cluster (removes cell numbers from the equation)
-    
-# Subset dataset by condition
-US <- subset(meta.tcr, condition == "US")
-
-Stim <- subset(meta.tcr, condition == "Stim")
-
-  
-# Collect clonotype overlaps and format data for Circos plots
-US <- getCircles(US, 
-                 proportion = TRUE, 
-                 clonotypesOnly = TRUE)
-
-Stim <- getCircles(Stim,
-                   proportion = TRUE, 
-                   clonotypesOnly = TRUE)
-
-Chord.list <- list(US, Stim)
-
-names(Chord.list) <- c("US", "Stim")
-
-
-# Remove ribbons originating and ending in the same cluster
-if(remove.self.ribbons){
-  for(i in seq_along(names(Chord.list))){
-    logic.vec <- Chord.list[[i]][ ,1] == Chord.list[[i]][ ,2]
-    Chord.list[[i]] <- Chord.list[[i]][!logic.vec, ]
-  }
-}
-
-
-# Defining grid colors
-grid.cols <- c(Naive_like_1_CM = "#E41A1C",
-                Cytotoxic = "#666666", 
-                Exhausted_1 = "#D95F02", 
-                Exhausted_2 = "#7570B3", 
-                Naive_like_2_SC = "#A6761D",
-                Naive_like_3 = "#8DA0CB", 
-                Type_I_IFN = "#A6D854", 
-                Stimulated_1= "#984EA3", 
-                Stimulated_exhausted = "#1B9E77", 
-                TRM = "#E7298A",
-                Proliferative = "#E78AC3")
-
-```
-
-## Plotting Chord Diagrams
-```{r chord_plots}
-
-# Create output directory
-dir.create("output_tcr/figures/ChordVisualizations")
-dir <- "output_tcr/figures/ChordVisualizations"
-
-# Load required library & source custom functions
-library(circlize)
-source("R/getCircles.R")
-
-####################
-# Plot US dataset
-####################
-
-pdf(paste0(dir, "/Unstimulated_TCRcircos_filt.pdf"), height=10, width=10)
-
-chordDiagram(Chord.list[["US"]], 
-             grid.col = grid.cols, 
-             self.link = 1, 
-             annotationTrack = "grid", 
-             preAllocateTracks = list(track.height = max(strwidth(unlist(dimnames(Chord.list[["US"]]))))))
-
-
-circos.track(track.index = 1, 
-             panel.fun = function(x, y) {
-    xlim = get.cell.meta.data("xlim")
-    xplot = get.cell.meta.data("xplot")
-    ylim = get.cell.meta.data("ylim")
-    sector.name = get.cell.meta.data("sector.index")
-
-    circos.text(mean(xlim), 
-                ylim[1], 
-                sector.name, 
-                facing = "clockwise",
-        niceFacing = TRUE, 
-        adj = c(0, 0.5)) 
-    }, 
-    bg.border = NA)
-
-dev.off()
-
-####################
-# Plot Stim dataset
-####################
-
-pdf(paste0(dir, "/Stimulated_TCRcircos_filt.pdf"), height=10, width=10)
-
-chordDiagram(Chord.list[["Stim"]], 
-             grid.col = grid.cols, 
-             self.link = 1, 
-             annotationTrack = "grid", 
-             preAllocateTracks = list(track.height = max(strwidth(unlist(dimnames(Chord.list[["Stim"]]))))))
-
-circos.track(track.index = 1, 
-             panel.fun = function(x, y) {
-               xlim = get.cell.meta.data("xlim")
-               xplot = get.cell.meta.data("xplot")
-               ylim = get.cell.meta.data("ylim")
-               sector.name = get.cell.meta.data("sector.index")
-               
-               circos.text(mean(xlim), 
-                           ylim[1], 
-                           sector.name, 
-                           facing = "clockwise",
-                           niceFacing = TRUE, 
-                           adj = c(0, 0.5)) 
-             }, 
-             bg.border = NA)
-
-dev.off()
-
-
-```
-
-## Plotting Integrated Chord Diagram
-```{r integrated_chord}
-
-#2020/09/01 Still needs adjustment for very small groups to get secondary track - as of now, the code will segregate the clusters between #conditions, but errors at the **for(species in unique(combined$from))** loop
-
-
-# Create output directory
-dir.create("output_tcr/figures/ChordVisualizations")
-dir <- "output_tcr/figures/ChordVisualizations"
-
-# Load required library & source custom functions
-library(circlize)
-source("R/getCircles.R")
-
-
-# Set colour scheme 
-color_species  = c(Naive_like_1_CM = "#E41A1C",
-                   Cytotoxic = "#666666", 
-                   Exhausted_1 = "#D95F02", 
-                   Exhausted_2 = "#7570B3", 
-                   Naive_like_2_SC = "#A6761D",
-                   Naive_like_3 = "#8DA0CB", 
-                   Type_I_IFN = "#A6D854", 
-                   Stimulated_1= "#984EA3", 
-                   Stimulated_exhausted = "#1B9E77", 
-                   TRM = "#E7298A",
-                   Proliferative = "#E78AC3")
-
-color_regions  <- c(US = "turquoise", 
-                    Stim = "red")
-
-
-
-
-# Calculate overlap
-output <- getIntegratedCircle(meta.tcr, 
-                              proportion = F, 
-                              clonotypesOnly = TRUE) # clonotypesOnly will ignore cell # and just count the # of clonotypes that overlap
-
-dim(output) # 253
-
-# Remove intra-condition links 
-#output <- output[output$from_group != output$to_group, ]
-dim(output) # 121 This value makes sense 11 clusters * 11 clusters 
-
-# Extract the clonotypes which are unique to a cluster/condition combination
-output <- output[output$from == output$to & output$from_group == output$to_group, ]
-# Note there are very few clonotypes which have no overlap within or across conditions 
-# out of 257 clonotypes only 6 are unique to a specific clonotype and condition within the entire dataset
-colSums(dTest[rowSums(dTest) == 1, ])
-nrow(dTest)
-
-
-# note there is no directionality in the dataset - simply overlap between clusters in conditions 
-df2 <- data.frame(clust_1 = paste(output[[5]], output[[2]], sep = "|"),
-                  clust_2 = paste(output[[4]], output[[1]], sep = "|"),
-                 value = output[[3]], 
-                 stringsAsFactors = FALSE)
-
-
-
-###### to delete
-#combined <- data.frame(condition = c(output[[4]]), 
-#                       from = c(output[[1]]), 
-#                       to = c(output[[2]]), 
-#                       stringsAsFactors = FALSE)
-
-#combined <- combined[order(combined$condition, combined$from, combined$to), ]
-#order.val <- paste(combined$condition, combined$from, sep = "|")
-#grid.col <- structure(color_species[combined$from], names = order.val)
-
-
-
-
-df2 <- df2 %>%
-  dplyr::arrange(clust_1, clust_2)
-
-order.val <- c(df2$clust_2, df2$clust_1)
-x <- gsub(paste0(c("^US\\|", "^Stim\\|"), collapse = "|"), "", order.val)
-grid.col <- structure(color_species[x], names = order.val)
-
-
-length(grid.col)
-
-####Ploting
-#pdf("TwoVariables_test_Circos1.pdf", height=10, width=10)
-
-
-chordDiagram(df2, 
-             self.link = 1, 
-             annotationTrack = c("grid"),
-             grid.col = grid.col,
-             order = order.val,
-             directional = 1,
-             link.overlap = FALSE,
-             preAllocateTracks = list(
-               track.height = 0.04,
-               track.margin = c(0.05, 0)
-             )
-)
-
-
-circos.track(track.index = 1, 
-             panel.fun = function(x, y) {
-    xlim = get.cell.meta.data("xlim")
-    xplot = get.cell.meta.data("xplot")
-    ylim = get.cell.meta.data("ylim")
-    sector.name = get.cell.meta.data("sector.index")
-
-    circos.text(mean(xlim), 
-                ylim[1], 
-                sector.name, 
-                facing = "clockwise",
-        niceFacing = TRUE, 
-        adj = c(0, 0.5)) 
-    }, 
-    bg.border = NA)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-## ORIGINAL BELOW
-
-
-
-
-
-
-
-
-
-
-
-
-chordDiagram(df2, 
-             self.link = 1, 
-             annotationTrack = c("grid"),
-             grid.col = grid.col,
-             order = order.val,
-             directional = -1,
-             link.overlap = TRUE,
-             preAllocateTracks = list(
-               track.height = 0.04,
-               track.margin = c(0.05, 0)
-             )
-)
-
-for(i in seq_along(unique(combined$condition))) {
-  region <- unique(combined$condition)[i]
-  l <- combined$condition == region
-  sn <- paste(combined$condition[l], combined$from[l], sep = "|")
-  sn <- sn[sn != "US|Stimulated_exhausted" & sn != "US|Stimulated_1"] #These get accidentally added
-  highlight.sector(sn, 
-                   track.index = 1, 
-                   col = color_regions[region], 
-                   text = region, 
-                   niceFacing = TRUE)
-}
-
-    
-legend("bottomleft", pch = 15, col = color_regions, 
-    legend = names(color_regions), cex = 0.6)
-legend("bottomright", pch = 15, col = color_species, 
-    legend = names(color_species), cex = 0.6)
-
-circos.clear()
-dev.off()
-```
-
-
-### Count clonotype frequencies and normalise
-```{r Count_and_normalise_clonotype_frequencies}
-
-####################################################################################
-# Need to count clonotype occurrence per condition and then normalise this value 
-####################################################################################
-
-# create temp meta.data df and append cell_ID as column (lost in dplyr workflow)
-meta.data.temp <- seurat.tcr@meta.data
-meta.data.temp$cell_ID <- rownames(seurat.tcr@meta.data)
-
-corner(meta.data.temp, c = ncol(meta.data.temp))
-
-
-# Get total number of cells in each condition
-US.cell.n <- table(meta.data.temp$condition)[1] # 3,184 
-Stim.cell.n <- table(meta.data.temp$condition)[2] # 3,441
-total.cell.n <- US.cell.n + Stim.cell.n # 6,625 
-
-#dim(meta.data.temp) // sanity check of total cell number
-
-
-
-
-####################################################################################
-# Count occurence of clonotypes across entire dataset 
-####################################################################################
-# Also: Normalise n() by # of cells within dataset
-meta.data.temp <- meta.data.temp %>%
-  dplyr::group_by(CTaa) %>%
-  dplyr::mutate(Total_clonotype_n = n()) %>%
-  dplyr::ungroup() %>%
-  dplyr::mutate(Total_clonotype_freq = (Total_clonotype_n/total.cell.n)*100) %>%
-  dplyr::ungroup()
-
-####################################################################################
-# Count occurence of clonotypes across entire condition 
-####################################################################################
-# Also: Normalise n() by # of cells within condition
-meta.data.temp <- meta.data.temp %>%
-  dplyr::group_by(CTaa, condition) %>%
-  dplyr::mutate(Clone_conditionwise_n = n()) %>%
-  dplyr::group_by(condition) %>%
-  dplyr::mutate(Clone_conditionwise_freq = case_when(condition == "US" ~ (Clone_conditionwise_n/US.cell.n)*100, 
-                                                         condition == "Stim" ~ (Clone_conditionwise_n/Stim.cell.n)*100)) %>%
-  dplyr::ungroup()
-
-####################################################################################
-# Count occurence of clonotypes within each cluster per condition 
-####################################################################################
-# Also: Normalise n() by # of cells within condition
-meta.data.temp <- meta.data.temp %>%
-  dplyr::group_by(CTaa, condition, seurat_clusters) %>%
-  dplyr::mutate(Clone_Clust_conditionwise_n = n()) %>%
-  dplyr::group_by(condition) %>%
-  dplyr::mutate(Clone_Clust_conditionwise_freq = case_when(condition == "US" ~ (Clone_Clust_conditionwise_n/US.cell.n)*100, 
-                                                         condition == "Stim" ~ (Clone_Clust_conditionwise_n/Stim.cell.n)*100)) %>%
-  dplyr::ungroup()
-
-
-######################################
-# Add new metadata to seurat object
-######################################
-
-#########
-# Total 
-#########
-
-# Add total clonotype n value
-seurat.tcr <- AddMetaData(object = seurat.tcr, 
-                          col.name = "Total_clonotype_n",
-                          metadata = meta.data.temp$Total_clonotype_n)
-
-# Add total clonotype freq
-seurat.tcr <- AddMetaData(object = seurat.tcr, 
-                          col.name = "Total_clonotype_freq",
-                          metadata = meta.data.temp$Total_clonotype_freq)
-
-##################
-# Condition-wise 
-##################
-
-# Add clone condition-wise n value
-seurat.tcr <- AddMetaData(object = seurat.tcr, 
-                          col.name = "Clone_conditionwise_n",
-                          metadata = meta.data.temp$Clone_conditionwise_n)
-
-# Add Clone condition-wise freq
-seurat.tcr <- AddMetaData(object = seurat.tcr, 
-                          col.name = "Clone_conditionwise_freq",
-                          metadata = meta.data.temp$Clone_conditionwise_freq)
-
-################################
-# Cluster and Condition-wise 
-################################
-
-# Add Clone Clust and condition-wise n value
-seurat.tcr <- AddMetaData(object = seurat.tcr, 
-                          col.name = "Clone_Clust_conditionwise_n",
-                          metadata = meta.data.temp$Clone_Clust_conditionwise_n)
-
-# Add Clone Clust and condition-wise Freq
-seurat.tcr <- AddMetaData(object = seurat.tcr, 
-                          col.name = "Clone_Clust_conditionwise_freq",
-                          metadata = meta.data.temp$Clone_Clust_conditionwise_freq)
-
-
-#############################################
-# Scale variables for downstream plotting
-#############################################
-scale.var <- c(0, 10)
-
-# Scale total clonotype number
-seurat.tcr@meta.data$Total_clonotype_scaled <- scales::rescale(seurat.tcr@meta.data$Total_clonotype_n, 
-                                                               to = scale.var)
-
-
-# Scale clonotype per condition freq
-seurat.tcr@meta.data$Clone_conditionwise_scaled <- scales::rescale(seurat.tcr@meta.data$Clone_conditionwise_freq, 
-                                                                   to = scale.var)
-
-# Scale clonotype per cluster per condition freq
-seurat.tcr@meta.data$Clone_Clust_conditionwise_scaled <- scales::rescale(seurat.tcr@meta.data$Clone_Clust_conditionwise_freq, 
-                                                                         to = scale.var)
-
-
-
-
-rm(meta.data.temp)
-
-
-```
- 
-### Export or read in tcr seurat object
-```{r export_RDS}
-
-if(quick.load){
-  seurat.tcr <- readRDS("Exported_RDS_files/seurat_tcr.rds")
-}else if(!quick.load){
-  saveRDS(seurat.tcr, file = "Exported_RDS_files/seurat_tcr.rds")
-}
-
-```
-
-## TCR analysis - General analysis {.tabset}
-
-### Heatmaps VJ gene usage
-**Note: Just would add the packages for heatmap.2 (gplots) and your color pallete (RColorBrewer)
-
-```{r V_J_usage_heatmaps}
-
-# Move to working dir
-setwd(working.dir)
-
-# Create output directories
-if(!dir.exists("output_tcr/figures/TCRseq/VJ_usage")){
-  dir.create("output_tcr/figures/TCRseq/VJ_usage",
-             recursive = T)}
-
-# set and move to output.dir
-output.dir <- "output_tcr/figures/TCRseq/VJ_usage"
-setwd(output.dir)
-
-
-
-########################
-# Heatmap functions
-########################
-
-hclust.func <- function(x){
-  hclust(x, method = 'ward.D2')
-}
-
-dist.func <- function(x){
-  dist(x,method = 'binary')
-}
-
-col.palette <- colorRampPalette(brewer.pal(8, "RdYlBu"))(600)
-
-######################################################
-# Plot V/J gene usage as a log2() of cell number
-######################################################
-
-# TRA-V gene usage
-
-x <- table(seurat.tcr@meta.data$v_gene_A, seurat.tcr@meta.data$seurat_clusters)
-
-cells.remove <- c("gd_T_non_g9d2", "gd_T_g9d2", "MAIT")
-
-x <- x[ ,-grep(paste0(cells.remove, collapse = "|"), colnames(x))]
-
-
-heatmap.2(as.matrix(log2(x+1)), 
-          scale = "none",
-          trace = "none",
-          Colv = TRUE,
-          cexRow = 0.5, 
-          margins = c(8, 5),
-          cexCol = 0.8, 
-          distfun = dist.func,
-          hclustfun = hclust.func,
-          srtCol = 90,
-          col = rev(col.palette))     
-
-dev.copy(pdf, "Heatmap_TRA_V_usage.pdf")
-dev.off()
-
-# TRA-J gene usage
-
-x <- table(seurat.tcr@meta.data$j_gene_A, seurat.tcr@meta.data$seurat_clusters)
-
-cells.remove <- c("gd_T_non_g9d2", "gd_T_g9d2", "MAIT")
-
-x <- x[ ,-grep(paste0(cells.remove, collapse = "|"), colnames(x))]
-
-
-heatmap.2(as.matrix(log2(x+1)), 
-          scale = "none",
-          trace = "none",
-          Colv = TRUE,
-          cexRow = 0.5, 
-          margins = c(8, 5),
-          cexCol = 0.8, 
-          distfun = dist.func,
-          hclustfun = hclust.func,
-          srtCol = 90,
-          col = rev(col.palette))     
-
-dev.copy(pdf, "Heatmap_TRA_V_usage.pdf")
-dev.off()
-
-
-# TRB-V gene usage
-
-x <- table(seurat.tcr@meta.data$v_gene_B, seurat.tcr@meta.data$seurat_clusters)
-
-cells.remove <- c("gd_T_non_g9d2", "gd_T_g9d2", "MAIT")
-
-x <- x[ ,-grep(paste0(cells.remove, collapse = "|"), colnames(x))]
-
-
-heatmap.2(as.matrix(log2(x+1)), 
-          scale = "none",
-          trace = "none",
-          Colv = TRUE,
-          cexRow = 0.5, 
-          margins = c(8, 5),
-          cexCol = 0.8, 
-          distfun = dist.func,
-          hclustfun = hclust.func,
-          srtCol = 90,
-          col = rev(col.palette))     
-
-dev.copy(pdf, "Heatmap_TRB_V_usage.pdf")
-dev.off()
-
-
-
-# TRB-J gene usage
-
-x <- table(seurat.tcr@meta.data$j_gene_B, seurat.tcr@meta.data$seurat_clusters)
-
-cells.remove <- c("gd_T_non_g9d2", "gd_T_g9d2", "MAIT")
-
-x <- x[ ,-grep(paste0(cells.remove, collapse = "|"), colnames(x))]
-
-
-heatmap.2(as.matrix(log2(x+1)), 
-          scale = "none",
-          trace = "none",
-          Colv = TRUE,
-          cexRow = 0.5, 
-          margins = c(8, 5),
-          cexCol = 0.8, 
-          distfun = dist.func,
-          hclustfun = hclust.func,
-          srtCol = 90,
-          col = rev(col.palette))     
-
-dev.copy(pdf, "Heatmap_TRB_J_usage.pdf")
-dev.off()
-
-
-
-
-# Reset working dir
-setwd(working.dir)
-
-
-
-
-```
-
-### Heatmap of top clonotypes
-**Note: This is a very cool way of looking at overlapping clonotypes and it seems consistent from all iterations that Stimulate_1/Cytotoxic/Type_1_interferon are related and more to the point you mentioned Exhusted_1 vs Stimulated_Exhuasted has a greater overlap than Exhusated_2 vs Stimulated_Exhuasted. However it is interesting that the major clonotype in Exhuasted_2 is seen in Stimulated_exhuasted, Exhuasted_1 and proliferative?**
-```{r Heatmap_top_clonotypes}
-
-# Move to working dir
-setwd(working.dir)
-
-# Create output directories
-if(!dir.exists("output_tcr/figures/TCRseq/Top_clonotypes_heatmaps")){
-  dir.create("output_tcr/figures/TCRseq/Top_clonotypes_heatmaps",
-             recursive = T)}
-
-# set and move to output.dir
-output.dir <- "output_tcr/figures/TCRseq/Top_clonotypes_heatmaps"
-setwd(output.dir)
-
-
-
-########################
-# Heatmap functions
-########################
-
-hclust.func <- function(x){
-  hclust(x, method = 'ward.D2')
-}
-
-dist.func <- function(x){
-  dist(x,method = 'binary')
-}
-
-col.palette <- colorRampPalette(brewer.pal(8, "RdYlBu"))(600)
-
-
-
-
-
-
-
-
-
-
-
-
-# Get data of how many cells in each cluster are assigned to what clonotypes
-clonotype.data <- table(seurat.tcr@meta.data$CTaa, seurat.tcr@meta.data$seurat_clusters)
-
-# remove non-T cell clusters
-cells.remove <- c("gd_T_non_g9d2", "gd_T_g9d2")
-cells.remove.index <- grep(paste0(cells.remove, collapse = "|"), colnames(clonotype.data))
-clonotype.data <- clonotype.data[ ,-cells.remove.index]
-
-# also filter colouring variable to remove non-T cell clusters
-temp.cols <- clust.cols[-cells.remove.index]
-
-
-
-
-
-
-# Plot the top 10 clonotypes
-aa.keep <- sort(rowSums(clonotype.data), decreasing = TRUE)[1:10]
-
-keep.vec <- rownames(clonotype.data) %in% names(aa.keep)
-
-plot.data <- clonotype.data[keep.vec, ]
-
-
-heatmap.2(as.matrix(log2(plot.data+1)), 
-          scale = "none",
-          trace = "none",
-          ColSideColors = temp.cols,
-          Colv = TRUE,
-          cexRow = 0.8, 
-          margins = c(8, 15),
-          cexCol = 0.8, 
-          distfun = dist.func,
-          hclustfun = hclust.func,
-          srtCol = 90,
-          col = rev(col.palette))     
-
-dev.copy(pdf, "Heatmap_top_10_clonotypes.pdf")
-dev.off()
-
-
-
-# Plot the top 50 clonotypes
-aa.keep <- sort(rowSums(clonotype.data), decreasing = TRUE)[1:50]
-
-keep.vec <- rownames(clonotype.data) %in% names(aa.keep)
-
-plot.data <- clonotype.data[keep.vec, ]
-
-
-heatmap.2(as.matrix(log2(plot.data+1)), 
-          scale = "none",
-          trace = "none",
-          ColSideColors = temp.cols,
-          Colv = TRUE,
-          cexRow = 0.5, 
-          labRow = FALSE,
-          margins = c(8, 5),
-          cexCol = 0.8, 
-          distfun = dist.func,
-          hclustfun = hclust.func,
-          srtCol = 90,
-          col = rev(col.palette))     
-
-dev.copy(pdf, "Heatmap_top_50_clonotypes.pdf")
-dev.off()
-
-
-
-# Plot the all clonotypes in > 3 cells
-
-aa.keep <- rowSums(clonotype.data) > 3
-
-keep.vec <- rownames(clonotype.data) %in% names(aa.keep)[aa.keep]
-
-plot.data <- clonotype.data[keep.vec, ]
-
-heatmap.2(as.matrix(log2(plot.data+1)), 
-          scale = "none",
-          trace = "none",
-          ColSideColors = temp.cols,
-          Colv = TRUE,
-          cexRow = 0.5, 
-          labRow = FALSE,
-          margins = c(8, 5),
-          cexCol = 0.8, 
-          distfun = dist.func,
-          hclustfun = hclust.func,
-          srtCol = 90,
-          col = rev(col.palette))     
-
-dev.copy(pdf, "Heatmap_top_all_clonotypes_in_morethan_3_cells.pdf")
-dev.off()
-
-# Reset working dir
-setwd(working.dir)
 ```
 
 ### Analysis with scRepertoire
@@ -1774,6 +919,791 @@ rm(US.seurat.tcr, tcr.clusters.US, Stim.seurat.tcr, tcr.clusters.Stim, tcr.modul
 setwd(working.dir)
 ```
 
+### Filter dataset 
+```{r Filter_data}
+
+# NICK: 
+# What is the difference between seurat.tcr@meta.data and meta.tcr 
+# former created with combineExpression() and latter with combineMeta() 
+# they look almost identical except the clonetype annotation (single, ... hyperexpanded) is different 
+
+##################################################################################################
+# Created this code chuck to control the filtering parameters for TCR dataset
+# Keeps downstream analysis consistent 
+# also allows easy modification of any of the filtering parameters 
+##################################################################################################
+
+###################
+# Filter dataset
+###################
+
+# Define filtering parameters 
+min.clonesize <- 3
+
+clonosize.per.clust <- FALSE # Should the min.clonesize use total dataset clonesize (FALSE) or cluster-wise clonesize (TRUE)
+
+remove.subsets <- c("gd_T_g9d2", 
+                    "gd_T_non_g9d2", 
+                    "MAIT")
+
+remove.self.ribbons <- FALSE # term used later in circos plot generation
+
+meta.tcr <- seurat.tcr@meta.data
+initial.n <- nrow(meta.tcr)
+init.clone.n <- length(unique(meta.tcr$CTaa))
+
+
+# Remove non-alpha/beta T cells and invariant subsets
+for(i in seq_along(remove.subsets)){
+  logic.vec <- meta.tcr$seurat_clusters == remove.subsets[i]
+  meta.tcr <- meta.tcr[!logic.vec, ]
+}
+
+# Remove small clonotypes (i.e, <= min.clonesize) 
+if(clonosize.per.clust){
+  # Filter min clone size in a per condition specific manner i.e must hit threshold within the condition not the entire dataset
+  clonotypes <- table(meta.tcr$CTaa, meta.tcr$condition)
+  keep.clonotypes <- rownames(clonotypes)[clonotypes[,1] > min.clonesize | clonotypes[,2] > min.clonesize]
+  meta.tcr <- meta.tcr[meta.tcr$CTaa %in% keep.clonotypes, ]
+}else{
+  clonotypes <- table(meta.tcr$CTaa)
+  keep.clonotypes <- names(clonotypes)[clonotypes > min.clonesize]
+  meta.tcr <- meta.tcr[meta.tcr$CTaa %in% keep.clonotypes, ]
+}
+
+filt.n <- nrow(meta.tcr)
+filt.clone.n <- length(unique(meta.tcr$CTaa))
+
+# Print info on filtering
+print(paste0("# of cells in dataset before filtering = ", initial.n, " and # of clonotypes = ", init.clone.n))
+print(paste0("# of cells in dataset after filtering = ", filt.n, " and # of clonotypes = ", filt.clone.n))
+print(paste0("# of cells removed in filtering process = ", initial.n - filt.n))
+
+
+```
+
+
+
+
+## Circos AKA Chord Diagrams {.tabset}
+
+### Set up data for chord diagrams 
+```{r setup_chord}
+
+#Here is a little more inuitive for me, seperate the Stim and US cells, create a matrix that counts the shared clonotype by clusters, correct for overcounting and visuaize both conditions using Chord Diagrams. 
+
+#For the most part the function `getCircles()` does all the processing. 
+
+# Load libraries
+library(circlize)
+library(ggplot2)
+library(ggalluvial)
+library(ggfittext)
+
+# Source functions
+source("R/getCircles.R")
+
+
+### Proportion parameter to get getGircles(), will divide by total size of none-NA clonotypes
+###clonotypesOnly can be used to just count the clonotypes shared between cluster (removes cell numbers from the equation)
+    
+# Subset dataset by condition
+US <- subset(meta.tcr, condition == "US")
+
+Stim <- subset(meta.tcr, condition == "Stim")
+
+  
+# Collect clonotype overlaps and format data for Circos plots
+US <- getCircles(US, 
+                 proportion = TRUE, 
+                 clonotypesOnly = TRUE)
+
+Stim <- getCircles(Stim,
+                   proportion = TRUE, 
+                   clonotypesOnly = TRUE)
+
+Chord.list <- list(US, Stim)
+
+names(Chord.list) <- c("US", "Stim")
+
+
+# Remove ribbons originating and ending in the same cluster
+if(remove.self.ribbons){
+  for(i in seq_along(names(Chord.list))){
+    logic.vec <- Chord.list[[i]][ ,1] == Chord.list[[i]][ ,2]
+    Chord.list[[i]] <- Chord.list[[i]][!logic.vec, ]
+  }
+}
+
+
+# Defining grid colors
+grid.cols <- c(Naive_like_1_CM = "#E41A1C",
+                Cytotoxic = "#666666", 
+                Exhausted_1 = "#D95F02", 
+                Exhausted_2 = "#7570B3", 
+                Naive_like_2_SC = "#A6761D",
+                Naive_like_3 = "#8DA0CB", 
+                Type_I_IFN = "#A6D854", 
+                Stimulated_1= "#984EA3", 
+                Stimulated_exhausted = "#1B9E77", 
+                TRM = "#E7298A",
+                Proliferative = "#E78AC3")
+
+```
+
+## Plotting Chord Diagrams
+```{r chord_plots}
+
+# Create output directory
+dir.create("output_tcr/figures/ChordVisualizations")
+dir <- "output_tcr/figures/ChordVisualizations"
+
+# Load required library & source custom functions
+library(circlize)
+source("R/getCircles.R")
+
+####################
+# Plot US dataset
+####################
+
+pdf(paste0(dir, "/Unstimulated_TCRcircos_filt.pdf"), height=10, width=10)
+
+chordDiagram(Chord.list[["US"]], 
+             grid.col = grid.cols, 
+             self.link = 1, 
+             annotationTrack = "grid", 
+             preAllocateTracks = list(track.height = max(strwidth(unlist(dimnames(Chord.list[["US"]]))))))
+
+
+circos.track(track.index = 1, 
+             panel.fun = function(x, y) {
+    xlim = get.cell.meta.data("xlim")
+    xplot = get.cell.meta.data("xplot")
+    ylim = get.cell.meta.data("ylim")
+    sector.name = get.cell.meta.data("sector.index")
+
+    circos.text(mean(xlim), 
+                ylim[1], 
+                sector.name, 
+                facing = "clockwise",
+        niceFacing = TRUE, 
+        adj = c(0, 0.5)) 
+    }, 
+    bg.border = NA)
+
+dev.off()
+
+####################
+# Plot Stim dataset
+####################
+
+pdf(paste0(dir, "/Stimulated_TCRcircos_filt.pdf"), height=10, width=10)
+
+chordDiagram(Chord.list[["Stim"]], 
+             grid.col = grid.cols, 
+             self.link = 1, 
+             annotationTrack = "grid", 
+             preAllocateTracks = list(track.height = max(strwidth(unlist(dimnames(Chord.list[["Stim"]]))))))
+
+circos.track(track.index = 1, 
+             panel.fun = function(x, y) {
+               xlim = get.cell.meta.data("xlim")
+               xplot = get.cell.meta.data("xplot")
+               ylim = get.cell.meta.data("ylim")
+               sector.name = get.cell.meta.data("sector.index")
+               
+               circos.text(mean(xlim), 
+                           ylim[1], 
+                           sector.name, 
+                           facing = "clockwise",
+                           niceFacing = TRUE, 
+                           adj = c(0, 0.5)) 
+             }, 
+             bg.border = NA)
+
+dev.off()
+
+
+```
+
+## Plotting Integrated Chord Diagram
+```{r integrated_chord}
+
+#2020/09/01 Still needs adjustment for very small groups to get secondary track - as of now, the code will segregate the clusters between #conditions, but errors at the **for(species in unique(combined$from))** loop
+
+
+# Create output directory
+dir.create("output_tcr/figures/ChordVisualizations")
+dir <- "output_tcr/figures/ChordVisualizations"
+
+# Load required library & source custom functions
+library(circlize)
+source("R/getCircles.R")
+
+
+# Set colour scheme 
+color_species  = c(Naive_like_1_CM = "#E41A1C",
+                   Cytotoxic = "#666666", 
+                   Exhausted_1 = "#D95F02", 
+                   Exhausted_2 = "#7570B3", 
+                   Naive_like_2_SC = "#A6761D",
+                   Naive_like_3 = "#8DA0CB", 
+                   Type_I_IFN = "#A6D854", 
+                   Stimulated_1= "#984EA3", 
+                   Stimulated_exhausted = "#1B9E77", 
+                   TRM = "#E7298A",
+                   Proliferative = "#E78AC3")
+
+color_regions  <- c(US = "turquoise", 
+                    Stim = "red")
+
+# transparent colour function
+mycolour <- function(color, percent = 50, name = NULL) {
+  #      color = color name
+  #    percent = % transparency
+  #       name = an optional name for the color
+
+## Get RGB values for named color
+rgb.val <- col2rgb(color)
+
+## Make new color using input color as base and alpha set by transparency
+t.col <- rgb(rgb.val[1], rgb.val[2], rgb.val[3],
+             max = 255,
+             alpha = (100 - percent) * 255 / 100,
+             names = name)
+
+## Save the color
+return(t.col)
+}
+
+
+# Calculate overlap
+output <- getIntegratedCircle(meta.tcr, 
+                              proportion = F, 
+                              clonotypesOnly = TRUE) # clonotypesOnly will ignore cell # and just count the # of clonotypes that overlap
+
+dim(output) # 253
+
+######################################
+# Remove intra-condition links 
+######################################
+
+# preserve self links (note: there are only 6 clones unique to condition/cluster)
+output[output$from == output$to & output$from_group == output$to_group, ]
+
+# Self-links
+self.links <- output$from == output$to & output$from_group == output$to_group
+
+# Inter-condition links only
+inter.condition <- output$from_group != output$to_group
+
+# Keep all inter.condition links or self-links
+output <- output[self.links | inter.condition, ]
+dim(output) # 143
+
+
+
+# note there is no directionality in the dataset - simply overlap between clusters in conditions 
+df2 <- data.frame(clust_1 = paste(output[[5]], output[[2]], sep = "|"),
+                  clust_2 = paste(output[[4]], output[[1]], sep = "|"),
+                 value = output[[3]], 
+                 stringsAsFactors = FALSE)
+
+##############################
+# Set plotting params
+##############################
+
+# Ensure plotting params are all cleared
+circos.clear()
+
+# Plotting order
+df2 <- df2 %>%
+  dplyr::arrange(clust_1, clust_2)
+
+order.val <- c(df2$clust_2, df2$clust_1)
+
+# Track colour
+grid.col.1 <- color_species
+names(grid.col.1) <- paste0("US|", names(grid.col.1))
+
+grid.col.2 <- color_species
+names(grid.col.2) <- paste0("Stim|", names(grid.col.2))
+
+grid.col <- c(grid.col.1, grid.col.2)
+
+# Set gap variable
+gap.var <- rep(1, length(unique(names(grid.col))))
+names(gap.var) <- unique(names(grid.col))
+
+logic.vec <- grepl("US\\|Type_I_IFN", names(gap.var))
+gap.var[logic.vec] <- 10
+
+logic.vec <- grepl("Stim\\|Type_I_IFN", names(gap.var))
+gap.var[logic.vec] <- 10
+
+circos.par(gap.after = gap.var)
+
+
+# Ribbon colour
+for(i in seq_along(color_species)){
+  
+  
+link.col <- rep(mycolour("Gray", percent = 80), length(df2$clust_1))
+
+link.col[df2$clust_1 == paste0("US|", names(color_species)[i])] <- color_species[i]
+
+# Set gap
+circos.par(gap.after = gap.var)
+
+
+####Ploting
+pdf(paste0(dir, "/Circos_inter_condition_", names(color_species)[i], ".pdf"), height=10, width=10)
+
+
+chordDiagram(df2, 
+             self.link = 1, 
+             annotationTrack = c("grid"),
+             grid.col = grid.col,
+             col = link.col,
+             order = order.val,
+             directional = 1,
+             link.overlap = FALSE,
+             preAllocateTracks = list(
+               track.height = 0.3,
+               track.margin = c(0.05, 0)
+             )
+)
+
+
+circos.track(track.index = 1, 
+             panel.fun = function(x, y) {
+    xlim = get.cell.meta.data("xlim")
+    xplot = get.cell.meta.data("xplot")
+    ylim = get.cell.meta.data("ylim")
+    sector.name = get.cell.meta.data("sector.index")
+
+    circos.text(mean(xlim), 
+                ylim[1], 
+                sector.name, 
+                facing = "clockwise",
+        niceFacing = TRUE, 
+        adj = c(0, 0.5)) 
+    }, 
+    bg.border = NA)
+
+
+dev.off()
+
+circos.clear()
+
+}
+
+
+
+
+
+
+
+
+
+
+## ORIGINAL BELOW
+
+
+
+
+
+
+
+
+
+
+
+
+# chordDiagram(df2, 
+#              self.link = 1, 
+#              annotationTrack = c("grid"),
+#              grid.col = grid.col,
+#              order = order.val,
+#              directional = -1,
+#              link.overlap = TRUE,
+#              preAllocateTracks = list(
+#                track.height = 0.04,
+#                track.margin = c(0.05, 0)
+#              )
+# )
+# 
+# for(i in seq_along(unique(combined$condition))) {
+#   region <- unique(combined$condition)[i]
+#   l <- combined$condition == region
+#   sn <- paste(combined$condition[l], combined$from[l], sep = "|")
+#   sn <- sn[sn != "US|Stimulated_exhausted" & sn != "US|Stimulated_1"] #These get accidentally added
+#   highlight.sector(sn, 
+#                    track.index = 1, 
+#                    col = color_regions[region], 
+#                    text = region, 
+#                    niceFacing = TRUE)
+# }
+# 
+#     
+# legend("bottomleft", pch = 15, col = color_regions, 
+#     legend = names(color_regions), cex = 0.6)
+# legend("bottomright", pch = 15, col = color_species, 
+#     legend = names(color_species), cex = 0.6)
+# 
+# circos.clear()
+# dev.off()
+```
+
+
+## TCR analysis - General analysis {.tabset}
+
+### Subsetting metadata to designate TRAV/J/C and TRBV/J/C genes
+```{r Format_metadata_TCR}
+
+# Split the CTgene string at "." 
+temp.list <- str_split(seurat.tcr@meta.data$CTgene, "\\.")
+
+# First and second elements of the list are V and J calls
+seurat.tcr@meta.data$TRAV <- sapply(temp.list, "[[", 1)
+seurat.tcr@meta.data$TRAJ <- sapply(temp.list, "[[", 2)
+
+# Third element is the TRAC and TRBV combined - therefore split this by "_"
+temp.list.2 <- sapply(temp.list, "[[", 3)
+temp.list.2 <- str_split(temp.list.2, "_")
+
+# First element is TRAC and second is TRBV gene call
+seurat.tcr@meta.data$TRAC <- sapply(temp.list.2, "[[", 1)
+seurat.tcr@meta.data$TRBV <- sapply(temp.list.2, "[[", 2)
+
+# 4th and 5th elements of original list are TRBJ and TRBC calls respectively
+seurat.tcr@meta.data$TRBJ <- sapply(temp.list, "[[", 4)
+seurat.tcr@meta.data$TRBC <- sapply(temp.list, "[[", 6)
+
+
+```
+
+### Heatmaps VJ gene usage
+**Note: Just would add the packages for heatmap.2 (gplots) and your color pallete (RColorBrewer)
+```{r V_J_usage_heatmaps}
+
+# Move to working dir
+setwd(working.dir)
+
+# Create output directories
+if(!dir.exists("output_tcr/figures/TCRseq/VJ_usage")){
+  dir.create("output_tcr/figures/TCRseq/VJ_usage",
+             recursive = T)}
+
+# set and move to output.dir
+output.dir <- "output_tcr/figures/TCRseq/VJ_usage"
+setwd(output.dir)
+
+
+
+########################
+# Heatmap functions
+########################
+
+hclust.func <- function(x){
+  hclust(x, method = 'ward.D2')
+}
+
+dist.func <- function(x){
+  dist(x,method = 'binary')
+}
+
+col.palette <- colorRampPalette(brewer.pal(8, "RdYlBu"))(600)
+
+######################################################
+# Plot V/J gene usage as a log2() of cell number
+######################################################
+
+# TRA-V gene usage
+
+x <- table(seurat.tcr@meta.data$TRAV, seurat.tcr@meta.data$seurat_clusters)
+
+cells.remove <- c("gd_T_non_g9d2", "gd_T_g9d2", "MAIT")
+
+x <- x[ ,-grep(paste0(cells.remove, collapse = "|"), colnames(x))]
+
+
+heatmap.2(as.matrix(log2(x+1)), 
+          scale = "none",
+          trace = "none",
+          Colv = TRUE,
+          cexRow = 0.5, 
+          margins = c(8, 5),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = rev(col.palette))     
+
+dev.copy(pdf, "Heatmap_TRA_V_usage.pdf")
+dev.off()
+
+# TRA-J gene usage
+
+x <- table(seurat.tcr@meta.data$TRAJ, seurat.tcr@meta.data$seurat_clusters)
+
+cells.remove <- c("gd_T_non_g9d2", "gd_T_g9d2", "MAIT")
+
+x <- x[ ,-grep(paste0(cells.remove, collapse = "|"), colnames(x))]
+
+
+heatmap.2(as.matrix(log2(x+1)), 
+          scale = "none",
+          trace = "none",
+          Colv = TRUE,
+          cexRow = 0.5, 
+          margins = c(8, 5),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = rev(col.palette))     
+
+dev.copy(pdf, "Heatmap_TRA_J_usage.pdf")
+dev.off()
+
+
+# TRB-V gene usage
+
+x <- table(seurat.tcr@meta.data$TRBV, seurat.tcr@meta.data$seurat_clusters)
+
+cells.remove <- c("gd_T_non_g9d2", "gd_T_g9d2", "MAIT")
+
+x <- x[ ,-grep(paste0(cells.remove, collapse = "|"), colnames(x))]
+
+
+heatmap.2(as.matrix(log2(x+1)), 
+          scale = "none",
+          trace = "none",
+          Colv = TRUE,
+          cexRow = 0.5, 
+          margins = c(8, 5),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = rev(col.palette))     
+
+dev.copy(pdf, "Heatmap_TRB_V_usage.pdf")
+dev.off()
+
+
+
+# TRB-J gene usage
+
+x <- table(seurat.tcr@meta.data$TRBJ, seurat.tcr@meta.data$seurat_clusters)
+
+cells.remove <- c("gd_T_non_g9d2", "gd_T_g9d2", "MAIT")
+
+x <- x[ ,-grep(paste0(cells.remove, collapse = "|"), colnames(x))]
+
+
+heatmap.2(as.matrix(log2(x+1)), 
+          scale = "none",
+          trace = "none",
+          Colv = TRUE,
+          cexRow = 0.5, 
+          margins = c(8, 5),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = rev(col.palette))     
+
+dev.copy(pdf, "Heatmap_TRB_J_usage.pdf")
+dev.off()
+
+
+
+
+# Reset working dir
+setwd(working.dir)
+
+
+
+
+```
+
+### Heatmap of top clonotypes
+**Note: This is a very cool way of looking at overlapping clonotypes and it seems consistent from all iterations that Stimulate_1/Cytotoxic/Type_1_interferon are related and more to the point you mentioned Exhusted_1 vs Stimulated_Exhuasted has a greater overlap than Exhusated_2 vs Stimulated_Exhuasted. However it is interesting that the major clonotype in Exhuasted_2 is seen in Stimulated_exhuasted, Exhuasted_1 and proliferative?**
+```{r Heatmap_top_clonotypes}
+
+# Move to working dir
+setwd(working.dir)
+
+# Create output directories
+if(!dir.exists("output_tcr/figures/TCRseq/Top_clonotypes_heatmaps")){
+  dir.create("output_tcr/figures/TCRseq/Top_clonotypes_heatmaps",
+             recursive = T)}
+
+# set and move to output.dir
+output.dir <- "output_tcr/figures/TCRseq/Top_clonotypes_heatmaps"
+setwd(output.dir)
+
+
+
+########################
+# Heatmap functions
+########################
+
+hclust.func <- function(x){
+  hclust(x, method = 'ward.D2')
+}
+
+dist.func <- function(x){
+  dist(x,method = 'binary')
+}
+
+col.palette <- colorRampPalette(brewer.pal(8, "RdYlBu"))(600)
+
+
+
+
+
+# Get data of how many cells in each cluster are assigned to what clonotypes
+clonotype.data <- table(seurat.tcr@meta.data$CTaa, seurat.tcr@meta.data$seurat_clusters)
+
+# remove non-T cell clusters
+cells.remove <- c("gd_T_non_g9d2", "gd_T_g9d2")
+cells.remove.index <- grep(paste0(cells.remove, collapse = "|"), colnames(clonotype.data))
+clonotype.data <- clonotype.data[ ,-cells.remove.index]
+
+# also filter colouring variable to remove non-T cell clusters
+temp.cols <- clust.cols[-cells.remove.index]
+
+
+
+
+
+
+# Plot the top 10 clonotypes
+aa.keep <- sort(rowSums(clonotype.data), decreasing = TRUE)[1:10]
+
+keep.vec <- rownames(clonotype.data) %in% names(aa.keep)
+
+plot.data <- clonotype.data[keep.vec, ]
+
+
+heatmap.2(as.matrix(log2(plot.data+1)), 
+          scale = "none",
+          trace = "none",
+          ColSideColors = temp.cols,
+          Colv = TRUE,
+          cexRow = 0.8, 
+          margins = c(8, 15),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = rev(col.palette))     
+
+dev.copy(pdf, "Heatmap_top_10_clonotypes.pdf")
+dev.off()
+
+
+
+# Plot the top 50 clonotypes
+aa.keep <- sort(rowSums(clonotype.data), decreasing = TRUE)[1:50]
+
+keep.vec <- rownames(clonotype.data) %in% names(aa.keep)
+
+plot.data <- clonotype.data[keep.vec, ]
+
+
+heatmap.2(as.matrix(log2(plot.data+1)), 
+          scale = "none",
+          trace = "none",
+          ColSideColors = temp.cols,
+          Colv = TRUE,
+          cexRow = 0.5, 
+          labRow = FALSE,
+          margins = c(8, 5),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = rev(col.palette))     
+
+dev.copy(pdf, "Heatmap_top_50_clonotypes.pdf")
+dev.off()
+
+
+
+# Plot the all clonotypes in > 3 cells
+
+aa.keep <- rowSums(clonotype.data) > 3
+
+keep.vec <- rownames(clonotype.data) %in% names(aa.keep)[aa.keep]
+
+plot.data <- clonotype.data[keep.vec, ]
+
+heatmap.2(as.matrix(log2(plot.data+1)), 
+          scale = "none",
+          trace = "none",
+          ColSideColors = temp.cols,
+          Colv = TRUE,
+          cexRow = 0.5, 
+          labRow = FALSE,
+          margins = c(8, 5),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = rev(col.palette))     
+
+dev.copy(pdf, "Heatmap_top_all_clonotypes_in_morethan_3_cells.pdf")
+dev.off()
+
+
+
+
+############################################
+# Plot top clonotypes in each cluster 
+############################################
+
+for(i in seq_along(colnames(clonotype.data))){
+temp <- as.data.frame(clonotype.data)
+
+temp <- temp %>%
+  dplyr::filter(Var2 == paste0(colnames(clonotype.data)[i])) %>%
+  dplyr::top_n(10)
+
+clonotypes.to.plot <- temp$Var1
+
+keep.vec <- rownames(clonotype.data) %in% clonotypes.to.plot
+
+plot.data <- clonotype.data[keep.vec, ]
+
+heatmap.2(as.matrix(log2(plot.data+1)), 
+          scale = "none",
+          trace = "none",
+          ColSideColors = temp.cols,
+          Colv = TRUE,
+          cexRow = 0.8, 
+          margins = c(8, 15),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = rev(col.palette))
+
+dev.copy(pdf, paste0("Heatmap_top_10_clonotypes_in_", colnames(clonotype.data)[i], ".pdf"))
+dev.off()
+
+}
+
+
+
+# Reset working dir
+setwd(working.dir)
+```
+
+
 ### Clonotype frequency on UMAP
 **Note: To me this also is interesting that you have 2 distinct clusters in the stimulation - one comprised of expanded clonotypes (presumably from the ehuasted clusters) and one of non-expanded clonotypes**
 ```{r Clonotype_freq}
@@ -1845,6 +1775,140 @@ setwd(working.dir)
 ```
 
 ## TCR analysis - cluster-specific clonotypes {.tabset}
+
+### Count clonotype frequencies and normalise
+```{r Count_and_normalise_clonotype_frequencies}
+
+####################################################################################
+# Need to count clonotype occurrence per condition and then normalise this value 
+####################################################################################
+
+# create temp meta.data df and append cell_ID as column (lost in dplyr workflow)
+meta.data.temp <- seurat.tcr@meta.data
+meta.data.temp$cell_ID <- rownames(seurat.tcr@meta.data)
+
+corner(meta.data.temp, c = ncol(meta.data.temp))
+
+
+# Get total number of cells in each condition
+US.cell.n <- table(meta.data.temp$condition)[1] # 3,184 
+Stim.cell.n <- table(meta.data.temp$condition)[2] # 3,441
+total.cell.n <- US.cell.n + Stim.cell.n # 6,625 
+
+#dim(meta.data.temp) // sanity check of total cell number
+
+
+
+
+####################################################################################
+# Count occurence of clonotypes across entire dataset 
+####################################################################################
+# Also: Normalise n() by # of cells within dataset
+meta.data.temp <- meta.data.temp %>%
+  dplyr::group_by(CTaa) %>%
+  dplyr::mutate(Total_clonotype_n = n()) %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(Total_clonotype_freq = (Total_clonotype_n/total.cell.n)*100) %>%
+  dplyr::ungroup()
+
+####################################################################################
+# Count occurence of clonotypes across entire condition 
+####################################################################################
+# Also: Normalise n() by # of cells within condition
+meta.data.temp <- meta.data.temp %>%
+  dplyr::group_by(CTaa, condition) %>%
+  dplyr::mutate(Clone_conditionwise_n = n()) %>%
+  dplyr::group_by(condition) %>%
+  dplyr::mutate(Clone_conditionwise_freq = case_when(condition == "US" ~ (Clone_conditionwise_n/US.cell.n)*100, 
+                                                         condition == "Stim" ~ (Clone_conditionwise_n/Stim.cell.n)*100)) %>%
+  dplyr::ungroup()
+
+####################################################################################
+# Count occurence of clonotypes within each cluster per condition 
+####################################################################################
+# Also: Normalise n() by # of cells within condition
+meta.data.temp <- meta.data.temp %>%
+  dplyr::group_by(CTaa, condition, seurat_clusters) %>%
+  dplyr::mutate(Clone_Clust_conditionwise_n = n()) %>%
+  dplyr::group_by(condition) %>%
+  dplyr::mutate(Clone_Clust_conditionwise_freq = case_when(condition == "US" ~ (Clone_Clust_conditionwise_n/US.cell.n)*100, 
+                                                         condition == "Stim" ~ (Clone_Clust_conditionwise_n/Stim.cell.n)*100)) %>%
+  dplyr::ungroup()
+
+
+######################################
+# Add new metadata to seurat object
+######################################
+
+#########
+# Total 
+#########
+
+# Add total clonotype n value
+seurat.tcr <- AddMetaData(object = seurat.tcr, 
+                          col.name = "Total_clonotype_n",
+                          metadata = meta.data.temp$Total_clonotype_n)
+
+# Add total clonotype freq
+seurat.tcr <- AddMetaData(object = seurat.tcr, 
+                          col.name = "Total_clonotype_freq",
+                          metadata = meta.data.temp$Total_clonotype_freq)
+
+##################
+# Condition-wise 
+##################
+
+# Add clone condition-wise n value
+seurat.tcr <- AddMetaData(object = seurat.tcr, 
+                          col.name = "Clone_conditionwise_n",
+                          metadata = meta.data.temp$Clone_conditionwise_n)
+
+# Add Clone condition-wise freq
+seurat.tcr <- AddMetaData(object = seurat.tcr, 
+                          col.name = "Clone_conditionwise_freq",
+                          metadata = meta.data.temp$Clone_conditionwise_freq)
+
+################################
+# Cluster and Condition-wise 
+################################
+
+# Add Clone Clust and condition-wise n value
+seurat.tcr <- AddMetaData(object = seurat.tcr, 
+                          col.name = "Clone_Clust_conditionwise_n",
+                          metadata = meta.data.temp$Clone_Clust_conditionwise_n)
+
+# Add Clone Clust and condition-wise Freq
+seurat.tcr <- AddMetaData(object = seurat.tcr, 
+                          col.name = "Clone_Clust_conditionwise_freq",
+                          metadata = meta.data.temp$Clone_Clust_conditionwise_freq)
+
+
+#############################################
+# Scale variables for downstream plotting
+#############################################
+scale.var <- c(0, 10)
+
+# Scale total clonotype number
+seurat.tcr@meta.data$Total_clonotype_scaled <- scales::rescale(seurat.tcr@meta.data$Total_clonotype_n, 
+                                                               to = scale.var)
+
+
+# Scale clonotype per condition freq
+seurat.tcr@meta.data$Clone_conditionwise_scaled <- scales::rescale(seurat.tcr@meta.data$Clone_conditionwise_freq, 
+                                                                   to = scale.var)
+
+# Scale clonotype per cluster per condition freq
+seurat.tcr@meta.data$Clone_Clust_conditionwise_scaled <- scales::rescale(seurat.tcr@meta.data$Clone_Clust_conditionwise_freq, 
+                                                                         to = scale.var)
+
+
+
+
+rm(meta.data.temp)
+
+
+```
+ 
 
 ### Get clonotypes function
 ```{r Get_clonotypes_function}
@@ -2074,7 +2138,7 @@ UMAPPlot(clust.cond.clonotypes.seurat,
          group.by = "seurat_clusters", 
          split.by = "condition",
          cols = clust.cols) + 
-    ggtitle("Clust/Cond Clonotype - by normed condition freq")
+    ggtitle("Clust/Cond Clonotype - by normed condition freq") + NoLegend()
 
 dev.copy(pdf, "Cluster_condition_clonotypes_scaled_by_normalised_conditionwise_freq.pdf")
 dev.off()
@@ -2417,7 +2481,17 @@ dev.off()
  
  
  
- 
+### Export or read in tcr seurat object
+```{r export_RDS}
+
+if(quick.load){
+  seurat.tcr <- readRDS("Exported_RDS_files/seurat_tcr.rds")
+}else if(!quick.load){
+  saveRDS(seurat.tcr, file = "Exported_RDS_files/seurat_tcr.rds")
+}
+
+```
+
  
  
  
