@@ -2365,6 +2365,68 @@ meta.data.vec <- seurat.tcr@meta.data %>%
 seurat.tcr <- AddMetaData(seurat.tcr, meta.data.vec$Clonotype_overlap, "Clonotype_overlap")
 
 
+############################################
+# Plot distribution on UMAP projection
+############################################
+
+# Reduce dataset to a single pt per clonotype per cluster
+uniq.clonotypes <- seurat.tcr@meta.data %>% 
+  dplyr::distinct(seurat_clusters, CTaa) %>%
+  rownames()
+
+clust.clonotypes.seurat <- subset(seurat.tcr, cells = uniq.clonotypes) # 3,773 clonotypes 
+
+x <- clust.clonotypes.seurat@meta.data$Total_clonotype_scaled
+
+UMAPPlot(clust.clonotypes.seurat, 
+         pt.size = x, 
+         split.by = "Clonotype_overlap") + 
+  ggtitle("Venn overlap clonotypes")
+
+dev.copy(pdf, "Distribution_of_clonotypes_shared_or_unique_to_condition.pdf")
+dev.off()
+
+
+
+###########################
+# min.clonesize >= 3
+###########################
+
+condition.min <- 3
+
+# Get vector of clonotypes found in US cells
+US.clonotypes <- seurat.tcr@meta.data %>%
+  dplyr::filter(condition == "US" & Clone_conditionwise_n >= condition.min) %>%
+  dplyr::select(CTaa)
+
+US.clonotypes <- unique(US.clonotypes$CTaa)
+
+length(US.clonotypes) # 183
+
+# Get vector of clonotypes found in US cells
+Stim.clonotypes <- seurat.tcr@meta.data %>%
+  dplyr::filter(condition == "Stim" & Clone_conditionwise_n >= condition.min) %>%
+  dplyr::select(CTaa)
+
+Stim.clonotypes <- unique(Stim.clonotypes$CTaa)
+
+length(Stim.clonotypes) # 211
+
+# Venn overlap
+clonotype.list <- list(US = US.clonotypes, 
+                       Stim = Stim.clonotypes)
+
+clonotype.list <- Venn(clonotype.list)
+
+ggvenn(clonotype.list,
+       fill = rev(Condition.cols),
+       thickness = 0) + 
+  ggtitle("Clones with condition-wise n >= 3") 
+
+dev.copy(pdf, "Venn_overlap_clonesize_greaterthan_equal_3.pdf")
+dev.off()
+
+
 ###########################
 # Abundant clonotypes only
 ###########################
@@ -2477,7 +2539,346 @@ ggvenn(clonotype.list,
 dev.copy(pdf, "Venn_overlap_low_US_high_Stim_abundance_clonotypes.pdf")
 dev.off()
 
+
+# return to working directory
+setwd(working.dir)
+
+
+# Remove large objects no longer required
+rm(clust.clonotypes.seurat)
 ```
+ 
+ # TO DO 
+ # Look at shared and unique clonotypes - distribution 
+ 
+ 
+### Generating bins for clonotype restim ability
+```{r Binning_clonotypes}
+
+# set working dir
+setwd(working.dir)
+
+# Create output directories
+if(!dir.exists("output_tcr/figures/Binning_clonotypes")){
+  dir.create("output_tcr/figures/Binning_clonotypes",
+             recursive = TRUE)}
+
+output.dir <- "output_tcr/figures/Binning_clonotypes"
+setwd(output.dir)
+
+
+# Take only clonotypes that are shared between US and Stim (these are the most dominant clonotypes anyway)
+
+Query.clonotypes <- seurat.tcr@meta.data %>%
+  dplyr::filter(Clonotype_overlap == "Shared" & condition == "Stim") %>%
+  dplyr::select(seurat_clusters, CTaa)
+
+
+
+# Get clonotypes found in 
+Ex.clonotypes <- Query.clonotypes %>%
+  dplyr::filter(seurat_clusters %in% c("Exhausted_1", "Exhausted_2")) %>%
+  dplyr::select(CTaa)
+
+Ex.clonotypes <- unique(Ex.clonotypes$CTaa)
+
+Stim.clonotypes <- Query.clonotypes %>%
+  dplyr::filter(seurat_clusters %in% c("Stimulated_exhausted", "Stimulated_1")) %>%
+  dplyr::select(CTaa)
+
+Stim.clonotypes <- unique(Stim.clonotypes$CTaa)
+
+# Venn clonotypes
+
+clonotype.list <- list(Exhausted = Ex.clonotypes, 
+                       Stimulated = Stim.clonotypes)
+
+clonotype.list <- Venn(clonotype.list)
+
+
+ggvenn(clonotype.list,
+       fill = rev(Condition.cols),
+       thickness = 0) + 
+  ggtitle("temp") 
+
+
+# Extract vectors
+stimulatable.clonotypes <- overlap(clonotype.list)
+Terminally.exhausted <- discern(clonotype.list, "Exhausted")
+other.stimulatable <- discern(clonotype.list, "Stimulated")
+
+
+
+####################
+# Add to metadata
+####################
+
+# Create seurat object of same subset of cells 
+Query.cells <- seurat.tcr@meta.data %>% 
+  dplyr::filter(Clonotype_overlap == "Shared" & condition == "Stim") %>%
+  dplyr::filter(seurat_clusters %in% c("Exhausted_1", "Exhausted_2", "Stimulated_exhausted", "Stimulated_1")) %>%
+  dplyr::distinct(seurat_clusters, CTaa) %>%
+  rownames()
+
+Query.seurat <- subset(seurat.tcr, cells = Query.cells) # 1,257 cells 
+
+
+
+
+
+meta.data.vec <- Query.seurat@meta.data %>%
+  dplyr::mutate(Clonotype_stim_response = case_when(CTaa %in% stimulatable.clonotypes ~ "Stimulatable", 
+                                              CTaa %in% Terminally.exhausted ~ "Exhausted", 
+                                              CTaa %in% other.stimulatable ~ "Other")) %>%
+  dplyr::select(Clonotype_stim_response)
+
+
+Query.seurat <- AddMetaData(Query.seurat, meta.data.vec$Clonotype_stim_response, "Clonotype_stim_response")
+
+
+UMAPPlot(Query.seurat, 
+         pt.size = Query.seurat@meta.data$Total_clonotype_scaled, 
+         split.by = "Clonotype_stim_response") + 
+  ggtitle("Venn overlap clonotypes")
+
+
+
+#
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Reduce dataset to a single pt per clonotype per cluster
+uniq.clonotypes <- seurat.tcr@meta.data %>% 
+  dplyr::distinct(seurat_clusters, CTaa) %>%
+  rownames()
+
+clust.clonotypes.seurat <- subset(seurat.tcr, cells = uniq.clonotypes) # 3,773 clonotypes 
+
+# Plot Shared, and US/Stim unique clonotypes 
+x <- clust.clonotypes.seurat@meta.data$Total_clonotype_scaled
+
+UMAPPlot(clust.clonotypes.seurat, 
+         pt.size = x, 
+         split.by = "Clonotype_overlap") + 
+  ggtitle("Venn overlap clonotypes")
+
+dev.copy(pdf, "Distribution_of_all_clonotypes_shared_or_unique_to_condition.pdf")
+dev.off()
+
+
+
+
+
+# Aim is to group clonotypes by their response after stimulation 
+
+# Use just clonotypes in Stimulated condition 
+# Look at all clonotypes present in exhausted clusters 
+# distinguish those that are present in stim clusters and those that are unique
+# Also, need to consider the frequency across both clusters
+
+
+
+
+
+
+# Load package
+library("RVenn")
+
+
+# Set Idents
+Idents(seurat.tcr) <- seurat.tcr@meta.data$CTaa
+
+clust.clonotypes.seurat <- subset(seurat.tcr, cells = uniq.clonotypes)
+#3773 clonotypes 
+
+
+
+
+
+# Get vector of clonotypes found in Stim cells in Exh or Stim clusters
+
+
+Query.clonotypes <- seurat.tcr@meta.data %>%
+  dplyr::filter(condition == "Stim") %>%
+  dplyr::filter(seurat_clusters %in% c("Exhausted_1", "Exhausted_2", "Stimulated_exhausted", "Stimulated_1")) %>%
+  dplyr::select(CTaa, seurat_clusters)
+
+length(unique(Query.clonotypes$CTaa)) # 852 clonotypes
+
+Query.clonotypes
+
+
+Ex.clonotypes <- Query.clonotypes %>%
+  dplyr::filter(seurat_clusters %in% c("Exhausted_1", "Exhausted_2")) %>%
+  dplyr::select(CTaa)
+
+Ex.clonotypes <- unique(Ex.clonotypes$CTaa)
+
+Stim.clonotypes <- Query.clonotypes %>%
+  dplyr::filter(seurat_clusters %in% c("Stimulated_exhausted", "Stimulated_1")) %>%
+  dplyr::select(CTaa)
+
+Stim.clonotypes <- unique(Stim.clonotypes$CTaa)
+
+# Venn clonotypes
+
+clonotype.list <- list(Exhausted = Ex.clonotypes, 
+                       Stimulated = Stim.clonotypes)
+
+clonotype.list <- Venn(clonotype.list)
+
+
+ggvenn(clonotype.list,
+       fill = rev(Condition.cols),
+       thickness = 0) + 
+  ggtitle("temp") 
+
+#dev.copy(pdf, "Venn_overlap_All_clonotypes.pdf")
+#dev.off()
+
+# Extract vectors
+shared.clonotypes <- overlap(clonotype.list)
+unique.Exhausted <- discern(clonotype.list, "Exhausted")
+unique.Stim <- discern(clonotype.list, "Stimulated")
+
+####################
+# Add to metadata
+####################
+meta.data.vec <- seurat.tcr@meta.data %>%
+  dplyr::mutate(Clonotype_stim_response = case_when(CTaa %in% shared.clonotypes ~ "Stimulatable", 
+                                              CTaa %in% unique.Exhausted ~ "Exhausted", 
+                                              CTaa %in% unique.Stim ~ "Other", 
+                                              TRUE ~ "Extra")) %>%
+  dplyr::select(Clonotype_stim_response)
+
+
+seurat.tcr <- AddMetaData(seurat.tcr, meta.data.vec$Clonotype_stim_response, "Clonotype_stim_response")
+
+
+
+
+unique(seurat.tcr@meta.data$Clonotype_stim_response)
+
+
+
+table(seurat.tcr@meta.data$Clonotype_stim_response, seurat.tcr@meta.data$condition)
+
+
+
+
+
+unique(seurat.tcr@meta.data$Clonotype_overlap)
+
+Shared.clonotypes <- seurat.tcr@meta.data %>%
+  dplyr::filter(Clonotype_overlap == "Shared")
+
+
+temp <- seurat.tcr@meta.data %>%
+  dplyr::filter(condition == "Stim")
+
+outcome <- temp %>%
+  dplyr::filter(seurat_clusters %in% c("Exhausted_1", "Exhausted_2", "Stimulated_exhausted", "Stimulated_1")) 
+  
+exhausted_clonotypes <- outcome %>%
+  dplyr::filter(seurat_clusters == "Exhausted_1" | seurat_clusters == "Exhausted_2") %>%
+  dplyr::select(CTaa)
+
+  Stimulated_clonotypes <- outcome %>%
+  dplyr::filter(seurat_clusters == "Stimulated_exhausted" | seurat_clusters == "Stimulated_1") %>%
+  dplyr::select(CTaa)
+
+  
+  
+ exhausted_clonotypes <- table(exhausted_clonotypes)
+    Stimulated_clonotypes <- table(Stimulated_clonotypes)
+
+    length(exhausted_clonotypes)
+  
+  
+  x <- names(exhausted_clonotypes) %in% names(Stimulated_clonotypes)
+  sum(x)
+   exh.stimable <- names(exhausted_clonotypes)[x]
+    exh.nonstimable <- names(exhausted_clonotypes)[!x]
+   
+  
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    uniq.clonotypes <- seurat.tcr@meta.data %>% 
+  dplyr::distinct(seurat_clusters, CTaa) %>%
+  rownames()
+
+clust.clonotypes.seurat <- subset(seurat.tcr, cells = uniq.clonotypes)
+#3773 clonotypes 
+
+# Set Idents
+Idents(clust.clonotypes.seurat) <- clust.clonotypes.seurat@meta.data$CTaa
+
+temp.seurat <- subset(clust.clonotypes.seurat, idents = exh.stimable)
+temp.seurat <- subset(clust.clonotypes.seurat, idents = exh.nonstimable)
+
+
+
+#243 cells | 60 cells 
+ # 172 cells
+
+Total.clonotype.scale <- temp.seurat@meta.data$Total_clonotype_scaled
+
+
+
+# Cluster Clonotypes
+UMAPPlot(temp.seurat, 
+         pt.size = 1, 
+         group.by = "seurat_clusters", 
+         cols = clust.cols) + 
+  ggtitle("Pts = Cluster clonotypes")
+    
+    
+    UMAPPlot(temp.seurat, 
+          pt.size = Total.clonotype.scale, 
+          group.by = "seurat_clusters", 
+         label = TRUE, 
+         label.size = 4,
+          cols = clust.cols) + 
+       ggtitle("Clonotypes - scaled by total occurrence") +
+   NoLegend()
+    
+    
+  
+  
+  #dplyr::select(CTaa)
+
+
+
+
+```
+ 
+ 
+ 
+ 
+ 
+ 
  
  
  
