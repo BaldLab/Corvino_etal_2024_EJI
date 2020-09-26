@@ -2661,6 +2661,69 @@ UMAPPlot(Query.seurat,
 
 
 
+
+```
+ 
+### Plotting top X clonotypes on UMAP projection
+```{r highlight_top_clonotypes}
+
+# set working dir
+setwd(working.dir)
+
+# Create output directories
+if(!dir.exists("output_tcr/figures/Top_clonotypes")){
+  dir.create("output_tcr/figures/Top_clonotypes",
+             recursive = TRUE)}
+
+output.dir <- "output_tcr/figures/Top_clonotypes"
+setwd(output.dir)
+
+
+# Get list of all shared clonotypes (i.e in both US and Stim conditions)
+Query.clonotypes <- seurat.tcr@meta.data %>%
+  dplyr::filter(Clonotype_overlap == "Shared") 
+
+Query.clonotypes <- sort(table(Query.clonotypes$CTaa), decreasing = TRUE)
+
+sum(Query.clonotypes > 20)
+
+
+# Loop over top X clonotypes 
+Top.clonotypes <- 30
+
+for(i in seq_len(Top.clonotypes)){
+
+seurat.tcr <- highlightClonotypes(seurat.tcr, 
+                              cloneCall= "aa", 
+                              sequence = names(x)[i])
+
+seurat.tcr@meta.data$highlight[is.na(seurat.tcr@meta.data$highlight)] <- "NA"
+
+
+print(DimPlot(seurat.tcr, 
+              pt.size = 2, 
+              split.by = "condition",
+              cols = c("Red", "#BEBEBE33"),
+              group.by = "highlight") + ggtitle(paste0("Top ", i, " ", names(x)[i])) + NoLegend())
+
+dev.copy(pdf, paste0("Top_clone_", i, "_UMAP_distribution.pdf"))
+dev.off()
+
+}
+
+
+# set working dir
+setwd(working.dir)
+
+```
+ 
+ 
+ ### WORK IN PROGRESS
+```{r}
+
+
+
+
 # Reduce dataset to a single pt per clonotype per cluster
 uniq.clonotypes <- seurat.tcr@meta.data %>% 
   dplyr::distinct(seurat_clusters, CTaa) %>%
@@ -2829,11 +2892,7 @@ exhausted_clonotypes <- outcome %>%
   dplyr::distinct(seurat_clusters, CTaa) %>%
   rownames()
 
-clust.clonotypes.seurat <- subset(seurat.tcr, cells = uniq.clonotypes)
-#3773 clonotypes 
 
-# Set Idents
-Idents(clust.clonotypes.seurat) <- clust.clonotypes.seurat@meta.data$CTaa
 
 temp.seurat <- subset(clust.clonotypes.seurat, idents = exh.stimable)
 temp.seurat <- subset(clust.clonotypes.seurat, idents = exh.nonstimable)
@@ -2846,14 +2905,6 @@ temp.seurat <- subset(clust.clonotypes.seurat, idents = exh.nonstimable)
 Total.clonotype.scale <- temp.seurat@meta.data$Total_clonotype_scaled
 
 
-
-# Cluster Clonotypes
-UMAPPlot(temp.seurat, 
-         pt.size = 1, 
-         group.by = "seurat_clusters", 
-         cols = clust.cols) + 
-  ggtitle("Pts = Cluster clonotypes")
-    
     
     UMAPPlot(temp.seurat, 
           pt.size = Total.clonotype.scale, 
