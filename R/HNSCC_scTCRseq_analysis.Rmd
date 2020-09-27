@@ -1908,7 +1908,6 @@ rm(meta.data.temp)
 
 
 ```
- 
 
 ### Get clonotypes function
 ```{r Get_clonotypes_function}
@@ -2611,16 +2610,12 @@ setwd(working.dir)
 setwd(working.dir)
 
 # Create output directories
-if(!dir.exists("output_tcr/figures/Binning_clonotypes")){
-  dir.create("output_tcr/figures/Binning_clonotypes",
+if(!dir.exists("output_tcr/figures/Clonotype_restimability")){
+  dir.create("output_tcr/figures/Clonotype_restimability",
              recursive = TRUE)}
 
-output.dir <- "output_tcr/figures/Binning_clonotypes"
+output.dir <- "output_tcr/figures/Clonotype_restimability"
 setwd(output.dir)
-
-
-
-
 
 
 # Filter dataset for clonesize.min > 3 
@@ -2628,9 +2623,6 @@ clonesize.min <- 3
 clonotypes <- seurat.tcr@meta.data %>%
   dplyr::filter(Total_clonotype_n > clonesize.min) %>%
   dplyr::select(CTaa, seurat_clusters, condition, Clonotype_overlap)
-
-
-
 
 # Get clonotypes found in Exhausted US subsets that are shared with Stim
 Ex.clonotypes <- clonotypes %>%
@@ -2640,7 +2632,6 @@ Ex.clonotypes <- clonotypes %>%
 
 Ex.clonotypes <- unique(Ex.clonotypes$CTaa)
 length(Ex.clonotypes) # 94 clonotypes
-
 
 
 # Within Stimulated condition filter dataset by Ex.clonotypes
@@ -2654,58 +2645,39 @@ length(Query.clonotypes$CTaa)
 length(unique(Query.clonotypes$CTaa)) # 89 clonotypes // diff in number is due to some clonotypes which have a single cell occuring in US Exhausted cluster but not present in stimulated condition exhausted cluster or Sim_exh clusters.
 
 
-temp <- table(Query.clonotypes$CTaa, Query.clonotypes$seurat_clusters)
-# Format table
-logic.vec <- colnames(temp) %in% c("Stimulated_exhausted", "Exhausted_1", "Exhausted_2")
-temp <- temp[ ,logic.vec]
+# To clean up analysis - generated an external function 
+source("R/Clonotype_distribution_function.R")
 
-# Sum values in two exhausted clusters together
-logic.vec <- colnames(temp) %in% c("Exhausted_1", "Exhausted_2")
-temp[,2] <- rowSums(temp[ ,logic.vec])
-colnames(temp)[2] <- "Exhausted"
-temp <- temp[,1:2]
-colnames(temp)
-head(temp)
+clonotype.freq <- Get.distribution(Query.clonotypes, 
+                                        threshold.rowval = 3)
 
-clonotype.counts <- temp
-
-# Get rowSums
-row.values <- rowSums(clonotype.counts)
-
-# remove clonotypes with < clone.min requirement in this subsetted dataset 
-summary(row.values) # median = 5
-dim(clonotype.counts) # 89 clonotypes
-
-keep.clonotypes <- names(row.values)[row.values >= 5]
-
-clonotype.counts <- clonotype.counts[rownames(clonotype.counts) %in% keep.clonotypes, ]
-
-dim(clonotype.counts) # 49 clonotypes remaining 
-
-# Get rowSums vec for new clonotypes
-row.values <- rowSums(clonotype.counts)
-
-# Convert rows to percentages 
-clonotype.freq <- clonotype.counts / row.values
-clonotype.freq <- clonotype.freq*100
-
-
-# Order dataset
-clonotype.freq <- clonotype.freq[order(clonotype.freq[,1], decreasing = T), ]
-
+# Plot clonotype.freq
 temp <- t(clonotype.freq)
 barplot(temp[,], beside = T, las = 2, legend = T)
 
-
-# get top and bottom 10 clonotypes
-stimulatable.clones <- rownames(clonotype.freq)[1:10]
-
-n.val <- nrow(clonotype.freq)
-unstimulatable.clones <- rownames(clonotype.freq)[(n.val-9):n.val]
+dev.copy(pdf, "Barplot_clonotype_freq_distribution.pdf")
+dev.off()
 
 
+# Select clones using freq stimulated
+stimulatable.clones <- rownames(clonotype.freq)[clonotype.freq[,1] >= 50]
+unstimulatable.clones <- rownames(clonotype.freq)[clonotype.freq[,1] <= 40]
 
 
+
+
+
+
+# # Bin clonotypes by there distribution frequency
+# # get top and bottom 10 clonotypes
+# stimulatable.clones <- rownames(clonotype.freq)[1:10]
+# 
+# n.val <- nrow(clonotype.freq)
+# unstimulatable.clones <- rownames(clonotype.freq)[(n.val-9):n.val]
+# 
+
+
+# Reduce seurat object to these clones in US condition only
 clonotypes <- seurat.tcr@meta.data %>%
   dplyr::filter(CTaa %in% c(unstimulatable.clones, stimulatable.clones)) %>%
   dplyr::filter(seurat_clusters %in% c("Exhausted_1", "Exhausted_2")) %>%
@@ -2739,18 +2711,20 @@ seurat.exhausted <- AddMetaData(object = seurat.exhausted,
                                 col.name = "Stim_potential",
                                 metadata = meta.data.temp)
 
-
+# Plot data
 DimPlot(seurat.exhausted, 
               pt.size = 2, 
               group.by = "Stim_potential", 
         split.by = "group")
 
+
+# Perform dif gene expression
 Idents(seurat.exhausted) <- seurat.exhausted@meta.data$Stim_potential
 
 
 Stim.potential.markers <- FindMarkers(seurat.exhausted, 
-                                      ident.1 = "Unstimable", 
-                                      ident.2 = "Stimable")
+                                      ident.1 = "Stimable", 
+                                      ident.2 = "Unstimable")
 
 Stim.potential.markers <- Stim.potential.markers %>%
   dplyr::filter(p_val_adj < 0.05) %>%
@@ -2759,7 +2733,7 @@ Stim.potential.markers <- Stim.potential.markers %>%
 Stim.potential.markers
 
 
-
+# Perform UMAP dim reduction 
 seurat.exhausted <- RunUMAP(object = seurat.exhausted,
                            reduction = "pca",
                            reduction.key = "Subset_UMAP",
@@ -2770,17 +2744,20 @@ seurat.exhausted <- RunUMAP(object = seurat.exhausted,
                            seed.use = 42)
 
 
-
 UMAPPlot(seurat.exhausted, group.by = "group")
 
+# Vis gene expression
 FeaturePlot(seurat.exhausted, 
             "HLA-DRB5")
 
 FeaturePlot(seurat.tcr, 
-            "MTRNR2L8")
+            "MAD2L2")
 
 
 x <- grep("^MTRNR.*", rownames(seurat.tcr), value = T)
+
+x <- rownames(Stim.potential.markers)
+
 
 for(i in seq_along(x)){
   
@@ -2791,11 +2768,17 @@ FeaturePlot(seurat.tcr,
 }
 
 
+library("Nebulosa")
+Nebulosa::plot_density(seurat.tcr, "MAD2L2")
 
 
+
+
+#############################################
+# Append metadata to larger seurat object
+#############################################
 
 # Create metadata for unstimable and stimable clonotypes
-
 meta.data.temp <- seurat.tcr@meta.data$CTaa
 names(meta.data.temp) <- rownames(seurat.tcr@meta.data)
 logic.vec <- meta.data.temp %in% unstimulatable.clones
@@ -2808,8 +2791,6 @@ logic.vec <- meta.data.temp %in% c("Unstimable", "Stimable")
 meta.data.temp[!logic.vec] <- "Other"
 
 unique(meta.data.temp)
-
-
 
 
 seurat.tcr <- AddMetaData(object = seurat.tcr, 
@@ -2827,63 +2808,23 @@ UMAPPlot(seurat.tcr,
 
 
 
+# return to working directory 
+setwd(working.dir)
 
-
-# Visualise Unstimable and Stimable clones
-
-
-seurat.tcr <- highlightClonotypes(seurat.tcr, 
-                              cloneCall= "aa", 
-                              sequence = unstimulatable.clones)
-
-seurat.tcr@meta.data$highlight[!is.na(seurat.tcr@meta.data$highlight)] <- "Unstimable"
-seurat.tcr@meta.data$highlight[is.na(seurat.tcr@meta.data$highlight)] <- "NA"
-
-
-print(DimPlot(seurat.tcr, 
-              pt.size = 2, 
-              split.by = "condition",
-              cols = c("#BEBEBE33", "Red"),
-              group.by = "highlight"))
-
-
-
-
-
-
-
-
-seurat.tcr <- highlightClonotypes(seurat.tcr, 
-                              cloneCall= "aa", 
-                              sequence = stimulatable.clones)
-
-seurat.tcr@meta.data$highlight[!is.na(seurat.tcr@meta.data$highlight)] <- "Selected"
-seurat.tcr@meta.data$highlight[is.na(seurat.tcr@meta.data$highlight)] <- "NA"
-
-
-print(DimPlot(seurat.tcr, 
-              pt.size = 2, 
-              split.by = "condition",
-              cols = c("#BEBEBE33", "Red"),
-              group.by = "highlight"))
-
-
-
-library("Nebulosa")
-
-plot_density(seurat.combined, "GZMA")
-
-
-FeaturePlot(seurat.combined, 
-            features = "CCR7",
-            order = T, 
-         pt.size = 1) + 
-  ggtitle("Venn overlap clonotypes")
-
-
-
-
-
+# # Visualise Unstimable and Stimable clones
+# seurat.tcr <- highlightClonotypes(seurat.tcr, 
+#                               cloneCall= "aa", 
+#                               sequence = unstimulatable.clones)
+# 
+# seurat.tcr@meta.data$highlight[!is.na(seurat.tcr@meta.data$highlight)] <- "Unstimable"
+# seurat.tcr@meta.data$highlight[is.na(seurat.tcr@meta.data$highlight)] <- "NA"
+# 
+# 
+# print(DimPlot(seurat.tcr, 
+#               pt.size = 2, 
+#               split.by = "condition",
+#               cols = c("#BEBEBE33", "Red"),
+#               group.by = "highlight"))
 
 
 ```
@@ -2906,7 +2847,301 @@ if(quick.load){
 ```
 
  
- 
+```{r re_cluster_Exhausted_subsets}
+
+
+keep.cells <- seurat.tcr@meta.data %>%
+dplyr::filter(condition == "US" & seurat_clusters %in% c("Exhausted_1", "Exhausted_2") & Clonotype_overlap == "Shared") %>%
+  rownames_to_column() %>%
+  dplyr::pull(rowname)
+
+
+Exhausted.seurat <- subset(seurat.tcr, cells = keep.cells)
+
+# Save original cluster IDs
+Exhausted.seurat@meta.data$RNA_clusters <- Exhausted.seurat@meta.data$seurat_clusters
+
+
+
+
+
+Idents(Exhausted.seurat) <- Exhausted.seurat@meta.data$Stim_potential
+DefaultAssay(Exhausted.seurat) <- "RNA"
+
+
+# Find variable genes
+Exhausted.seurat <- FindVariableFeatures(Exhausted.seurat, 
+                                         verbose = TRUE)
+
+# Scale data
+Exhausted.seurat <- ScaleData(Exhausted.seurat, 
+                             verbose = TRUE)
+
+# Run PCA
+Exhausted.seurat <- RunPCA(Exhausted.seurat, 
+                          npcs = 30, 
+                          verbose = TRUE)
+
+# Find Neighbors
+Exhausted.seurat <- FindNeighbors(Exhausted.seurat, 
+                                 reduction = "pca", 
+                                 k.param = 20,
+                                 dims = 1:20)
+
+# Find clusters
+Exhausted.seurat <- FindClusters(Exhausted.seurat, 
+                                random.seed = 42,
+                                resolution = 0.4) 
+
+
+ # Run UMAP
+Exhausted.seurat <- RunUMAP(object = Exhausted.seurat,
+                           reduction = "pca",
+                           dims = 1:20,
+                           umap.method = "uwot",
+                           n.neighbors = 30, # 5 to 50
+                           min.dist = 0.3, # Sensible values are in the range 0.001 to 0.5
+                           seed.use = 42)
+
+UMAPPlot(Exhausted.seurat, 
+         group.by = "RNA_clusters")
+
+
+UMAPPlot(Exhausted.seurat, 
+         group.by = "group")
+
+
+UMAPPlot(Exhausted.seurat, 
+         group.by = "seurat_clusters")
+
+
+UMAPPlot(Exhausted.seurat, 
+         group.by = "Stim_potential")
+
+
+
+
+
+
+
+
+
+x <- seurat.tcr@meta.data %>%
+  dplyr::filter(Stim_potential == "Unstimable") %>%
+  pull(CTaa)
+  
+length(unique(x)) # 37 clonotypes nostimable & 114 clonotypes restimable
+nrow(x) # 223 cells non-stimable & 220 cells restimable 
+
+# Originally 10 clonotypes stimable from 252 cells 
+# originally 10 clonotypes unstimable from 156 cells 
+
+
+
+
+
+
+# Get clonotypes found in Exhausted US subsets that are shared with Stim
+Unstim.clonotypes <- Exhausted.seurat@meta.data %>%
+  dplyr::filter(seurat_clusters == 1 | seurat_clusters == 2) %>%
+  pull(CTaa)
+  
+  Unstim.clonotypes <- unique(Unstim.clonotypes)
+  length(Unstim.clonotypes) # 37 clonotypes
+
+Stimable.clonotypes <- Exhausted.seurat@meta.data %>%
+  dplyr::filter(seurat_clusters == 0) %>%
+  pull(CTaa)
+
+  Stimable.clonotypes <- unique(Stimable.clonotypes)
+  length(Stimable.clonotypes) # 114 clonotypes
+
+
+# Within Stimulated condition filter dataset by Unstim.clonotypes
+Query.clonotypes.US <- seurat.tcr@meta.data %>%
+  dplyr::filter(Clonotype_overlap == "Shared" & condition == "Stim") %>%
+  dplyr::filter(seurat_clusters %in% c("Stimulated_exhausted", "Exhausted_1", "Exhausted_2")) %>%
+  dplyr::filter(CTaa %in% Unstim.clonotypes) %>%
+  dplyr::select(seurat_clusters, CTaa)
+
+length(Query.clonotypes.US$CTaa) 
+length(unique(Query.clonotypes.US$CTaa))
+
+
+
+Query.clonotypes.stim <- seurat.tcr@meta.data %>%
+  dplyr::filter(Clonotype_overlap == "Shared" & condition == "Stim") %>%
+  dplyr::filter(seurat_clusters %in% c("Stimulated_exhausted", "Exhausted_1", "Exhausted_2")) %>%
+  dplyr::filter(CTaa %in% Stimable.clonotypes) %>%
+  dplyr::select(seurat_clusters, CTaa)
+
+length(Query.clonotypes.stim$CTaa) 
+length(unique(Query.clonotypes.stim$CTaa))
+
+
+
+# Extract clonotype by cluster info
+temp <- table(Query.clonotypes.stim$CTaa, Query.clonotypes.stim$seurat_clusters)
+
+# Format table
+logic.vec <- colnames(temp) %in% c("Stimulated_exhausted", "Exhausted_1", "Exhausted_2")
+temp <- temp[ ,logic.vec]
+
+# Sum values in two exhausted clusters together
+logic.vec <- colnames(temp) %in% c("Exhausted_1", "Exhausted_2")
+temp[,2] <- rowSums(temp[ ,logic.vec])
+colnames(temp)[2] <- "Exhausted"
+temp <- temp[,1:2]
+colnames(temp)
+head(temp)
+
+# Create variable
+clonotype.counts <- temp
+
+# Get rowSums
+row.values <- rowSums(clonotype.counts)
+
+# remove clonotypes with < clone.min requirement in this subsetted dataset 
+summary(row.values) # median = 5
+dim(clonotype.counts) # 89 clonotypes
+
+keep.clonotypes <- names(row.values)[row.values >= 5]
+
+clonotype.counts <- clonotype.counts[rownames(clonotype.counts) %in% keep.clonotypes, ]
+
+dim(clonotype.counts) # 49 clonotypes remaining 
+
+# Get rowSums vec for new clonotypes
+row.values <- rowSums(clonotype.counts)
+
+# Convert rows to percentages 
+clonotype.freq <- clonotype.counts / row.values
+clonotype.freq <- clonotype.freq*100
+
+# Order dataset
+clonotype.freq <- clonotype.freq[order(clonotype.freq[,1], decreasing = T), ]
+
+
+# Plot clonotype.freq
+temp <- t(clonotype.freq)
+barplot(temp[,], beside = T, las = 2, legend = T)
+
+dev.copy(pdf, "Barplot_clonotype_freq_distribution.pdf")
+dev.off()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Highlight clusters in larger seurat object 
+clust.0.clonotypes <- Exhausted.seurat@meta.data %>%
+  dplyr::filter(seurat_clusters == 1 | seurat_clusters == 2) %>%
+  pull(CTaa)
+  
+  clust.0.clonotypes <- unique(clust.0.clonotypes)
+  
+
+
+Clonotype.ids <- seurat.tcr@meta.data %>%
+  dplyr::filter(CTaa %in% clust.0.clonotypes) %>%
+  rownames_to_column() %>%
+  pull(rowname)
+
+
+
+cell.ids <- rep("Other", nrow(seurat.tcr@meta.data))
+names(cell.ids) <- rownames(seurat.tcr@meta.data)
+
+logic.vec <- names(cell.ids) %in% Clonotype.ids
+
+cell.ids[logic.vec] <- "Cluster_0"
+
+
+seurat.tcr <- AddMetaData(object = seurat.tcr, 
+                                col.name = "Reclustering",
+                                metadata = cell.ids)
+
+
+UMAPPlot(seurat.tcr, 
+         group.by = "Reclustering", 
+         split.by = "condition")
+
+
+
+
+
+
+
+
+```
  
  
  ### TO DO ###########
@@ -2921,599 +3156,6 @@ if(quick.load){
  
  
  ## Work in progress {.tabset}
-
- ### WORK progress#########
-### Dotplot of shared and unique clonotypes
-```{r}
-
-
-# Plot dotplot 
-colnames(seurat.tcr@meta.data)
-
-clonotype.var <- unique(clust.cond.clonotypes.seurat@meta.data$CTaa)
-
-temp <- clust.cond.clonotypes.seurat@meta.data$CTaa
-
-
-
-clonotype.out <- as.data.frame(matrix(ncol = 3, nrow = length(clonotype.var)))
-
-colnames(clonotype.out) <- c("CTaa", "US_n", "Stim_n")
-clonotype.out$CTaa <- clonotype.var
-
-
-
-library(tidyr)
-
-# The arguments to spread():
-# - data: Data object
-# - key: Name of column containing the new column names
-# - value: Name of column containing values
-data_wide <- spread(temp.data, condition, Clone_conditionwise_n)
-data_wide
-
-
-#876, 1703
-
-temp.data[c(876,1703), ]
-
-
-
-
-
-
-
-
-
-which(clust.cond.clonotypes.seurat$CTaa == clonotype.var[i])
-
-
-
-temp.data <- clust.cond.clonotypes.seurat@meta.data %>%
-  dplyr::select(CTaa, condition, Clone_conditionwise_n)
-
-
-
-shared.clonotypes
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-test.df <- as.data.frame(matrix(ncol = 3, nrow = 5))
-colnames(test.df) <- c("CTaa", "US_n", "Stim_n")
-test.df[,1] <- paste0("Clone_", 1:5)
-test.df[,2] <- c(1,0,5,0,10)
-test.df[,3] <- c(7,10,0,8,7)
-
-melt(test.df)
-
-
-ggplot(melt(test.df), aes())
-
-plot(test.df$US_n, test.df$Stim_n)
-
-ggplot(iris, aes(x=Sepal.Length, y=Sepal.Width, color=Species)) + 
-    geom_point(size=6) 
-
-
-x <- melt(temp.data, id.vars = "condition")
-
-
-?melt
-
-
-
-```
-
-### Clonotype tracking UMAP
-```{r Clonotype_Tracking}
-
-# set working dir
-setwd(working.dir)
-
-# Create output directories
-if(!dir.exists("output_tcr/figures/TCRseq/Clonotype_Tracking_UMAPs")){
-  dir.create("output_tcr/figures/TCRseq/Clonotype_Tracking_UMAPs",
-             recursive = T)}
-
-output.dir <- "output_tcr/figures/TCRseq/Clonotype_Tracking_UMAPs"
-setwd(output.dir)
-
-
-
-# Set Idents
-Idents(clust.cond.clonotypes.seurat) <- clust.cond.clonotypes.seurat@meta.data$seurat_clusters
-
-clust.cond.clonotypes.seurat # 4,093 clonotypes in dataset
-
-
-
-
-# Set scale for plotting
-Condition.clonotype.scale <- clust.cond.clonotypes.seurat@meta.data$Clone_Clust_conditionwise_scaled 
-
-
-clonotype.abundance <- sort(table(seurat.tcr@meta.data$CTaa), decreasing = TRUE)
-
-length(clonotype.abundance) # 3,144
-
-# Plot top 10 clonotypes 
-
-clonotype <- names(clonotype.abundance)[1:10]
-
-
-
-for(i in 1:length(clonotype)){
-  
-  
-  # Highlight clonotype
-  clust.cond.clonotypes.seurat <- highlightClonotypes(clust.cond.clonotypes.seurat, 
-                                                    cloneCall= "aa", 
-                                                    sequence = clonotype[i])
-  
-  
-  
-  
-  
-  print(DimPlot(clust.cond.clonotypes.seurat, 
-          group.by = "highlight", 
-          #cols = c("red"),
-          split.by = "condition",
-          pt.size = Condition.clonotype.scale) + 
-    ggtitle(clonotype[i]) +
-    NoLegend())
-
-  dev.copy(pdf, paste0("Top_", i, "_Clonotype_", clonotype[i], ".pdf"))
-  dev.off()
-  
-}
-
-
-
-temp <- clust.cond.clonotypes.seurat
-
-
-
-temp.var <- clust.cond.clonotypes.seurat@meta.data %>% 
-  dplyr::mutate(shape_highlight = case_when(highlight == "Clonotype1" ~ 19, 
-                                          is.na(highlight) ~ 8)) %>%
-  dplyr::select(shape_highlight)
-
-
-temp@meta.data$highlight_shape <- temp.var[,1]
-
-temp@meta.data$highlight_shape <- as.factor(temp@meta.data$highlight_shape)
-
-DimPlot(temp, 
-          group.by = "seurat_clusters", 
-        shape.by = "highlight_shape",
-          #cols = c("red"),
-          split.by = "condition",
-          pt.size = Condition.clonotype.scale)
-
-
-
-
-
-
-clust.cond.clonotypes.seurat@meta.data$seurat_clusters
-
-
-clust.cond.clonotypes.seurat@meta.data %>% 
-  dplyr::filter(highlight == "Clonotype1")
-
-
-
-
-sum(table(seurat.tcr@meta.data$CTaa) >= 5)
-
-
-
-quantile(table(seurat.tcr@meta.data$CTaa), c(0, 0.1, .20, .30, .4, .5, .6, .7, .8, .9, .93, .95))
-
-
-
-
-
-
-
-# set working dir
-setwd(working.dir)
-```
-
-## TCR analysis - Unique and shared clonotypes (US vs. Stim) {.tabset}
-
-### TCR analysis variable set up // convert to eval num of single/double/doubledouble clonotypes in dataset
-```{r TCR_analysis_setup}
-
-# Create output directories
-if(!dir.exists("output_tcr/figures/TCRseq")){
-  dir.create("output_tcr/figures/TCRseq",
-             recursive = T)}
-
-# Set up ident
-Idents(seurat.combined) <- seurat.combined@meta.data$condition_clust
-
-# General stats on dataset
-
-# Note that vars clonotype_id_A and id_B are identical 
-NoClone.N <- sum(is.na(seurat.combined@meta.data$clonotype_id_A))
-print(paste0(NoClone.N, " cells have no clonotype identified")) # 4,918
-
-Cell.N <- nrow(seurat.combined@meta.data)
-print(paste0("This represents ", signif(NoClone.N/Cell.N * 100), " % of the dataset")) # 41.58% of the data has no clonotype info
-
-# therefore number of cells with a combined alpha/beta tcr call is 
-Clone.N <- sum(!is.na(seurat.combined@meta.data$clonotype_id_B))
-print(paste0(Clone.N, " cells have complete clonotype identified")) # 6,909
-
-print(paste0("This represents ", signif(Clone.N/Cell.N * 100), " % of the dataset")) # 58.41% of the data has an alpha/beta pair
-
-
-
-#################################################################################
-# Generate a seurat object for just the cells with a called TCR
-#################################################################################
-Cells.with.TCR <- rownames(seurat.combined@meta.data[!is.na(seurat.combined@meta.data$clonotype_id_A), ])
-seurat.tcr <- subset(seurat.combined, cells = Cells.with.TCR)
-seurat.tcr
-
-# Extract metadata for analysis
-seurat.tcr.metadata <- seurat.tcr@meta.data
-
-# Generate table number of cells for each clonotype - note clonotype_id_A and B are equiv
-All.clonotypes <- sort(table(seurat.tcr.metadata$clonotype_id_A), decreasing = TRUE)
-head(All.clonotypes, 20)
-
-#############################################
-# Filter out low abundance clonotypes
-#############################################
-
-# filt out low clonal clonotypes 
-# i.e those expressed in fewer than 3 cells in entire dataset 
-
-clonal.min <- 3
-
-logic.vec <- All.clonotypes < clonal.min
-low.n <- sum(logic.vec) # 3,519 clones 
-total.n <- length(logic.vec) # 3,918 clones in total 
-
-# Filtering stats
-# freq of clones found in < clonal.min cells is
-print(paste0("Freq of clones that have < ", clonal.min, " cells = ", signif(low.n/total.n*100, 4), "%"))
-print(paste0("Number of clones occur in > than ", clonal.min, " cells = ", sum(!logic.vec)))
-
-# Filter data
-clonotypes.keep <- names(All.clonotypes)[!logic.vec]
-
-Idents(seurat.tcr) <- seurat.tcr@meta.data$clonotype_id_A
-seurat.tcr <- subset(seurat.tcr, idents = clonotypes.keep)
-
-length(levels((Idents(seurat.tcr)))) # should equal number of clonotypes selected for 
-
-# Reset Ident
-Idents(seurat.tcr) <- seurat.tcr@meta.data$condition_clust
-
-
-```
-
-### WORK IN PROGRESS 
-```{r}
-
-
-
-# Vis clonotype size on UMAP
-UMAPPlot(seurat.tcr, 
-         group.by = "cloneType", 
-         pt.size = 1) +
-  scale_color_manual(values = clonetype.col, 
-                     na.value="grey")
-
-
-
-
-
-
-
-
-
-
-
-
-freq.val <- seurat.tcr@meta.data$umis_B
-
-
-UMAPPlot(seurat.tcr, 
-         pt.size = (freq.val/10),
-         group.by = "seurat_clusters", 
-         split.by = "condition")  
-
-
-
-
-
-UMAPPlot(seurat.tcr, 
-         pt.size = (freq.val/5) + 0.5,
-         group.by = "seurat_clusters", 
-         split.by = "cloneType")  
-
-
-?scale
-
-scale_size_manual(values = as.factor(freq.val), limits = 10)
-
-
-
-UMAPPlot(seurat.tcr, 
-         pt.size = freq.val,
-         group.by = "seurat_clusters", 
-         split.by = "condition", 
-         cols = clust.cols)  
-
-
-
-UMAPPlot(seurat.tcr, 
-         pt.size = 1,
-         group.by = "seurat_clusters", 
-         label= T,
-         cols = clust.cols)  
-
-
-UMAPPlot(seurat.tcr, 
-         pt.size = 1,
-         group.by = "Module", 
-         label = T, 
-         cols = module.cols)
-
-
-
-
-
-
-
-
-14-8
-
-temp <- seurat.tcr@meta.data[1:50, ]
-
-
-scale_size(range = freq.val) + 
-  guides(color= guide_legend(), size=guide_legend())
-
-scale_size_continuous()
-
-head(temp)
-
-
-?scale_size_continuous
-
-#S1_clonotype4
-#CAMREGRINYGQNFVF_CSARDEEGGYTF
-
-seurat.tcr@meta.data %>% 
-  dplyr::filter(CTaa == "CAMREGRINYGQNFVF_CSARDEEGGYTF" & condition == "US")-> temp 
-
-
-
-dim(temp)
-
-
-```
-
-### WORK progress
-```{r tcr_analysis_work_in_progress}
-
-
-?FeaturePlot
-
-
-
-
-
-
-
-VlnPlot(seurat.tcr, "Frequency", pt.size = 0.1, group.by = "Module")
-
-
-UMAPPlot(seurat.tcr, 
-         group.by = "cloneType", 
-         split.by = "condition", 
-         pt.size = 1) +
-  scale_color_manual(values = c(rev(colorblind_vector(5))), 
-                     na.value="grey")
-
-
-UMAPPlot(seurat.tcr, 
-         group.by = "condition", 
-         split.by = "cloneType", 
-         pt.size = 1)# +
-scale_color_manual(values = c(rev(colorblind_vector(5))), 
-                   na.value="grey")
-
-
-
-
-t_col <- function(color, percent = 50, name = NULL) {
-  #      color = color name
-  #    percent = % transparency
-  #       name = an optional name for the color
-  
-  ## Get RGB values for named color
-  rgb.val <- col2rgb(color)
-  
-  ## Make new color using input color as base and alpha set by transparency
-  t.col <- rgb(rgb.val[1], rgb.val[2], rgb.val[3],
-               max = 255,
-               alpha = (100 - percent) * 255 / 100,
-               names = name)
-  
-  ## Save the color
-  invisible(t.col)
-}
-
-
-transparent <- t_col("blue", perc = 100, name = "transparent.blue")
-
-
-
-
-
-p1 <- UMAPPlot(seurat.tcr, 
-               label = TRUE,
-               group.by = "seurat_clusters") + NoLegend()
-
-p2 <- UMAPPlot(seurat.tcr, 
-               label = TRUE, 
-               group.by = "Module") + NoLegend()
-
-
-
-p1
-
-
-
-
-seurat.tcr@meta.data
-
-
-
-
-table <- table(seurat.tcr$condition, seurat.tcr$seurat_clusters)
-table[1,] <- table[1,]/sum(table[1,]) # Scaling by the total number of US
-table[2,] <- table[2,]/sum(table[2,]) # Scaling by the total number of Stim
-table <- as.data.frame(table)
-table$Var2 <- factor(table$Var2)
-
-ggplot(table, aes(x=Var2, y=Freq, fill=Var1)) + 
-  geom_bar(stat="identity", position="fill", color="black", lwd=0.25) + 
-  theme(axis.title.x = element_blank()) + 
-  scale_fill_manual(values = c("#FF4B20","#0348A6")) + 
-  theme_classic() + 
-  theme(axis.title = element_blank(), axis.text.x = element_text(angle = 90))
-
-
-
-colorblind_vector <- colorRampPalette(c("#FF4B20", "#FFB433", "#C6FDEC", "#7AC5FF", "#0348A6"))
-
-slot(seurat.tcr, "meta.data")$cloneType <- factor(slot(seurat.tcr, "meta.data")$cloneType, 
-                                                  levels = c("Hyperexpanded (100 < X <= 500)", "Large (20 < X <= 100)", 
-                                                             "Medium (5 < X <= 20)", "Small (1 < X <= 5)", 
-                                                             "Single (0 < X <= 1)", NA))
-
-p3 <- UMAPPlot(seurat.tcr, 
-               group.by = "cloneType", 
-               split.by = "condition", 
-               pt.size = 1) +
-  scale_color_manual(values = c(rev(colorblind_vector(5))), 
-                     na.value="grey")
-
-
-
-cloneType.col <- c(rev(colorblind_vector(5)))
-
-Idents(seurat.tcr) <- seurat.tcr@meta.data$seurat_clusters
-
-temp.seurat <- subset(seurat.tcr, idents = "TRM") 
-
-
-p3 <- UMAPPlot(seurat.tcr, 
-               group.by = "seurat_clusters",
-               split.by = "cloneType",
-               label = FALSE,
-               #cols = cloneType.col,
-               pt.size = 1) + NoLegend()
-
-
-p4 <- UMAPPlot(seurat.tcr, 
-               group.by = "Module",
-               split.by = "cloneType",
-               label = FALSE,
-               #cols = cloneType.col,
-               pt.size = 1) + NoLegend()
-
-
-p5 <- UMAPPlot(seurat.tcr, 
-               group.by = "cloneType",
-               label = FALSE,
-               cols = cloneType.col,
-               pt.size = 1) + NoLegend()
-
-p6 <- UMAPPlot(seurat.tcr, 
-               group.by = "seurat_clusters",
-               split.by = "condition",
-               label = FALSE,
-               #cols = cloneType.col,
-               pt.size = 1) + NoLegend()
-
-
-(p1+p6)/p3
-
-
-
-#+
-#   scale_color_manual(values = c(rev(colorblind_vector(5))), 
-#                     na.value="grey")
-
-
-
-
-p1/p3
-seurat.tcr@meta.data
-
-
-
-Idents(seurat.tcr) <- seurat.tcr@meta.data$seurat_clusters
-
-meta <- data.frame(seurat.tcr[[]], Idents(seurat.tcr)) 
-ggplot(meta, aes(x=Idents.seurat.tcr., y=Frequency)) + 
-  geom_boxplot(outlier.alpha = 0.5, aes(fill=Idents.seurat.tcr.)) + 
-  guides(fill=FALSE) + 
-  theme_classic() + 
-  theme(axis.title.x = element_blank(), axis.text.x = element_text(angle = 90))
-
-
-head(unique(seurat.tcr@meta.data$CTaa[order(seurat.tcr@meta.data$Frequency, decreasing = T)]))
-
-seurat.tcr <- highlightClonotypes(seurat.tcr, cloneCall= "aa", 
-                                  sequence = c("CAMFTGNQFYF_CASREGNSPLHF", "CAVRDLAGNMLTF_CASSLSPGQGHYEQYF", "CVVTSPMDSNYQLIW_CASSSRPTGTGELFF"))
-DimPlot(seurat.tcr, group.by = "highlight", pt.size = 1, split.by = "condition")
-
-
-
-
-
-
-
-alluvialClonotypes(seurat.tcr, cloneCall = "aa", 
-                   y.axes = c("group", "seurat_clusters", "condition"), 
-                   color = c("CAVRDLAGNMLTF_CASSLSPGQGHYEQYF", "CVVTSPMDSNYQLIW_CASSSRPTGTGELFF")) + 
-  scale_fill_manual(values = c("grey", colorblind_vector(1)))
-
-head(unique(seurat.tcr@meta.data$CTaa[order(seurat.tcr@meta.data$Frequency, decreasing = T)]))
-
-
-alluvialClonotypes(seurat.tcr, 
-                   cloneCall = "aa", 
-                   y.axes = c("group", "seurat_clusters", "condition"), 
-                   color = "condition") 
-
-
-
-
-
-
-```
 
 ## Script info {.tabset}
 
