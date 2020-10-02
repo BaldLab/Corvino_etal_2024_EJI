@@ -2646,10 +2646,10 @@ length(unique(Query.clonotypes$CTaa)) # 89 clonotypes // diff in number is due t
 
 
 # To clean up analysis - generated an external function 
-source("R/Clonotype_distribution_function.R")
+source(paste0(working.dir, "/R/Clonotype_distribution_function.R"))
 
 clonotype.freq <- Get.distribution(Query.clonotypes, 
-                                        threshold.rowval = 3)
+                                        threshold.rowval = 1)
 
 # Plot clonotype.freq
 temp <- t(clonotype.freq)
@@ -2745,6 +2745,7 @@ seurat.exhausted <- RunUMAP(object = seurat.exhausted,
 
 
 UMAPPlot(seurat.exhausted, group.by = "group")
+UMAPPlot(seurat.exhausted, group.by = "Stim_potential")
 
 # Vis gene expression
 FeaturePlot(seurat.exhausted, 
@@ -2752,6 +2753,32 @@ FeaturePlot(seurat.exhausted,
 
 FeaturePlot(seurat.tcr, 
             "MAD2L2")
+
+FeaturePlot(seurat.tcr, order = T,
+            "CD38", pt.size = 2)
+
+
+VlnPlot(seurat.exhausted, group.by = "seurat_clusters",
+        "IFNG", assay = "alra")
+
+VlnPlot(seurat.tcr, group.by = "seurat_clusters",
+        "TIM3", assay = "alra", pt.size = 0)
+
+
+
+Idents(seurat.tcr) <- seurat.tcr@meta.data$seurat_clusters
+
+
+Stim.potential.markers <- FindMarkers(seurat.tcr, 
+                                      ident.1 = "Stimulated_exhausted", 
+                                      ident.2 = "Exhausted_1")
+
+
+Stim.potential.markers <- Stim.potential.markers %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::arrange(desc(avg_logFC))
+
+Stim.potential.markers
 
 
 x <- grep("^MTRNR.*", rownames(seurat.tcr), value = T)
@@ -2769,7 +2796,7 @@ FeaturePlot(seurat.tcr,
 
 
 library("Nebulosa")
-Nebulosa::plot_density(seurat.tcr, "MAD2L2")
+Nebulosa::plot_density(seurat.tcr, "CD5")
 
 
 
@@ -2916,7 +2943,7 @@ UMAPPlot(Exhausted.seurat,
 
 
 UMAPPlot(Exhausted.seurat, 
-         group.by = "Stim_potential")
+         group.by = "Stim_potential", pt.size = 2)
 
 
 
@@ -3106,6 +3133,12 @@ clust.0.clonotypes <- Exhausted.seurat@meta.data %>%
   dplyr::filter(seurat_clusters == 1 | seurat_clusters == 2) %>%
   pull(CTaa)
   
+
+clust.0.clonotypes <- Exhausted.seurat@meta.data %>%
+  dplyr::filter(seurat_clusters == 0) %>%
+  pull(CTaa)
+
+
   clust.0.clonotypes <- unique(clust.0.clonotypes)
   
 
