@@ -12,6 +12,9 @@
 output/
 output_tcr/
 
+# python code
+src/
+
 # Example code in package build process
 *-Ex.R
 
