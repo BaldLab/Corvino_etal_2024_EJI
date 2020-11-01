@@ -36,3 +36,15 @@ Data/10X_GEX_data/Sample3_Stim/barcodes.tsv filter=lfs diff=lfs merge=lfs -text
 Data/10X_GEX_data/Sample3_Stim/genes.tsv filter=lfs diff=lfs merge=lfs -text
 Data/10X_GEX_data/Sample4_Stim/matrix.mtx filter=lfs diff=lfs merge=lfs -text
 Data/10X_GEX_data/Sample1_US/barcodes.tsv filter=lfs diff=lfs merge=lfs -text
+Data/GLIPH_ref_files/ref_CD4.fa filter=lfs diff=lfs merge=lfs -text
+Data/GLIPH_ref_files/ref_CD4.txt filter=lfs diff=lfs merge=lfs -text
+Data/GLIPH_ref_files/ref_CD8.fa filter=lfs diff=lfs merge=lfs -text
+Data/GLIPH_ref_files/ref_L_CD4.txt filter=lfs diff=lfs merge=lfs -text
+Data/GLIPH_ref_files/ref_CD48.fa filter=lfs diff=lfs merge=lfs -text
+Data/GLIPH_ref_files/ref_V_CD48.txt filter=lfs diff=lfs merge=lfs -text
+Data/GLIPH_ref_files/ref_CD48.txt filter=lfs diff=lfs merge=lfs -text
+Data/GLIPH_ref_files/ref_CD8.txt filter=lfs diff=lfs merge=lfs -text
+Data/GLIPH_ref_files/ref_L_CD48.txt filter=lfs diff=lfs merge=lfs -text
+Data/GLIPH_ref_files/ref_V_CD4.txt filter=lfs diff=lfs merge=lfs -text
+Data/GLIPH_ref_files/ref_L_CD8.txt filter=lfs diff=lfs merge=lfs -text
+Data/GLIPH_ref_files/ref_V_CD8.txt filter=lfs diff=lfs merge=lfs -text
