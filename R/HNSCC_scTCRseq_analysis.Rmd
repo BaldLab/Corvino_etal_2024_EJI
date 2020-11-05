@@ -179,6 +179,10 @@ if(!dir.exists("output_tcr/QC")){dir.create("output_tcr/QC", recursive = T)}
 if(quick.load){
   seurat.combined <- readRDS("Exported_RDS_files/seurat_combined.rds")
   DefaultAssay(seurat.combined) <- "integrated"
+  
+  seurat.tcr <- readRDS("Exported_RDS_files/seurat_tcr.rds")
+  DefaultAssay(seurat.tcr) <- "integrated"
+  
 }
 
 
@@ -582,10 +586,10 @@ setwd(working.dir)
 library("scRepertoire")
 
 # read in contig files
-S1.contig <- read.csv("Data/VDJ_data/Sample1_filtered_contig_annotations.csv", stringsAsFactors = FALSE)
-S2.contig <- read.csv("Data/VDJ_data/Sample2_filtered_contig_annotations.csv", stringsAsFactors = FALSE)
-S3.contig <- read.csv("Data/VDJ_data/Sample3_filtered_contig_annotations.csv", stringsAsFactors = FALSE)
-S4.contig <- read.csv("Data/VDJ_data/Sample4_filtered_contig_annotations.csv", stringsAsFactors = FALSE)
+S1.contig <- read.csv("Data/TCR_data/Sample1_filtered_contig_annotations.csv", stringsAsFactors = FALSE)
+S2.contig <- read.csv("Data/TCR_data/Sample2_filtered_contig_annotations.csv", stringsAsFactors = FALSE)
+S3.contig <- read.csv("Data/TCR_data/Sample3_filtered_contig_annotations.csv", stringsAsFactors = FALSE)
+S4.contig <- read.csv("Data/TCR_data/Sample4_filtered_contig_annotations.csv", stringsAsFactors = FALSE)
 
 # create list of contigs
 contig.list <- list(S1.contig, S2.contig,
@@ -2577,7 +2581,7 @@ colnames(seurat.tcr@meta.data)
 
 # select useful data from seurat object
 GLIPH.df <- seurat.tcr@meta.data %>%
-  dplyr::select(CTaa, TRBV, TRBJ, group, condition, Clone_conditionwise_n) 
+  dplyr::select(CTaa, TRBV, TRBJ, condition, Clone_conditionwise_n) 
 
 # Split CTaa into TRA and TRB chains
 GLIPH.df$CDR3a <- gsub("_.*", "", GLIPH.df$CTaa)
@@ -2586,7 +2590,7 @@ GLIPH.df$CDR3b <- gsub(".*_", "", GLIPH.df$CTaa)
 colnames(GLIPH.df)
 
 # Format dataframe 
-GLIPH.df$Subject <- paste0(GLIPH.df$group, ":", GLIPH.df$condition)
+GLIPH.df$Subject <- GLIPH.df$condition
 head(GLIPH.df)
 
 GLIPH.df <- GLIPH.df %>%
@@ -2607,64 +2611,16 @@ rm(GLIPH.df)
 # ./irtools.osx -c GLIPH_param_file.cfg 
 
 
-
-
-
-
-
-
-# select useful data from seurat object
-GLIPH.df <- seurat.tcr@meta.data %>%
-  dplyr::select(CTaa, TRBV, TRBJ, condition, Clone_conditionwise_n) 
-
-# Split CTaa into TRA and TRB chains
-GLIPH.df$CDR3a <- gsub("_.*", "", GLIPH.df$CTaa)
-GLIPH.df$CDR3b <- gsub(".*_", "", GLIPH.df$CTaa)
-
-colnames(GLIPH.df)
-
-# Format dataframe 
-GLIPH.df$Subject <- paste0(GLIPH.df$condition)
-head(GLIPH.df)
-
-GLIPH.df <- GLIPH.df %>%
-  dplyr::select(CDR3b, TRBV, TRBJ, CDR3a, Subject, Clone_conditionwise_n) 
-
-
-colnames(GLIPH.df) <- c("CDR3b", "TRBV", "TRBJ", "CDR3a", "Subject:condition", "count")
-
-head(GLIPH.df)
-
-# Write dataframe to file
-write.table(GLIPH.df, "output_tcr/tables/GLIPH_input.txt", row.names = FALSE, quote = FALSE, sep = "\t", col.names = FALSE)
-
-
-rm(GLIPH.df)
-
-
-
-
-
-
-
-
 ```
 
 ### read and format data
 ```{r GLIPH_formatting}
 
-
-
-list.files("output_tcr/GLIPH_analysis/", pattern = ".csv")
-list.files("output_tcr/GLIPH_analysis/", pattern = ".txt")
-
-
 # read in data
-GLIPH.data <- read.csv("output_tcr/GLIPH_analysis/Sample_condition_cluster.csv")
-
-
-
 GLIPH.data <- read.csv("output_tcr/GLIPH_analysis/Condition_wise/Condition_cluster.csv")
+
+motif.table <- read.delim("output_tcr/GLIPH_analysis/Condition_wise/Condition_kmer.txt")
+head(motif.table)
 
 str(GLIPH.data)
 
@@ -2680,16 +2636,30 @@ head(GLIPH.data)
 # filter GLIPH output for useful information
 #######################################################
 
-
 # to allow comparison with seurat object. must combine CDR3A and CDR3B chain to create CTaa call 
 GLIPH.data$CTaa <- paste0(GLIPH.data$TcRa, "_", GLIPH.data$TcRb)
 
 
 # Firstly remove single and global
 
-motif.data <- 
+GLIPH.data.local <- 
   GLIPH.data %>% 
   dplyr::filter(pattern != "single" & pattern != "" & type != "global")
+
+
+
+# now have a table of local motif calls 
+
+motif.table
+GLIPH.data.local
+
+
+
+
+
+
+
+
 
 
 motif.data %>%
@@ -2785,7 +2755,191 @@ summary(x$Fisher_score)
 ```
 
 
+## VDJdb annotation analysis {.tabset}
 
+### VDJdb annotation setup
+```{r VDJdb_annotation}
+
+##############################
+# Use immunarch for processing 
+##############################
+
+#install.packages("immunarch")
+library("immunarch")
+
+
+
+# Prepare TCR data
+colnames(seurat.tcr@meta.data)
+
+# select useful data from seurat object
+TCR.df <- seurat.tcr@meta.data %>%
+  dplyr::select(CTaa, TRBV, TRBJ, seurat_clusters, condition, Clone_conditionwise_n) 
+
+# Split CTaa into TRA and TRB chains
+TCR.df$CDR3a <- gsub("_.*", "", TCR.df$CTaa)
+TCR.df$CDR3b <- gsub(".*_", "", TCR.df$CTaa)
+
+# Get vectors of unique clonotypes 
+CTaa.unique <- unique(TCR.df$CTaa)
+CDR3a.unique <- unique(TCR.df$CDR3a)
+CDR3b.unique <- unique(TCR.df$CDR3b)
+
+
+########################
+# Read in VDJ database 
+########################
+
+vdjdb <- dbLoad("Data/VDJ_database/vdjdb.slim.txt", "vdjdb")
+
+# Filter database
+colnames(vdjdb)
+
+vdjdb <- vdjdb %>% 
+  filter(species == "HomoSapiens")
+
+# TCR A chain only
+vdjdb.TCRA <- vdjdb %>% 
+  filter(gene == "TRA")
+
+# TCR B chain only
+vdjdb.TCRB <- vdjdb %>% 
+  filter(gene == "TRB")
+
+########################################################
+# Identify which clones are found in the vdj database
+########################################################
+
+# TCRA chain
+logic.vec <- CDR3a.unique %in% vdjdb.TCRA$cdr3
+x <- CDR3a.unique[logic.vec]
+
+# TCRB chain
+logic.vec <- CDR3b.unique %in% vdjdb.TCRB$cdr3
+x <- CDR3b.unique[logic.vec]
+
+# Temp just use the TCRB chain for now
+# TO DO: 
+# Amend analysis to use both Alpha and beta chain matching
+
+
+
+vdj.overlap <- vdjdb.TCRB %>% 
+  filter(cdr3 %in% x)
+
+# Restrict output based on having a score >1
+#vdj.overlap <- vdj.overlap %>% 
+#  filter(vdjdb.score > 1)
+
+# Score info:
+# 0 = Low confidence/no information - a critical aspect of sequencing/specificity validation is missing
+# 1	= Moderate confidence - no verification / poor TCR sequence confidence
+# 2	= High confidence - has some specificity verification, good TCR sequence confidence
+# 3	= Very high confidence - has extensive verification or structural data
+
+colnames(vdj.overlap)
+
+# Reduce dataset to keep only a single entry for each antigen.species i.e reduce data to level of antigen.species
+vdj.overlap <- vdj.overlap %>% 
+  dplyr::distinct(cdr3, antigen.species)
+
+
+unique(vdj.overlap$antigen.species)
+
+
+EBV.CDR3b <- vdj.overlap %>% 
+  filter(antigen.species == "HIV-1") %>%
+  pull(cdr3)
+
+
+output.temp <- TCR.df %>% 
+  filter(CDR3b %in% EBV.CDR3b)
+
+
+
+
+
+
+x <- unique(output.temp$CTaa)
+
+
+seurat.tcr <- highlightClonotypes(seurat.tcr, 
+                                    cloneCall= "aa", 
+                                    sequence = x)
+  
+
+  seurat.tcr@meta.data$highlight[is.na(seurat.tcr@meta.data$highlight)] <- "NA"
+    
+  
+  seurat.tcr@meta.data$highlight[seurat.tcr@meta.data$highlight != "NA"] <- "EBV"
+
+    seurat.tcr@meta.data$highlight <- factor(seurat.tcr@meta.data$highlight, levels = c(paste0("EBV"), "NA"))
+    
+    
+    levels(seurat.tcr@meta.data$highlight)
+  
+    
+    
+    
+    
+    DimPlot(seurat.tcr, 
+        pt.size = 2, 
+        split.by = "condition",
+        cols = c("Red", "#BEBEBE33"),
+        group.by = "highlight")
+
+
+    
+    
+    
+    
+    
+    
+    
+    
+  print(DimPlot(seurat.tcr, 
+                pt.size = 2, 
+                split.by = "condition",
+                cols = c("Red", "#BEBEBE33"),
+                group.by = "highlight") + ggtitle(paste0(motif.vec[i])) #+ 
+         # NoLegend()
+        )
+
+
+
+
+
+
+
+
+
+
+
+
+duplicated(vdj.overlap$cdr3)
+
+
+
+
+res <- dbAnnotate(immdata$data, vdjdb, "CDR3.aa", "cdr3")
+
+?dbAnnotate
+
+data("immdata")
+
+immdata$data
+
+
+
+
+
+
+colnames(TCR.df)
+head(TCR.df)
+
+
+
+```
 
 
 
