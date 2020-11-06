@@ -2782,8 +2782,8 @@ TCR.df$CDR3b <- gsub(".*_", "", TCR.df$CTaa)
 
 # Get vectors of unique clonotypes 
 CTaa.unique <- unique(TCR.df$CTaa)
-CDR3a.unique <- unique(TCR.df$CDR3a)
-CDR3b.unique <- unique(TCR.df$CDR3b)
+#CDR3a.unique <- unique(TCR.df$CDR3a)
+#CDR3b.unique <- unique(TCR.df$CDR3b)
 
 
 ########################
@@ -2792,44 +2792,15 @@ CDR3b.unique <- unique(TCR.df$CDR3b)
 
 vdjdb <- dbLoad("Data/VDJ_database/vdjdb.slim.txt", "vdjdb")
 
+####################
 # Filter database
+####################
+
 colnames(vdjdb)
 
+# HomoSapiens 
 vdjdb <- vdjdb %>% 
   filter(species == "HomoSapiens")
-
-# TCR A chain only
-vdjdb.TCRA <- vdjdb %>% 
-  filter(gene == "TRA")
-
-# TCR B chain only
-vdjdb.TCRB <- vdjdb %>% 
-  filter(gene == "TRB")
-
-########################################################
-# Identify which clones are found in the vdj database
-########################################################
-
-# TCRA chain
-logic.vec <- CDR3a.unique %in% vdjdb.TCRA$cdr3
-x <- CDR3a.unique[logic.vec]
-
-# TCRB chain
-logic.vec <- CDR3b.unique %in% vdjdb.TCRB$cdr3
-x <- CDR3b.unique[logic.vec]
-
-# Temp just use the TCRB chain for now
-# TO DO: 
-# Amend analysis to use both Alpha and beta chain matching
-
-
-
-vdj.overlap <- vdjdb.TCRB %>% 
-  filter(cdr3 %in% x)
-
-# Restrict output based on having a score >1
-#vdj.overlap <- vdj.overlap %>% 
-#  filter(vdjdb.score > 1)
 
 # Score info:
 # 0 = Low confidence/no information - a critical aspect of sequencing/specificity validation is missing
@@ -2837,73 +2808,151 @@ vdj.overlap <- vdjdb.TCRB %>%
 # 2	= High confidence - has some specificity verification, good TCR sequence confidence
 # 3	= Very high confidence - has extensive verification or structural data
 
-colnames(vdj.overlap)
+# Score above 0
+#vdjdb <- vdjdb %>% 
+#  filter(vdjdb.score > 0)
 
-# Reduce dataset to keep only a single entry for each antigen.species i.e reduce data to level of antigen.species
-vdj.overlap <- vdj.overlap %>% 
-  dplyr::distinct(cdr3, antigen.species)
+# Reduce dataset to antigen.species level
+vdjdb <- vdjdb %>% 
+  dplyr::distinct(cdr3, antigen.species, gene)
 
+# match only if an Alpha and paired beta are annotated to the same antigen 
+vdjdb.alpha <- vdjdb %>% 
+  filter(gene == "TRA")
 
-unique(vdj.overlap$antigen.species)
-
-
-EBV.CDR3b <- vdj.overlap %>% 
-  filter(antigen.species == "HIV-1") %>%
-  pull(cdr3)
-
-
-output.temp <- TCR.df %>% 
-  filter(CDR3b %in% EBV.CDR3b)
+vdjdb.beta <- vdjdb %>% 
+  filter(gene == "TRB")
 
 
+CDR3.alpha <-  gsub("_.*", "", CTaa.unique)
+CDR3.beta <-  gsub(".*_", "", CTaa.unique)
+length(CDR3.alpha) == length(CDR3.beta)
+
+
+logic.alpha <- CDR3.alpha %in% vdjdb.alpha$cdr3
+logic.beta <- CDR3.beta %in% vdjdb.beta$cdr3
 
 
 
 
-x <- unique(output.temp$CTaa)
+alpha.overlap <- CDR3.alpha[logic.alpha & logic.beta]
+beta.overlap <- CDR3.beta[logic.alpha & logic.beta]
+
+length(alpha.overlap) == length(beta.overlap)
 
 
-seurat.tcr <- highlightClonotypes(seurat.tcr, 
+
+vdj.overlap.alpha <- vdjdb.alpha %>% 
+  filter(cdr3 %in% alpha.overlap)
+
+vdj.overlap.beta <- vdjdb.beta %>% 
+  filter(cdr3 %in% beta.overlap)
+
+
+for(i in seq_along(alpha.overlap)){
+  
+  temp <- vdj.overlap.alpha %>% 
+  filter(cdr3 %in% alpha.overlap[i])
+  
+  
+  #print(temp)
+  
+  
+  temp2 <- vdj.overlap.beta %>% 
+  filter(cdr3 %in% beta.overlap[i])
+  
+  
+  print(temp2)
+  
+  
+}
+
+
+
+
+# Plot where both chains are found in the dataset
+
+CTaa.vec <- paste0(alpha.overlap, "_", beta.overlap)
+
+for(i in seq_along(CTaa.vec)){
+
+  seurat.tcr <- highlightClonotypes(seurat.tcr, 
                                     cloneCall= "aa", 
-                                    sequence = x)
+                                    sequence = CTaa.vec[i])
   
-
+  
   seurat.tcr@meta.data$highlight[is.na(seurat.tcr@meta.data$highlight)] <- "NA"
-    
   
-  seurat.tcr@meta.data$highlight[seurat.tcr@meta.data$highlight != "NA"] <- "EBV"
-
-    seurat.tcr@meta.data$highlight <- factor(seurat.tcr@meta.data$highlight, levels = c(paste0("EBV"), "NA"))
-    
-    
-    levels(seurat.tcr@meta.data$highlight)
   
-    
-    
-    
-    
-    DimPlot(seurat.tcr, 
-        pt.size = 2, 
-        split.by = "condition",
-        cols = c("Red", "#BEBEBE33"),
-        group.by = "highlight")
-
-
-    
-    
-    
-    
-    
-    
-    
-    
+  seurat.tcr@meta.data$highlight[seurat.tcr@meta.data$highlight != "NA"] <- CTaa.vec[i]
+  
+  seurat.tcr@meta.data$highlight <- factor(seurat.tcr@meta.data$highlight, levels = c(CTaa.vec[i], "NA"))
+  
+  
+  
   print(DimPlot(seurat.tcr, 
                 pt.size = 2, 
                 split.by = "condition",
                 cols = c("Red", "#BEBEBE33"),
-                group.by = "highlight") + ggtitle(paste0(motif.vec[i])) #+ 
-         # NoLegend()
-        )
+                group.by = "highlight") + ggtitle(paste0(CTaa.vec[i])) + NoLegend()
+  )
+}
+
+
+
+
+
+
+
+
+# Just beta chain 
+
+beta.overlap <- CDR3.beta[logic.beta]
+
+vdj.overlap.beta <- vdjdb.beta %>% 
+  filter(cdr3 %in% beta.overlap)
+
+
+antigen.vec <- unique(vdj.overlap.beta$antigen.species)
+
+for(i in seq_along(antigen.vec)){
+  
+  antigen.specific.CDR3b <- vdj.overlap.beta %>% 
+    filter(antigen.species == antigen.vec[i]) %>%
+    pull(cdr3)
+  
+  
+  output.temp <- TCR.df %>% 
+    filter(CDR3b %in% antigen.specific.CDR3b)
+  
+  x <- unique(output.temp$CTaa)
+  
+  seurat.tcr <- highlightClonotypes(seurat.tcr, 
+                                    cloneCall= "aa", 
+                                    sequence = x)
+  
+  
+  seurat.tcr@meta.data$highlight[is.na(seurat.tcr@meta.data$highlight)] <- "NA"
+  
+  
+  seurat.tcr@meta.data$highlight[seurat.tcr@meta.data$highlight != "NA"] <- antigen.vec[i]
+  
+  seurat.tcr@meta.data$highlight <- factor(seurat.tcr@meta.data$highlight, levels = c(antigen.vec[i], "NA"))
+  
+  
+  
+  print(DimPlot(seurat.tcr, 
+                pt.size = 2, 
+                split.by = "condition",
+                cols = c("Red", "#BEBEBE33"),
+                group.by = "highlight") + ggtitle(paste0(antigen.vec[i])) #+ 
+        # NoLegend()
+  )
+}
+
+
+    
+    
 
 
 
@@ -2916,26 +2965,8 @@ seurat.tcr <- highlightClonotypes(seurat.tcr,
 
 
 
-duplicated(vdj.overlap$cdr3)
 
 
-
-
-res <- dbAnnotate(immdata$data, vdjdb, "CDR3.aa", "cdr3")
-
-?dbAnnotate
-
-data("immdata")
-
-immdata$data
-
-
-
-
-
-
-colnames(TCR.df)
-head(TCR.df)
 
 
 
