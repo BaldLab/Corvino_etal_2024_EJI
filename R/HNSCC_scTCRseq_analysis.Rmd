@@ -2570,8 +2570,187 @@ if(quick.load){
 ```
 
 
-## GLIPH analysis {.tabset}
+## VDJdb annotation analysis {.tabset}
 
+### VDJdb annotation setup
+```{r VDJdb_annotation}
+
+# Create directory
+if(!dir.exists("output_tcr/figures/VDJ_annotation")){
+  dir.create("output_tcr/figures/VDJ_annotation",
+             recursive = TRUE)}
+
+
+######################################################################
+# Use concept and read in function from immunarch for processing 
+######################################################################
+
+#install.packages("immunarch")
+library("immunarch")
+
+
+
+# Prepare TCR data
+colnames(seurat.tcr@meta.data)
+
+# select useful data from seurat object
+TCR.df <- seurat.tcr@meta.data %>%
+  dplyr::select(CTaa, TRBV, TRBJ, seurat_clusters, condition, Clone_conditionwise_n) 
+
+# Split CTaa into TRA and TRB chains
+TCR.df$CDR3a <- gsub("_.*", "", TCR.df$CTaa)
+TCR.df$CDR3b <- gsub(".*_", "", TCR.df$CTaa)
+
+# Get vectors of unique clonotypes 
+CTaa.unique <- unique(TCR.df$CTaa)
+
+########################
+# Read in VDJ database 
+########################
+
+vdjdb <- dbLoad("Data/VDJ_database/vdjdb.slim.txt", "vdjdb")
+
+####################
+# Filter database
+####################
+
+colnames(vdjdb)
+
+# HomoSapiens 
+vdjdb <- vdjdb %>% 
+  filter(species == "HomoSapiens")
+
+# Score info:
+# 0 = Low confidence/no information - a critical aspect of sequencing/specificity validation is missing
+# 1	= Moderate confidence - no verification / poor TCR sequence confidence
+# 2	= High confidence - has some specificity verification, good TCR sequence confidence
+# 3	= Very high confidence - has extensive verification or structural data
+
+# Score above 0
+vdjdb <- vdjdb %>% 
+  filter(vdjdb.score > 0)
+
+# Reduce dataset to antigen.species level
+vdjdb <- vdjdb %>% 
+  dplyr::distinct(cdr3, antigen.species, gene)
+
+# Split ref dataset by TCR chain
+vdjdb.alpha <- vdjdb %>% 
+  filter(gene == "TRA")
+
+vdjdb.beta <- vdjdb %>% 
+  filter(gene == "TRB")
+
+# split CDR3 by chain and preserve position/pair order
+CDR3.alpha <-  gsub("_.*", "", CTaa.unique)
+CDR3.beta <-  gsub(".*_", "", CTaa.unique)
+length(CDR3.alpha) == length(CDR3.beta)
+
+# Find overlap between query and ref datasets
+logic.alpha <- CDR3.alpha %in% vdjdb.alpha$cdr3
+logic.beta <- CDR3.beta %in% vdjdb.beta$cdr3
+
+alpha.overlap <- CDR3.alpha[logic.alpha & logic.beta]
+beta.overlap <- CDR3.beta[logic.alpha & logic.beta]
+
+length(alpha.overlap) == length(beta.overlap)
+
+
+
+vdj.overlap.alpha <- vdjdb.alpha %>% 
+  filter(cdr3 %in% alpha.overlap)
+
+vdj.overlap.beta <- vdjdb.beta %>% 
+  filter(cdr3 %in% beta.overlap)
+
+
+# Plot where both chains are found in the dataset
+
+CTaa.vec <- paste0(alpha.overlap, "_", beta.overlap)
+
+for(i in seq_along(CTaa.vec)){
+
+  seurat.tcr <- highlightClonotypes(seurat.tcr, 
+                                    cloneCall= "aa", 
+                                    sequence = CTaa.vec[i])
+  
+  
+  seurat.tcr@meta.data$highlight[is.na(seurat.tcr@meta.data$highlight)] <- "NA"
+  
+  
+  seurat.tcr@meta.data$highlight[seurat.tcr@meta.data$highlight != "NA"] <- CTaa.vec[i]
+  
+  seurat.tcr@meta.data$highlight <- factor(seurat.tcr@meta.data$highlight, levels = c(CTaa.vec[i], "NA"))
+  
+  
+  
+  print(DimPlot(seurat.tcr, 
+                pt.size = 2, 
+                split.by = "condition",
+                cols = c("Red", "#BEBEBE33"),
+                group.by = "highlight") + ggtitle(paste0(CTaa.vec[i])) +
+          NoLegend()
+  )
+  
+  dev.copy(pdf, paste0("output_tcr/figures/VDJ_annotation/UMAP_", CTaa.vec[i], ".pdf"))
+  dev.off()
+}
+
+
+
+# Just beta chain 
+
+beta.overlap <- CDR3.beta[logic.beta]
+
+vdj.overlap.beta <- vdjdb.beta %>% 
+  filter(cdr3 %in% beta.overlap)
+
+
+antigen.vec <- unique(vdj.overlap.beta$antigen.species)
+
+for(i in seq_along(antigen.vec)){
+  
+  antigen.specific.CDR3b <- vdj.overlap.beta %>% 
+    filter(antigen.species == antigen.vec[i]) %>%
+    pull(cdr3)
+  
+  
+  output.temp <- TCR.df %>% 
+    filter(CDR3b %in% antigen.specific.CDR3b)
+  
+  x <- unique(output.temp$CTaa)
+  
+  seurat.tcr <- highlightClonotypes(seurat.tcr, 
+                                    cloneCall= "aa", 
+                                    sequence = x)
+  
+  
+  seurat.tcr@meta.data$highlight[is.na(seurat.tcr@meta.data$highlight)] <- "NA"
+  
+  
+  seurat.tcr@meta.data$highlight[seurat.tcr@meta.data$highlight != "NA"] <- antigen.vec[i]
+  
+  seurat.tcr@meta.data$highlight <- factor(seurat.tcr@meta.data$highlight, levels = c(antigen.vec[i], "NA"))
+  
+  
+  
+  print(DimPlot(seurat.tcr, 
+                pt.size = 2, 
+                split.by = "condition",
+                cols = c("Red", "#BEBEBE33"),
+                group.by = "highlight") + ggtitle(paste0(antigen.vec[i])) + 
+         NoLegend()
+  )
+  
+  dev.copy(pdf, paste0("output_tcr/figures/VDJ_annotation/UMAP_just_betachain_matched_", antigen.vec[i], ".pdf"))
+  dev.off()
+}
+
+
+```
+
+
+## GLIPH analysis {.tabset}
 
 ### Export data for analysis
 ```{r GLIPH_analysis_export}
@@ -2616,6 +2795,14 @@ rm(GLIPH.df)
 ### read and format data
 ```{r GLIPH_formatting}
 
+
+# Create directory
+if(!dir.exists("output_tcr/figures/GLIPH_analysis")){
+  dir.create("output_tcr/figures/GLIPH_analysis",
+             recursive = TRUE)}
+
+
+
 # read in data
 GLIPH.data <- read.csv("output_tcr/GLIPH_analysis/Condition_wise/Condition_cluster.csv")
 
@@ -2642,62 +2829,63 @@ GLIPH.data$CTaa <- paste0(GLIPH.data$TcRa, "_", GLIPH.data$TcRb)
 
 # Firstly remove single and global
 
-GLIPH.data.local <- 
+#GLIPH.data.local <- 
+ # GLIPH.data %>% 
+#  dplyr::filter(pattern != "single" & pattern != "" & type != "global")
+
+GLIPH.data <- 
   GLIPH.data %>% 
-  dplyr::filter(pattern != "single" & pattern != "" & type != "global")
+  dplyr::filter(pattern != "single" & pattern != "")
 
 
 
 # now have a table of local motif calls 
 
-motif.table
-GLIPH.data.local
+
+head(GLIPH.data)
+
+x <- GLIPH.data %>% 
+  dplyr::distinct(pattern, Freq)
+
+
+x <- x %>%
+  dplyr::top_n(10, Freq) %>%
+  dplyr::arrange(desc(Freq))
 
 
 
 
 
+x <- GLIPH.data %>% 
+  dplyr::distinct(number_unique_cdr3, pattern)
 
 
-
-
-
-motif.data %>%
-  dplyr::top_n(10, number_unique_cdr3) 
-
-
-x <- motif.data %>%
+x <- x %>%
+  dplyr::top_n(10, number_unique_cdr3) %>%
   dplyr::arrange(desc(number_unique_cdr3))
 
 
 
-motif.data %>%
-  dplyr::top_n(100, Freq) 
 
 
 
 
 length(unique(x$pattern))
 
-motif.vec <- unique(x$pattern)[1:5]
+motif.vec <- unique(x$pattern)
 
 for(i in seq_along(motif.vec)){
 temp <- 
-  motif.data %>%
+  GLIPH.data %>%
   dplyr::filter(pattern == paste0(motif.vec[i])) 
-
-length(unique(temp$CTaa))
 
 
 x <- unique(temp$CTaa)
-
 
 seurat.tcr <- highlightClonotypes(seurat.tcr, 
                                     cloneCall= "aa", 
                                     sequence = x)
   
-  #seurat.tcr@meta.data$highlight[is.na(seurat.tcr@meta.data$highlight)] <- paste0(motif.vec[i])
-
   seurat.tcr@meta.data$highlight[is.na(seurat.tcr@meta.data$highlight)] <- "NA"
     
   
@@ -2720,34 +2908,71 @@ seurat.tcr <- highlightClonotypes(seurat.tcr,
 
 
 
+CTaa.vec <- unique(GLIPH.data$CTaa)
+motif.vec <- unique(GLIPH.data$pattern)
+
+length(CTaa.vec)
+length(motif.vec)
+
+
+output.df <- matrix(nrow = length(motif.vec),
+                    ncol = length(CTaa.vec))
+
+colnames(output.df) <- CTaa.vec
+rownames(output.df) <- motif.vec
+
+for(i in seq_along(rownames(output.df))){
+
+pattern.id <- gsub("%", "[[:alpha:]]", rownames(output.df)[i])
+
+output.df[i, ] <- grepl(pattern.id, colnames(output.df))
 
 
 
-head(GLIPH.data)
-unique(GLIPH.data$pattern)
-unique(GLIPH.data$type)
+}
+
+x <- output.df[ ,colSums(output.df) > 1]
+
+
+#x <- output.df
+
+
+x <- x*1
+
+x <- x[rowSums(x) != 0, ]
+
+
+heatmap.2(x, 
+          scale = "none",
+          trace = "none",
+          Colv = TRUE,
+          Rowv = FALSE,
+          cexRow = 0.5, 
+          margins = c(8, 5),
+          labCol = NA,
+          cexCol = 0.8, 
+          srtCol = 90,
+          col = c("Red", "Blue"))   
+
+
+
+?heatmap.2
+
+
+heatmap(x)
+
+temp.vec <- c("CALANDYKLSF_CASSLTGGRDEQYV")
+
+pattern.id <- c("LSF{1}[[:alpha:]]DY")
+pattern.id <- c("QYV[[:alpha:]]")
+
+
+grepl(pattern.id, temp.vec)
 
 
 
 
-
-#-> x
-
-length(unique(x$TcRb))
-
-
-
-
-unique(GLIPH.data$pattern)
-
-GLIPH.data %>%
-  dplyr::filter(pattern == "") -> x
-
-x <- GLIPH.data[GLIPH.data$type == "global", ]
-
-unique(x$pattern)
-
-summary(x$Fisher_score)
+sum(x)
 
 
 
@@ -2755,222 +2980,6 @@ summary(x$Fisher_score)
 ```
 
 
-## VDJdb annotation analysis {.tabset}
-
-### VDJdb annotation setup
-```{r VDJdb_annotation}
-
-##############################
-# Use immunarch for processing 
-##############################
-
-#install.packages("immunarch")
-library("immunarch")
-
-
-
-# Prepare TCR data
-colnames(seurat.tcr@meta.data)
-
-# select useful data from seurat object
-TCR.df <- seurat.tcr@meta.data %>%
-  dplyr::select(CTaa, TRBV, TRBJ, seurat_clusters, condition, Clone_conditionwise_n) 
-
-# Split CTaa into TRA and TRB chains
-TCR.df$CDR3a <- gsub("_.*", "", TCR.df$CTaa)
-TCR.df$CDR3b <- gsub(".*_", "", TCR.df$CTaa)
-
-# Get vectors of unique clonotypes 
-CTaa.unique <- unique(TCR.df$CTaa)
-#CDR3a.unique <- unique(TCR.df$CDR3a)
-#CDR3b.unique <- unique(TCR.df$CDR3b)
-
-
-########################
-# Read in VDJ database 
-########################
-
-vdjdb <- dbLoad("Data/VDJ_database/vdjdb.slim.txt", "vdjdb")
-
-####################
-# Filter database
-####################
-
-colnames(vdjdb)
-
-# HomoSapiens 
-vdjdb <- vdjdb %>% 
-  filter(species == "HomoSapiens")
-
-# Score info:
-# 0 = Low confidence/no information - a critical aspect of sequencing/specificity validation is missing
-# 1	= Moderate confidence - no verification / poor TCR sequence confidence
-# 2	= High confidence - has some specificity verification, good TCR sequence confidence
-# 3	= Very high confidence - has extensive verification or structural data
-
-# Score above 0
-#vdjdb <- vdjdb %>% 
-#  filter(vdjdb.score > 0)
-
-# Reduce dataset to antigen.species level
-vdjdb <- vdjdb %>% 
-  dplyr::distinct(cdr3, antigen.species, gene)
-
-# match only if an Alpha and paired beta are annotated to the same antigen 
-vdjdb.alpha <- vdjdb %>% 
-  filter(gene == "TRA")
-
-vdjdb.beta <- vdjdb %>% 
-  filter(gene == "TRB")
-
-
-CDR3.alpha <-  gsub("_.*", "", CTaa.unique)
-CDR3.beta <-  gsub(".*_", "", CTaa.unique)
-length(CDR3.alpha) == length(CDR3.beta)
-
-
-logic.alpha <- CDR3.alpha %in% vdjdb.alpha$cdr3
-logic.beta <- CDR3.beta %in% vdjdb.beta$cdr3
-
-
-
-
-alpha.overlap <- CDR3.alpha[logic.alpha & logic.beta]
-beta.overlap <- CDR3.beta[logic.alpha & logic.beta]
-
-length(alpha.overlap) == length(beta.overlap)
-
-
-
-vdj.overlap.alpha <- vdjdb.alpha %>% 
-  filter(cdr3 %in% alpha.overlap)
-
-vdj.overlap.beta <- vdjdb.beta %>% 
-  filter(cdr3 %in% beta.overlap)
-
-
-for(i in seq_along(alpha.overlap)){
-  
-  temp <- vdj.overlap.alpha %>% 
-  filter(cdr3 %in% alpha.overlap[i])
-  
-  
-  #print(temp)
-  
-  
-  temp2 <- vdj.overlap.beta %>% 
-  filter(cdr3 %in% beta.overlap[i])
-  
-  
-  print(temp2)
-  
-  
-}
-
-
-
-
-# Plot where both chains are found in the dataset
-
-CTaa.vec <- paste0(alpha.overlap, "_", beta.overlap)
-
-for(i in seq_along(CTaa.vec)){
-
-  seurat.tcr <- highlightClonotypes(seurat.tcr, 
-                                    cloneCall= "aa", 
-                                    sequence = CTaa.vec[i])
-  
-  
-  seurat.tcr@meta.data$highlight[is.na(seurat.tcr@meta.data$highlight)] <- "NA"
-  
-  
-  seurat.tcr@meta.data$highlight[seurat.tcr@meta.data$highlight != "NA"] <- CTaa.vec[i]
-  
-  seurat.tcr@meta.data$highlight <- factor(seurat.tcr@meta.data$highlight, levels = c(CTaa.vec[i], "NA"))
-  
-  
-  
-  print(DimPlot(seurat.tcr, 
-                pt.size = 2, 
-                split.by = "condition",
-                cols = c("Red", "#BEBEBE33"),
-                group.by = "highlight") + ggtitle(paste0(CTaa.vec[i])) + NoLegend()
-  )
-}
-
-
-
-
-
-
-
-
-# Just beta chain 
-
-beta.overlap <- CDR3.beta[logic.beta]
-
-vdj.overlap.beta <- vdjdb.beta %>% 
-  filter(cdr3 %in% beta.overlap)
-
-
-antigen.vec <- unique(vdj.overlap.beta$antigen.species)
-
-for(i in seq_along(antigen.vec)){
-  
-  antigen.specific.CDR3b <- vdj.overlap.beta %>% 
-    filter(antigen.species == antigen.vec[i]) %>%
-    pull(cdr3)
-  
-  
-  output.temp <- TCR.df %>% 
-    filter(CDR3b %in% antigen.specific.CDR3b)
-  
-  x <- unique(output.temp$CTaa)
-  
-  seurat.tcr <- highlightClonotypes(seurat.tcr, 
-                                    cloneCall= "aa", 
-                                    sequence = x)
-  
-  
-  seurat.tcr@meta.data$highlight[is.na(seurat.tcr@meta.data$highlight)] <- "NA"
-  
-  
-  seurat.tcr@meta.data$highlight[seurat.tcr@meta.data$highlight != "NA"] <- antigen.vec[i]
-  
-  seurat.tcr@meta.data$highlight <- factor(seurat.tcr@meta.data$highlight, levels = c(antigen.vec[i], "NA"))
-  
-  
-  
-  print(DimPlot(seurat.tcr, 
-                pt.size = 2, 
-                split.by = "condition",
-                cols = c("Red", "#BEBEBE33"),
-                group.by = "highlight") + ggtitle(paste0(antigen.vec[i])) #+ 
-        # NoLegend()
-  )
-}
-
-
-    
-    
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-```
 
 
 
