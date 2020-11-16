@@ -1072,6 +1072,8 @@ source("R/getCircles.R")
 ####################
 # Plot US dataset
 ####################
+circos.clear()
+
 
 pdf(paste0(dir, "/Unstimulated_TCRcircos_filt.pdf"), height=10, width=10)
 
@@ -1099,6 +1101,8 @@ circos.track(track.index = 1,
              bg.border = NA)
 
 dev.off()
+
+circos.clear()
 
 ####################
 # Plot Stim dataset
@@ -1129,6 +1133,8 @@ circos.track(track.index = 1,
              bg.border = NA)
 
 dev.off()
+
+circos.clear()
 
 
 ```
@@ -1304,6 +1310,57 @@ for(i in seq_along(color_species)){
   circos.clear()
   
 }
+
+
+
+
+
+
+# Plot all data with no particular ribbon highlighted
+
+# Set gap
+circos.par(gap.after = gap.var)
+
+
+####Ploting
+pdf(paste0(dir, "/Circos_inter_condition_all_ribbons.pdf"), height=10, width=10)
+
+
+chordDiagram(df2, 
+             self.link = 1, 
+             annotationTrack = c("grid"),
+             grid.col = grid.col,
+             order = order.val,
+             directional = 1,
+             link.overlap = FALSE,
+             preAllocateTracks = list(
+               track.height = 0.3,
+               track.margin = c(0.05, 0)
+             )
+)
+
+
+circos.track(track.index = 1, 
+             panel.fun = function(x, y) {
+               xlim = get.cell.meta.data("xlim")
+               xplot = get.cell.meta.data("xplot")
+               ylim = get.cell.meta.data("ylim")
+               sector.name = get.cell.meta.data("sector.index")
+               
+               circos.text(mean(xlim), 
+                           ylim[1], 
+                           sector.name, 
+                           facing = "clockwise",
+                           niceFacing = TRUE, 
+                           adj = c(0, 0.5)) 
+             }, 
+             bg.border = NA)
+
+
+dev.off()
+
+circos.clear()
+
 
 
 
@@ -1713,6 +1770,58 @@ UMAPPlot(seurat.tcr,
 
 dev.copy(pdf, "Clonotype_size_UMAP_split_cloneType_Clusters.pdf")
 dev.off()
+
+
+############################################################
+# For manuscript, looks nicer to plot each group one by one 
+############################################################
+
+# First extract axis limits 
+x <- UMAPPlot(seurat.tcr, 
+         group.by = "seurat_clusters", 
+         split.by = "cloneType", 
+         pt.size = 1, 
+         cols = clust.cols) 
+
+
+x.axis.limits <- ggplot_build(x)$layout$panel_scales_x[[1]]$range$range
+y.axis.limits <- ggplot_build(x)$layout$panel_scales_y[[1]]$range$range
+
+
+
+
+
+
+
+
+Idents(seurat.tcr) <- seurat.tcr@meta.data$cloneType
+index.var <- unique(Idents(seurat.tcr))
+
+
+for(i in seq_along(index.var)){
+  
+  temp.seurat <- subset(seurat.tcr, ident = index.var[i])
+  
+  # Split by cloneType visualise clusters
+  print(UMAPPlot(temp.seurat, 
+                 group.by = "seurat_clusters", 
+                 split.by = "cloneType", 
+                 pt.size = 1, 
+                 cols = clust.cols) + 
+          NoLegend() + 
+          xlim(x.axis.limits) + 
+          ylim(y.axis.limits))
+  
+  dev.copy(pdf, paste0("Clonotype_size_UMAP_Clontype_size_", index.var[i], ".pdf"))
+  dev.off()
+  
+}
+
+
+
+# Reset Idents
+Idents(seurat.tcr) <- seurat.tcr@meta.data$seurat_clusters
+
 
 # Ensure dir back in working
 setwd(working.dir)
@@ -2259,6 +2368,8 @@ library("RVenn")
 # Overlap of all clonotypes
 ####################################
 
+Idents(seurat.tcr) <- seurat.tcr@meta.data$seurat_clusters
+
 # Get vector of clonotypes found in US cells
 US.clonotypes <- seurat.tcr@meta.data %>%
   dplyr::filter(condition == "US") %>%
@@ -2332,6 +2443,63 @@ UMAPPlot(clust.clonotypes.seurat,
 
 dev.copy(pdf, "Distribution_of_clonotypes_shared_or_unique_to_condition.pdf")
 dev.off()
+
+# Without legend 
+UMAPPlot(clust.clonotypes.seurat, 
+         pt.size = x, 
+         cols = clust.cols,
+         split.by = "Clonotype_overlap") + 
+  ggtitle("Venn overlap clonotypes") + NoLegend()
+
+dev.copy(pdf, "Distribution_of_clonotypes_shared_or_unique_to_condition_NoLegend.pdf")
+dev.off()
+
+
+################################################################
+# Plot each umap by itself to facilitate nicer final figure 
+################################################################
+
+# Get x axis dims 
+x <- UMAPPlot(clust.clonotypes.seurat, 
+         pt.size = x, 
+         cols = clust.cols,
+         split.by = "Clonotype_overlap")
+
+x.axis.limits <- ggplot_build(x)$layout$panel_scales_x[[1]]$range$range
+y.axis.limits <- ggplot_build(x)$layout$panel_scales_y[[1]]$range$range
+
+
+
+
+
+
+index.vec <- unique(clust.clonotypes.seurat@meta.data$Clonotype_overlap)
+
+Idents(clust.clonotypes.seurat) <- clust.clonotypes.seurat@meta.data$Clonotype_overlap
+
+
+for(i in seq_along(index.vec)){
+  
+  temp.seurat <- subset(clust.clonotypes.seurat, ident = index.vec[i])
+  
+  # Set idents 
+  Idents(temp.seurat) <- temp.seurat@meta.data$seurat_clusters
+  
+  pt.size.vec <- temp.seurat@meta.data$Total_clonotype_scaled
+  
+  print(UMAPPlot(temp.seurat, 
+                 pt.size = pt.size.vec, 
+                 cols = clust.cols,
+                 split.by = "Clonotype_overlap") + 
+          ggtitle("Venn overlap clonotypes") + 
+          NoLegend() + 
+          xlim(x.axis.limits) + 
+          ylim(y.axis.limits)) 
+  
+  dev.copy(pdf, paste0("Distribution_of_clonotypes_shared_or_unique_to_condition_",  index.vec[i], ".pdf"))
+  dev.off()
+  
+}
 
 
 
