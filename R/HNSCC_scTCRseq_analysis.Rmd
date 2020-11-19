@@ -1257,7 +1257,7 @@ gap.var[logic.vec] <- 10
 circos.par(gap.after = gap.var)
 
 
-# Ribbon colour
+# Colour ribbons by originating node (i.e US node)
 for(i in seq_along(color_species)){
   
   
@@ -1270,7 +1270,7 @@ for(i in seq_along(color_species)){
   
   
   ####Ploting
-  pdf(paste0(dir, "/Circos_inter_condition_", names(color_species)[i], ".pdf"), height=10, width=10)
+  pdf(paste0(dir, "/Circos_inter_condition_US_", names(color_species)[i], ".pdf"), height=10, width=10)
   
   
   chordDiagram(df2, 
@@ -1311,6 +1311,82 @@ for(i in seq_along(color_species)){
   
 }
 
+
+
+# Colour ribbons by target node (i.e Stim node)
+for(i in seq_along(color_species)){
+  
+temp.df <- df2
+  
+temp.df$clust_1 <- gsub(".*\\|", "", df2$clust_1)
+temp.df$clust_2 <- gsub(".*\\|", "", df2$clust_2)
+
+temp.df$node_col <- NA
+
+for(j in seq_along(names(color_species))){
+index.var <- which(temp.df$clust_1 == names(color_species)[j])
+
+temp.df$node_col[index.var] <- color_species[j]
+
+
+}
+
+
+  # Initialise colour vector
+  link.col <- rep(mycolour("Gray", percent = 80), length(df2$clust_2))
+  
+  # Find ribbons for ending at target node
+  logic.vec <- df2$clust_2 == paste0("Stim|", names(color_species)[i])
+  
+  # Identify source node colours to use for ribbons
+  link.col[logic.vec] <- temp.df$node_col[logic.vec]
+
+
+  # Set gap
+  circos.par(gap.after = gap.var)
+  
+  
+  ####Ploting
+  pdf(paste0(dir, "/Circos_inter_condition_Stim_", names(color_species)[i], ".pdf"), height=10, width=10)
+  
+  
+  chordDiagram(df2, 
+               self.link = 1, 
+               annotationTrack = c("grid"),
+               grid.col = grid.col,
+               col = link.col,
+               order = order.val,
+               directional = 1,
+               link.overlap = FALSE,
+               preAllocateTracks = list(
+                 track.height = 0.3,
+                 track.margin = c(0.05, 0)
+               )
+  )
+  
+  
+  circos.track(track.index = 1, 
+               panel.fun = function(x, y) {
+                 xlim = get.cell.meta.data("xlim")
+                 xplot = get.cell.meta.data("xplot")
+                 ylim = get.cell.meta.data("ylim")
+                 sector.name = get.cell.meta.data("sector.index")
+                 
+                 circos.text(mean(xlim), 
+                             ylim[1], 
+                             sector.name, 
+                             facing = "clockwise",
+                             niceFacing = TRUE, 
+                             adj = c(0, 0.5)) 
+               }, 
+               bg.border = NA)
+  
+  
+  dev.off()
+  
+  circos.clear()
+  
+}
 
 
 
