@@ -384,3 +384,4 @@ Exported_RDS_files/combined_slingshot.rds filter=lfs diff=lfs merge=lfs -text
 Exported_RDS_files/seurat_combined.rds filter=lfs diff=lfs merge=lfs -text
 Exported_RDS_files/seurat_combined_no_imputation.rds filter=lfs diff=lfs merge=lfs -text
 Exported_RDS_files/seurat_tcr.rds filter=lfs diff=lfs merge=lfs -text
+Data/ESG_list.txt filter=lfs diff=lfs merge=lfs -text

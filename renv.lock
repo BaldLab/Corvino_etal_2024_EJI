@@ -184,10 +184,10 @@
     },
     "RcppArmadillo": {
       "Package": "RcppArmadillo",
-      "Version": "0.10.1.0.0",
+      "Version": "0.10.1.2.0",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "742b8fb360381a242b6512df1faa53fb"
+      "Hash": "1a885965adade4b8629c478a3b3c2cf7"
     },
     "RcppEigen": {
       "Package": "RcppEigen",
@@ -309,17 +309,17 @@
     },
     "circlize": {
       "Package": "circlize",
-      "Version": "0.4.10",
+      "Version": "0.4.11",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "8f42bf50869cf41df5d7fee2f1247fcd"
+      "Hash": "9f26e84adece65be5f6614a524eeabb9"
     },
     "cli": {
       "Package": "cli",
-      "Version": "2.1.0",
+      "Version": "2.2.0",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "0b316487b21d21f99ebf98abe179b1ea"
+      "Hash": "3ef298932294b775fa0a3eeaa3a645b0"
     },
     "clipr": {
       "Package": "clipr",
@@ -350,10 +350,10 @@
     },
     "colorspace": {
       "Package": "colorspace",
-      "Version": "1.4-1",
+      "Version": "2.0-0",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "6b436e95723d1f0e861224dd9b094dfb"
+      "Hash": "abea3384649ef37f60ef51ce002f3547"
     },
     "conquer": {
       "Package": "conquer",
@@ -593,10 +593,10 @@
     },
     "ggraph": {
       "Package": "ggraph",
-      "Version": "2.0.3",
+      "Version": "2.0.4",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "40ec0dd160c3b23b95e81d52869ef705"
+      "Hash": "2a189e5cd2bbfe687ed631be27c07462"
     },
     "ggrepel": {
       "Package": "ggrepel",
@@ -740,10 +740,10 @@
     },
     "magrittr": {
       "Package": "magrittr",
-      "Version": "1.5",
+      "Version": "2.0.1",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "1bb58822a20301cee84a41678e25d9b7"
+      "Hash": "41287f1ac7d28a92f0a286ed507928d3"
     },
     "maptools": {
       "Package": "maptools",
@@ -843,10 +843,10 @@
     },
     "pillar": {
       "Package": "pillar",
-      "Version": "1.4.6",
+      "Version": "1.4.7",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "bdf26e55ccb7df3e49a490150277f002"
+      "Hash": "3b3dd89b2ee115a8b54e93a34cd546b4"
     },
     "pkgbuild": {
       "Package": "pkgbuild",
@@ -989,10 +989,10 @@
     },
     "renv": {
       "Package": "renv",
-      "Version": "0.12.0",
+      "Version": "0.12.2",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "7340c71f46a0fd16506cfa804e224e44"
+      "Hash": "398cc1ea892e1aade66d1ecbb2874d24"
     },
     "reshape2": {
       "Package": "reshape2",
@@ -1024,10 +1024,10 @@
     },
     "rprojroot": {
       "Package": "rprojroot",
-      "Version": "1.3-2",
+      "Version": "2.0.2",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "f6a407ae5dd21f6f80a6708bbb6eb3ae"
+      "Hash": "249d8cd1e74a8f6a26194a91b47f21d1"
     },
     "rstatix": {
       "Package": "rstatix",
@@ -1038,10 +1038,10 @@
     },
     "rstudioapi": {
       "Package": "rstudioapi",
-      "Version": "0.11",
+      "Version": "0.13",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "33a5b27a03da82ac4b1d43268f80088a"
+      "Hash": "06c85365a03fdaf699966cc1d3cf53ea"
     },
     "rvcheck": {
       "Package": "rvcheck",
@@ -1171,10 +1171,10 @@
     },
     "vctrs": {
       "Package": "vctrs",
-      "Version": "0.3.4",
+      "Version": "0.3.5",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "0bc90078aeee42f2520b1d0a33bd6758"
+      "Hash": "d25c5bea636cf892edbfd64fc3d20c20"
     },
     "viridis": {
       "Package": "viridis",

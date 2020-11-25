@@ -1,0 +1,5928 @@
+---
+title: "HNSCC_scRNAseq_analysis"
+author: "Dillon Corvino"
+date: "03/02/2020"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: united
+    highlight: tango
+    df_print: paged
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+  markdown: 
+    wrap: 72
+---
+
+Built with R version `{r} getRversion()`
+
+## Setup {.tabset}
+
+### Dataset information
+
+```{r Dataset_Info}
+
+# HNSCC scRNAseq/scTCRseq dataset
+# Cells are HNSCC TILs sorted on Lymphocytes/Live/CD3+/CD4-/CD8+
+# Human samples
+# Each sample is a pool of 4 patients
+# samples 1 and 2 are unstimulated 
+# samples 3 and 4 are stimulated 
+# Patients in sample 1 match patients in sample 3 and sample 2 pairs with 4
+# Data acquired was transcript expression, ADT (antibody expression), and TCRA & B sequences
+# This analysis uses just Transcript and TCR data
+
+
+# General information
+# CellRanger was used for sequence alignment/QC/counts/TCR calls - performed by Ross (QIMR, Brisbane, Aus)
+# DC was provided the output from CellRanger (counts matrix) and used this as input for analysis within this script
+
+```
+
+### Environment
+
+```{r Environment_setup, message = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,  
+  eval = TRUE, 
+  tidy = TRUE
+)
+
+# Environment Set up
+rm(list = ls()) #Clean workspace
+cat("\014")     #Clean Console
+gc() # Free memory
+
+# pipeline variables
+start.time <- Sys.time()
+quick.load <- TRUE
+long.compute <- TRUE
+
+###################
+# Install packages
+###################
+
+pkgs <- c("remedy", "Seurat", "dplyr", "rstudioapi",
+          "cowplot", "ggplot2", "grid", "gridExtra",
+          "styler", "stringr", "inlmisc", "RColorBrewer",
+          "readxl", "devtools", "tidyverse", "hdf5r", "scales",
+          "useful", "renv", "pROC")
+
+for(i in 1:length(pkgs)){
+  if(!require(pkgs[i], character.only = T)){
+    install.packages(pkgs[i])
+    require(pkgs[i], character.only = T)
+  }else{
+    require(pkgs[i], character.only = T)
+  }
+}
+
+pkgs <- c("gplots", "fgsea", "biomaRt", "clusterProfiler", 
+          "GSEABase", "org.Hs.eg.db", "pcaMethods",
+          "SingleCellExperiment", "batchelor", 
+          "DelayedArray", "DelayedMatrixStats",
+          "limma", "SummarizedExperiment", "SingleR",
+          "celldex", "progeny", "RcisTarget",
+          "doMC", "doRNG", "DT", "visNetwork", "readr", "pheatmap", "tibble")
+
+for(i in 1:length(pkgs)){
+  if(!require(pkgs[i], character.only = T)){
+    BiocManager::install(pkgs[i])
+    require(pkgs[i], character.only = T)
+  }else{
+    require(pkgs[i], character.only = T)
+  }
+}
+
+#####################
+# Github packages
+#####################
+
+# library("devtools")
+
+# usethis::browse_github_pat()
+# usethis::edit_r_environ()
+# GITHUB_PAT = "d8207153aef7b295cdf66eb1e1b2a2ed38b0ca18"
+# R_MAX_VSIZE = 30Gb
+
+
+# Scillus 
+#devtools::install_github("xmc811/Scillus", ref = "development")
+library("Scillus")
+
+# Nebulosa for density plotting
+#devtools::install_github("powellgenomicslab/Nebulosa")
+library("Nebulosa")
+
+# Volcano
+#devtools::install_github('kevinblighe/EnhancedVolcano')
+library("EnhancedVolcano")
+
+# Clustifyr
+#devtools::install_github("rnabioco/clustifyr")
+library("clustifyr")
+
+# ComplexHeatmap
+#install_github("jokergoo/ComplexHeatmap")
+library("ComplexHeatmap")
+
+# scPred and requirements
+#devtools::install_github("immunogenomics/harmony")
+#devtools::install_github("powellgenomicslab/scPred")
+library("scPred")
+library("magrittr")
+library("doParallel")
+
+# Cytotrace
+# Download source file from - https://cytotrace.stanford.edu/
+#devtools::install_local("PATH/TO/DIRECTORY/CytoTRACE_0.3.3.tar.gz")
+library("CytoTRACE")
+
+# circlize
+#devtools::install_github("jokergoo/circlize")
+library("circlize")
+
+
+######################
+# Cell-cell interaction
+######################
+
+# celltalker
+#devtools::install_github("arc85/celltalker")
+library("celltalker")
+
+# iTalk
+#devtools::install_github("Coolgenome/iTALK", build_vignettes = TRUE)
+library("iTALK")
+
+# singleCellHaystack
+#remotes::install_github("alexisvdb/singleCellHaystack")
+library("singleCellHaystack")
+
+
+######################
+# Seurat
+######################
+
+#devtools::install_github('satijalab/seurat-data')
+#devtools::install_github('satijalab/seurat-wrappers')
+library("SeuratWrappers")
+
+
+######################
+# Trajectory analysis
+######################
+
+# Trajectory analysis packages are loaded when required
+
+# Velocity 
+#devtools::install_github("velocyto-team/velocyto.R")
+
+# Dyno
+#devtools::install_github("dynverse/dyno")
+
+# Monocle
+#devtools::install_github('cole-trapnell-lab/leidenbase')
+#devtools::install_github('cole-trapnell-lab/monocle3')
+
+#.rs.restartR()
+
+
+####################
+# Colour scheme
+####################
+
+Condition.cols <- c("turquoise", "red")
+
+clust.cols <- c("#E41A1C", # Naive_like_1_CM
+                "#A6761D", # Naive_like_2_SC
+                "#8DA0CB", # Naive_like_3
+                "#666666", # Cytotoxic
+                "#A6D854", # Type_I_IFN
+                "#984EA3", # Stimulated_1
+                "#1B9E77", # Stimulated_exhausted
+                "#D95F02", # Exhausted_1
+                "#7570B3", # Exhausted_2
+                "#E7298A", # TRM
+                "#E6AB02", # gd_T_g9d2
+                "#8DD3C7", # gd_T_non_g9d2
+                "#FF7F00", # MAIT 
+                "#E78AC3") # Proliferative
+
+clust.names <- c("Naive_like_1_CM",
+                 "Naive_like_2_SC",
+                 "Naive_like_3",
+                 "Cytotoxic",
+                 "Type_I_IFN",
+                 "Stimulated_1",
+                 "Stimulated_exhausted",
+                 "Exhausted_1",
+                 "Exhausted_2",
+                 "TRM",
+                 "gd_T_g9d2",
+                 "gd_T_non_g9d2",
+                 "MAIT",
+                 "Proliferative")
+
+# Set working directory to source file location
+setwd(dirname(getActiveDocumentContext()$path))
+working.dir <- getwd()
+
+# since moving script from local to github - I want to adjust work dir to be main github dir - therefore 
+setwd("..")
+
+# create output directories
+if(!dir.exists("Exported_RDS_files")){dir.create("Exported_RDS_files", recursive = T)}
+if(!dir.exists("output")){dir.create("output", recursive = T)}
+if(!dir.exists("output/figures")){dir.create("output/figures", recursive = T)}
+if(!dir.exists("output/tables")){dir.create("output/tables", recursive = T)}
+if(!dir.exists("output/QC")){dir.create("output/QC", recursive = T)}
+
+
+# load saved seurat object with cluster annotations and imputation performed
+if(quick.load){
+  seurat.combined <- readRDS("Exported_RDS_files/seurat_combined.rds")
+}
+
+
+```
+
+### Custom Functions
+```{r script_custom_functions}
+
+# Load some custom functions
+source("R/scRNAseq_Functions.R")
+
+# Export function
+save.data.frame.function <- function(df, path, title){
+    
+    x <- as.data.frame(as.matrix(df))
+    
+    write.table(x, 
+                paste0(path, title, ".txt"),
+                sep = "\t",
+                quote = FALSE)
+  }
+  
+
+
+# Heatmap annotation
+source("R/annotate_seurat_heatmap.R")
+
+#################
+# Volcano Plots
+#################
+
+# edited enhancedvolcano() function to have the default variables for aesthetics I want
+source("R/Enhanced_volcano_custom_defaults.R")
+
+clean.data <- function(input.data, group.id){
+  
+  output.data <- input.data %>%
+    dplyr::filter(cluster == paste0(group.id))
+  
+  rownames(output.data) <- output.data$gene
+  
+  output.data <- output.data %>%
+    dplyr::select(avg_logFC, p_val_adj)
+  
+  colnames(output.data) <- c("logFC", "FDR")
+  return(output.data)
+  
+}
+
+
+
+colour.points <- function(volcano.data, 
+                          increase.col = "Red",
+                          decreased.col = "Blue",
+                          FDR.cutoff = 0.05,
+                          logFC.cutoff = 0.25){
+  
+  # set the base colour
+  keyvals <- rep('grey50', nrow(volcano.data))
+  
+  # set the base name/label as 'NS'
+  names(keyvals) <- rep('NS', nrow(volcano.data))
+  
+  # modify keyvals for vars meeting FDR and LogFC threshold
+  
+  # Increased
+  keyvals[which(volcano.data$logFC > logFC.cutoff & volcano.data$FDR < FDR.cutoff)] <- increase.col
+  names(keyvals)[which(volcano.data$logFC > logFC.cutoff & volcano.data$FDR < FDR.cutoff)] <- 'Increased'
+  
+  # Decreased
+  keyvals[which(volcano.data$logFC < -logFC.cutoff & volcano.data$FDR < FDR.cutoff)] <- decreased.col
+  names(keyvals)[which(volcano.data$logFC < -logFC.cutoff & volcano.data$FDR < FDR.cutoff)] <- 'Decreased'
+  
+  return(keyvals)
+  
+}
+
+
+
+
+```
+
+
+### Reproducibility
+```{r Reproducibility}
+
+# Only run once to initialise 
+#renv::init()
+
+# Run snapshot to update renv.lock file 
+#renv::snapshot()
+
+
+# use to restore environment 
+#renv::restore()
+
+
+```
+
+### Reading data
+
+```{r reading_data}
+
+# Load dataset from output generated by Ross, file is annotated as filtered_feature_bc_matrix
+
+Sample1.data <- Read10X(data.dir = "Data/10X_GEX_data/Sample1_US/")
+Sample2.data <- Read10X(data.dir = "Data/10X_GEX_data/Sample2_US/")
+Sample3.data <- Read10X(data.dir = "Data/10X_GEX_data/Sample3_Stim/")
+Sample4.data <- Read10X(data.dir = "Data/10X_GEX_data/Sample4_Stim/")
+
+
+Sample1.seurat <- CreateSeuratObject(counts = Sample1.data,
+                                     min.cells = 3,
+                                     min.features = 200)
+
+Sample2.seurat <- CreateSeuratObject(counts = Sample2.data,
+                                     min.cells = 3,
+                                     min.features = 200)
+
+Sample3.seurat <- CreateSeuratObject(counts = Sample3.data,
+                                     min.cells = 3,
+                                     min.features = 200)
+
+Sample4.seurat <- CreateSeuratObject(counts = Sample4.data,
+                                     min.cells = 3,
+                                     min.features = 200)
+
+# Add metadata 
+Sample1.seurat@meta.data$group <- "S1"
+Sample2.seurat@meta.data$group <- "S2"
+Sample3.seurat@meta.data$group <- "S3"
+Sample4.seurat@meta.data$group <- "S4"
+
+```
+
+### Merge Seurat objects
+
+```{r merge_seurat}
+
+
+######################
+# Merge samples
+######################
+
+# Unstimulated samples 1 & 2
+US.seurat <- merge(x = Sample1.seurat, 
+                   y = Sample2.seurat,
+                   add.cell.ids = c("S1", "S2"), 
+                   merge.data = FALSE, # Should normed data be merged as well or just raw data slot
+                   project = "Unstimulated")
+
+x <- ncol(Sample1.seurat) + ncol(Sample2.seurat)
+paste0("expected number of cells after merge is ", ncol(US.seurat) == x)
+
+Sample1.seurat # 14,695 genes and 3,042 cells
+Sample2.seurat # 14,706 genes and 3,536 cells
+US.seurat # 15,428 genes and 6,578 cells
+
+head(US.seurat@meta.data)
+
+
+# Stimulated samples 3 & 4
+Stim.seurat <- merge(x = Sample3.seurat, 
+                     y = Sample4.seurat,
+                     add.cell.ids = c("S3", "S4"), 
+                     merge.data = FALSE, # Should normed data be merged as well or just raw data slot
+                     project = "Stimulated")
+
+x <- ncol(Sample3.seurat) + ncol(Sample4.seurat)
+paste0("expected number of cells after merge is ", ncol(Stim.seurat) == x)
+
+Sample3.seurat # 14,740 genes and 3,885 cells
+Sample4.seurat # 14,926 genes and 3,279 cells
+Stim.seurat # 15,619 genes and 7,164 cells
+
+head(Stim.seurat@meta.data)
+
+# Add a condition metadata column
+US.seurat@meta.data$condition <- "US"
+Stim.seurat@meta.data$condition <- "Stim"
+
+
+```
+
+### Remove large variables that are no longer needed
+
+```{r Remove_unneeded_variables}
+
+rm(Sample1.data, 
+   Sample2.data, 
+   Sample3.data, 
+   Sample4.data,
+   Sample1.seurat, 
+   Sample2.seurat,
+   Sample3.seurat,
+   Sample4.seurat)
+
+
+```
+
+## QC and Normalisation {.tabset}
+
+### QC & Normalisation
+
+```{r QC_and_normalisation}
+
+
+# QC metrics commonly used
+# The number of unique genes detected in each cell.
+# Low-quality cells or empty droplets will often have very few genes
+# Cell doublets or multiplets may exhibit an aberrantly high gene count
+
+# Similarly, the total number of molecules detected within a cell (correlates strongly with unique genes)
+
+# The percentage of reads that map to the mitochondrial genome
+# Low-quality / dying cells often exhibit extensive mitochondrial contamination
+
+
+################################################
+#  Get percentage Mitochondria gene expression
+################################################
+
+# Unstimulated
+US.seurat[["percent.mito"]] <- PercentageFeatureSet(US.seurat, pattern = "^MT-")
+
+# Stimulated
+Stim.seurat[["percent.mito"]] <- PercentageFeatureSet(Stim.seurat, pattern = "^MT-")
+
+##################################
+# Plot mitochondria percentage
+##################################
+
+# nFeature & nCount & Mito (US)
+VlnPlot(object = US.seurat, 
+        features = c("nFeature_RNA", "nCount_RNA", "percent.mito"), 
+        pt.size = 0.1)
+
+dev.copy(pdf, "output/QC/QC_nFeature_nCount_RNA_percentMito_US.pdf")
+dev.off()
+
+# Mito (US)
+VlnPlot(US.seurat, 
+        features = "percent.mito", 
+        y.max = 20,
+        pt.size = 0.1)
+
+dev.copy(pdf, "output/QC/QC_RNA_percentMito_US.pdf")
+dev.off()
+
+# nFeature & nCount & Mito (Stim)
+VlnPlot(object = Stim.seurat, 
+        features = c("nFeature_RNA", "nCount_RNA", "percent.mito"), 
+        pt.size = 0.1)
+
+dev.copy(pdf, "output/QC/QC_nFeature_nCount_RNA_percentMito_Stim.pdf")
+dev.off()
+
+# Mito (Stim)
+VlnPlot(Stim.seurat, 
+        features = "percent.mito",
+        y.max = 20, 
+        pt.size = 0.1)
+
+dev.copy(pdf, "output/QC/QC_RNA_percentMito_Stim.pdf")
+dev.off()
+
+
+
+########################################
+# Count vs Mito & Count vs Feature
+########################################
+
+# Unstimulated
+plot1 <- FeatureScatter(US.seurat, feature1 = "nCount_RNA", feature2 = "percent.mito")
+plot2 <- FeatureScatter(US.seurat, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot1|plot2
+
+dev.copy(pdf, "output/QC/QC_RNA_percentMito_nCount_nFeature_corr_US.pdf")
+dev.off()
+
+# Stimulated
+plot1 <- FeatureScatter(Stim.seurat, feature1 = "nCount_RNA", feature2 = "percent.mito")
+plot2 <- FeatureScatter(Stim.seurat, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot1|plot2
+
+dev.copy(pdf, "output/QC/QC_RNA_percentMito_nCount_nFeature_corr_Stim.pdf")
+dev.off()
+
+
+############################
+# Structure and metadata 
+############################
+
+# Unstimulated
+head(US.seurat@meta.data)
+str(US.seurat@meta.data)
+
+# Stimulated
+head(Stim.seurat@meta.data)
+str(Stim.seurat@meta.data)
+
+###################
+#  Filter cells
+###################
+
+# Seurat recommends removing cells with <200 or >2,500 genes or >10% mito genes
+
+# Unstimulated
+US.seurat.filt <- subset(US.seurat,
+                         subset = nFeature_RNA > 200 & nFeature_RNA < 2500 & percent.mito < 10)
+
+
+# Post-filtering metrics
+
+US.seurat # 15,429 genes across 6,584 cells
+US.seurat.filt # 15,429 genes across 5,785 cells
+
+# Therefore
+6584 - 5785
+# 799 cells were deleted
+
+# Stimulated
+Stim.seurat.filt <- subset(Stim.seurat,
+                           subset = nFeature_RNA > 200 & nFeature_RNA < 2500 & percent.mito < 10)
+
+# Post-filtering metrics
+
+Stim.seurat # 15,618 genes across 7,167 cells
+Stim.seurat.filt # 15,618 genes across 6,042 cells
+
+# Therefore
+7167 - 6042
+# 1125 cells were deleted
+
+
+##########################################
+# Visualise QC metrics after filtering
+##########################################
+
+# Unstimulated
+
+# Before Filtering
+VlnPlot(object = US.seurat,
+        features = c("nFeature_RNA", "nCount_RNA", "percent.mito"), 
+        pt.size = 0.1)
+
+# After filtering
+VlnPlot(object = US.seurat.filt,
+        features = c("nFeature_RNA", "nCount_RNA", "percent.mito"),
+        pt.size = 0.1)
+
+dev.copy(pdf, "output/QC/QC_nFeature_nCount_RNA_percentMito_Post_filtering_US.pdf")
+dev.off()
+
+# Stimulated
+
+# Before Filtering
+VlnPlot(object = Stim.seurat, 
+        features = c("nFeature_RNA", "nCount_RNA", "percent.mito"),
+        pt.size = 0.1)
+
+# After filtering
+VlnPlot(object = Stim.seurat.filt,
+        features = c("nFeature_RNA", "nCount_RNA", "percent.mito"),
+        pt.size = 0.1)
+
+dev.copy(pdf, "output/QC/QC_nFeature_nCount_RNA_percentMito_Post_filtering_Stim.pdf")
+dev.off()
+
+
+
+################################################
+# Normalise, scale & find variable genes 
+################################################
+
+#################
+# Unstimulated
+#################
+
+# Normalise
+US.seurat.filt <- NormalizeData(
+  object = US.seurat.filt,
+  assay = "RNA",
+  normalization.method = "LogNormalize",
+  scale.factor = 10000,
+  verbose = TRUE
+)
+
+# Find variable genes
+US.seurat.filt <- FindVariableFeatures(
+  object = US.seurat.filt,
+  verbose = TRUE
+)
+
+# Scale data
+US.seurat.filt <- ScaleData(
+  object = US.seurat.filt,
+  assay = "RNA",
+  vars.to.regress = c("nCount_RNA", "percent.mito"),
+  model.use = "linear",
+  do.scale = TRUE,
+  do.center = TRUE,
+  verbose = TRUE
+)
+
+#################
+# Stimulated
+#################
+
+# Normalise
+Stim.seurat.filt <- NormalizeData(
+  object = Stim.seurat.filt,
+  assay = "RNA",
+  normalization.method = "LogNormalize",
+  scale.factor = 10000,
+  verbose = TRUE
+)
+
+# Find variable genes
+Stim.seurat.filt <- FindVariableFeatures(
+  object = Stim.seurat.filt,
+  verbose = TRUE
+)
+
+# Scale data
+Stim.seurat.filt <- ScaleData(
+  object = Stim.seurat.filt,
+  assay = "RNA",
+  vars.to.regress = c("nCount_RNA", "percent.mito"),
+  model.use = "linear",
+  do.scale = TRUE,
+  do.center = TRUE,
+  verbose = TRUE
+)
+
+
+###############################
+# Remove unneeded variables
+###############################
+
+rm(US.seurat, Stim.seurat)
+
+
+```
+
+## Combine treatment conditions {.tabset}
+
+### Integrate data
+
+```{r Integrate_across_conditions}
+
+# Set activate assay to RNA
+DefaultAssay(US.seurat.filt) <- "RNA"
+DefaultAssay(Stim.seurat.filt) <- "RNA"
+
+# Create list of seurat objects
+seurat.list <- list(US = US.seurat.filt, Stim = Stim.seurat.filt)
+
+# Find Integration Anchors
+immune.anchors <- FindIntegrationAnchors(object.list = seurat.list, 
+                                         anchor.features = 2000, 
+                                         scale = TRUE, 
+                                         normalization.method = "LogNormalize", 
+                                         reduction = "cca", 
+                                         l2.norm = TRUE,
+                                         dims = 1:30,
+                                         k.anchor = 5,
+                                         k.filter = 200,
+                                         k.score = 30,
+                                         max.features = 200,
+                                         nn.method = "rann",
+                                         eps = 0,
+                                         verbose = TRUE)
+
+# Integrate dataset
+seurat.combined <- IntegrateData(anchorset = immune.anchors,
+                                 new.assay.name = "integrated",
+                                 normalization.method = "LogNormalize",
+                                 dims = 1:30,
+                                 k.weight = 100,
+                                 sd.weight = 1,
+                                 verbose = TRUE)
+
+
+# Basic overview of data
+seurat.combined # 11,827 cells and 18,295 genes 
+
+US.seurat.filt # 5,785 cells
+Stim.seurat.filt # 6,042 cells
+
+
+# Save files 
+saveRDS(US.seurat.filt, file = "Exported_RDS_files/US_seurat_filt.rds")
+saveRDS(Stim.seurat.filt, file = "Exported_RDS_files/Stim_seurat_filt.rds")
+
+# Remove unnecessary data
+rm(US.seurat.filt)
+rm(Stim.seurat.filt)
+
+
+# Format metadata in integrated seurat object
+seurat.combined@meta.data$condition <- factor(seurat.combined@meta.data$condition, levels = c("US", "Stim"))
+
+
+# Remove unneeded data
+rm(immune.anchors, seurat.list)
+
+```
+
+## Clustering and dim reduction {.tabset}
+
+### PCA and cluster identificaton
+
+```{r Cluster_data}
+
+DefaultAssay(seurat.combined) <- "integrated"
+
+# Scale data
+seurat.combined <- ScaleData(seurat.combined, 
+                             verbose = TRUE)
+
+# Run PCA
+seurat.combined <- RunPCA(seurat.combined, 
+                          npcs = 30, 
+                          verbose = TRUE)
+
+# Find Neighbors
+seurat.combined <- FindNeighbors(seurat.combined, 
+                                 reduction = "pca", 
+                                 k.param = 20,
+                                 dims = 1:20)
+
+# Find clusters
+seurat.combined <- FindClusters(seurat.combined, 
+                                random.seed = 42,
+                                resolution = 0.4) # 0.4 is cluster resolution decided upon
+
+
+```
+
+### Run UMAP
+
+```{r UMAP}
+
+# Create output directory
+if(!dir.exists("output/figures/UMAP_no_clusts_removed")){
+  dir.create("output/figures/UMAP_no_clusts_removed", 
+             recursive = T)
+}
+
+
+# Run UMAP
+seurat.combined <- RunUMAP(object = seurat.combined,
+                           reduction = "pca",
+                           dims = 1:20,
+                           umap.method = "uwot",
+                           n.neighbors = 30, # 5 to 50
+                           min.dist = 0.3, # Sensible values are in the range 0.001 to 0.5
+                           seed.use = 42)
+
+
+# Plot UMAP projection
+UMAPPlot(object = seurat.combined,
+         label = TRUE, 
+         label.size = 6) + ggtitle("Integrated (n.neigh = 30 & min.dist = 0.3)") + NoLegend()
+
+dev.copy(pdf, "output/figures/UMAP_no_clusts_removed/UMAP_clusts_clust.pdf")
+dev.off()
+
+
+
+# UMAP projection grouped by condition
+UMAPPlot(object = seurat.combined,
+         label = FALSE, 
+         cols = Condition.cols,
+         group.by = "condition") + ggtitle("UMAP vis by Condition") 
+
+dev.copy(pdf, "output/figures/UMAP_no_clusts_removed/UMAP_condition.pdf")
+dev.off()
+
+
+
+p1 <- DimPlot(seurat.combined, 
+              reduction = "umap", 
+              cols = Condition.cols,
+              group.by = "condition")
+
+p2 <- DimPlot(seurat.combined, 
+              reduction = "umap", 
+              label = TRUE)
+
+p1|p2
+
+dev.copy(pdf, "output/figures/UMAP_no_clusts_removed/UMAP_clusters_conditions_sidebyside.pdf")
+dev.off()
+
+
+```
+
+## Remove uninformative clusters {.tabset}
+
+### Visualise and justify removing clusters
+
+```{r Justify_clusts_to_remove}
+
+# Based on resolution of 0.4 for cluster identification 
+# Cluster #15 and 13 are to be removed 
+# 15 = Myeloid population 
+# 13 = ?? 
+
+
+# Create output directory
+if(!dir.exists("output/figures/Cluster_removal_validation")){
+  dir.create("output/figures/Cluster_removal_validation", 
+             recursive = T)
+}
+
+
+# Show overall number and frequency of clusters
+
+x <- table(seurat.combined@meta.data$seurat_clusters)
+y <- prop.table(table(seurat.combined@meta.data$seurat_clusters))*100
+
+barplot(x, 
+        main = "# of cells per cluster", 
+        xlab = "Cluster #", 
+        ylab = "# of cells",
+        cex.names = 0.8, 
+        ylim = c(0, 2000))
+
+dev.copy(pdf, "output/figures/Cluster_removal_validation/Number_cells_per_cluster.pdf")
+dev.off()
+
+barplot(y,
+        main = "% of cells per cluster",
+        xlab = "Cluster #",
+        ylab = "% of cells",
+        cex.names = 0.8, 
+        ylim = c(0, 20))
+
+dev.copy(pdf, "output/figures/Cluster_removal_validation/Percent_cells_per_cluster.pdf")
+dev.off()
+
+
+##########################################################################################
+# Get differentially expressed genes for clusters to be removed and show heatmaps
+##########################################################################################
+
+# Set assay to RNA
+DefaultAssay(seurat.combined) <- "RNA"
+
+################
+# Positive only
+################
+
+# Find markers for clust 13
+Clust.13.Markers <- FindMarkers(seurat.combined,
+                                assay = "RNA",
+                                ident.1 = "13",
+                                only.pos = TRUE,
+                                min.diff.pct = 0.1,
+                                return.thresh = 0.05)
+
+
+# Find markers for clust 15
+Clust.15.Markers <- FindMarkers(seurat.combined,
+                                assay = "RNA",
+                                ident.1 = "15",
+                                only.pos = TRUE,
+                                min.diff.pct = 0.1,
+                                return.thresh = 0.05)
+
+###################
+# Heatmap vis
+###################
+
+# Downsample for heatmap vis
+#seurat.combined.small <- subset(seurat.combined, downsample = 300)
+
+# Heatmap of Clust 13 markers
+sig.genes <- Clust.13.Markers[Clust.13.Markers$p_val_adj < 0.1, ]
+
+
+
+# Heatmap of Clust 15 markers
+sig.genes <- Clust.15.Markers[Clust.15.Markers$p_val_adj < 0.1, ]
+
+
+
+# Plot DEGs as heatmap for vis justification for removal
+
+
+```
+
+### Use Clustifyr to call cluster identities
+
+**Note: What is up with the mouse.ref here?**
+
+```{r Clustifyr_cell_ID}
+
+# Create output directories
+if(!dir.exists("output/figures/Cell_type_annotation/Clustifyr")){
+  dir.create("output/figures/Cell_type_annotation/Clustifyr", 
+             recursive = T)
+}
+
+
+mouse.ref <- cbmc_ref
+rownames(mouse.ref) <- str_to_title(rownames(mouse.ref))
+
+
+res <- clustify(input = seurat.combined,
+                cluster_col = "seurat_clusters",
+                ref_mat = cbmc_ref,
+                seurat_out = FALSE,
+                query_genes = seurat.combined@assays$integrated@var.features)
+
+
+res2 <- cor_to_call(cor_mat = res,                  # matrix correlation coefficients
+                    cluster_col = "seurat_clusters") # name of column in meta.data containing cell clusters
+
+
+
+print(plot_cor_heatmap(cor_mat = res))
+dev.copy(pdf, "output/figures/Cell_type_annotation/Clustifyr/Heatmap_cluster_annotations.pdf")
+dev.off()
+
+# Remove unneeded data
+rm(mouse.ref, res, res2)
+```
+
+### Use various SingleR databases to call cluster identities
+
+```{r SingleR_cell_clasification}
+
+# Create output directory
+if(!dir.exists("output/figures/Cell_type_annotation/SingleR")){
+  dir.create("output/figures/Cell_type_annotation/SingleR", 
+             recursive = T)
+}
+
+################################################################
+# Use a couple databased to get broad overview of clusters 
+################################################################
+
+##################################
+# Use HumanPrimaryCellAtlasData
+##################################
+# Info: Human, Microarray, 713 samples, 37 main labels, 157 fine lables, Non-specific focus
+
+HumanPrimaryCellAtlasData.data <- celldex::HumanPrimaryCellAtlasData()
+
+
+# First calcualte cell ID using all available labels
+SingleR.pred <- SingleR(test = seurat.combined@assays$integrated@data, 
+                        ref = HumanPrimaryCellAtlasData.data, 
+                        method = "cluster",
+                        clusters = seurat.combined@meta.data$seurat_clusters,
+                        labels = HumanPrimaryCellAtlasData.data$label.fine)
+
+# Plot 
+plotScoreHeatmap(SingleR.pred, 
+                 show_colnames = TRUE)
+
+dev.copy(pdf, "output/figures/Cell_type_annotation/SingleR/Heatmap_cluster_annotations_all_labels_HumanPrimaryCellAtlasData_db.pdf")
+dev.off()
+
+##########################
+# Use BlueprintEncodeData
+##########################
+# Info: Human, RNAseq, 259 samples, 24 main labels, 43 fine lables, Non-specific focus
+
+BlueprintEncodeData.data <- celldex::BlueprintEncodeData()
+
+
+# First calcualte cell ID using all available labels
+SingleR.pred <- SingleR(test = seurat.combined@assays$integrated@data, 
+                        ref = BlueprintEncodeData.data, 
+                        method = "cluster",
+                        clusters = seurat.combined@meta.data$seurat_clusters,
+                        labels = BlueprintEncodeData.data$label.fine)
+
+# Plot 
+plotScoreHeatmap(SingleR.pred, 
+                 show_colnames = TRUE)
+
+dev.copy(pdf, "output/figures/Cell_type_annotation/SingleR/Heatmap_cluster_annotations_all_labels_BlueprintEncodeData_db.pdf")
+dev.off()
+
+##########################################
+# Use NovershternHematopoieticData
+##########################################
+# Info: Human, Microarray, 211 samples, 17 main labels, 38 fine lables, Hematopoietic & Immune focus
+
+NovershternHematopoieticData.data <- celldex::NovershternHematopoieticData()
+
+
+# First calcualte cell ID using all available labels
+SingleR.pred <- SingleR(test = seurat.combined@assays$integrated@data, 
+                        ref = NovershternHematopoieticData.data, 
+                        method = "cluster",
+                        clusters = seurat.combined@meta.data$seurat_clusters,
+                        labels = NovershternHematopoieticData.data$label.fine)
+
+
+# Plot 
+plotScoreHeatmap(SingleR.pred, 
+                 show_colnames = TRUE)
+
+dev.copy(pdf, "output/figures/Cell_type_annotation/SingleR/Heatmap_cluster_annotations_all_labels_NovershternHematopoietic_db.pdf")
+dev.off()
+
+#####################
+# Use ImmGenData
+#####################
+# Info: Mouse, Microarray, 830 samples, 20 main labels, 253 fine lables, Hematopoietic & Immune focus
+
+ImmGen.data <- celldex::ImmGenData()
+
+# Convert GeneID to match human
+ImmGen.data.counts <- ImmGen.data@assays@data$logcounts
+rownames(ImmGen.data.counts) <- toupper(rownames(ImmGen.data.counts))
+
+
+# First calcualte cell ID using all available labels
+SingleR.pred <- SingleR(test = seurat.combined@assays$integrated@data, 
+                        ref = ImmGen.data.counts, 
+                        method = "cluster",
+                        clusters = seurat.combined@meta.data$seurat_clusters,
+                        labels = ImmGen.data$label.fine)
+
+
+# Plot 
+plotScoreHeatmap(SingleR.pred, 
+                 show_colnames = TRUE)
+
+dev.copy(pdf, "output/figures/Cell_type_annotation/SingleR/Heatmap_cluster_annotations_all_labels_ImmGen_db.pdf")
+dev.off()
+
+
+
+
+################################################################
+# Most useful database is probably the MonacoImmuneData
+################################################################
+
+#########################
+# Use MonacoImmuneData
+#########################
+# Info: Human, RNAseq, 114 samples, 11 main labels, 29 fine lables, Immune cell focus
+Immune.data <- celldex::MonacoImmuneData()
+
+
+# First calcualte cell ID using all available labels
+SingleR.pred <- SingleR(test = seurat.combined@assays$integrated@data, 
+                        ref = Immune.data, 
+                        method = "cluster",
+                        clusters = seurat.combined@meta.data$seurat_clusters,
+                        labels = Immune.data$label.fine)
+
+
+# Plot 
+plotScoreHeatmap(SingleR.pred, 
+                 show_colnames = TRUE)
+
+dev.copy(pdf, "output/figures/Cell_type_annotation/SingleR/Heatmap_cluster_annotations_all_labels_Monaco_db.pdf")
+dev.off()
+
+
+# Restrict labels to biologicaly relevant 
+Immune.data.counts <- Immune.data@assays@data$logcounts
+
+pattern <- c("CD8", "MAIT", "gd", "Intermediate")
+
+labels.keep <- grepl(paste0(pattern, collapse = "|"), Immune.data$label.fine)
+
+Immune.data.counts <- Immune.data.counts[,labels.keep]
+
+SingleR.pred <- SingleR(test = seurat.combined@assays$integrated@data, 
+                        ref = Immune.data.counts, 
+                        method = "cluster",
+                        clusters = seurat.combined@meta.data$seurat_clusters,
+                        labels = Immune.data$label.fine[labels.keep])
+
+# Plot 
+plotScoreHeatmap(SingleR.pred, 
+                 show_colnames = TRUE)
+
+dev.copy(pdf, "output/figures/Cell_type_annotation/SingleR/Heatmap_cluster_annotations_limited_labels_Monaco_db.pdf")
+dev.off()
+
+# Remove unneeded datasets
+rm(HumanPrimaryCellAtlasData.data,
+   BlueprintEncodeData.data,
+   NovershternHematopoieticData.data,
+   ImmGen.data, ImmGen.data.counts,
+   Immune.data, Immune.data.counts,
+   SingleR.pred)
+
+```
+
+### Myeloid and Mitochondrial populations
+
+```{r Remove_clusters}
+
+# Remove cluster 13 and 15
+seurat.combined <- subset(seurat.combined, idents = c(0:12, 14))
+
+# Check clusters are removed
+levels(seurat.combined@meta.data$seurat_clusters)
+
+# Save old cluster IDs
+seurat.combined@meta.data$seurat_clusters_old <- seurat.combined@meta.data$seurat_clusters
+
+
+```
+
+## Recalculate UMAP and Visualise {.tabset}
+
+### Recalculate UMAP
+
+```{r Recalculate_UMAP}
+
+###########################
+# Recalculate UMAP
+###########################
+
+DefaultAssay(seurat.combined) <- "integrated"
+
+# Scale data
+seurat.combined <- ScaleData(seurat.combined, 
+                             verbose = TRUE)
+
+# Run PCA
+seurat.combined <- RunPCA(seurat.combined, 
+                          npcs = 30, 
+                          verbose = TRUE)
+
+# Find Neighbors
+seurat.combined <- FindNeighbors(seurat.combined, 
+                                 reduction = "pca", 
+                                 k.param = 20,
+                                 dims = 1:20)
+
+# Find clusters
+seurat.combined <- FindClusters(seurat.combined, 
+                                random.seed = 42,
+                                resolution = 0.4)
+
+
+# Run UMAP
+seurat.combined <- RunUMAP(object = seurat.combined,
+                           reduction = "pca",
+                           dims = 1:20,
+                           umap.method = "uwot",
+                           n.neighbors = 30, # 5 to 50
+                           min.dist = 0.3, # Sensible values are in the range 0.001 to 0.5
+                           seed.use = 42)
+
+```
+
+### Vis new UMAP
+
+```{r Visualise_new_UMAP_projection}
+
+# Create output directory
+if(!dir.exists("output/figures/UMAP")){
+  dir.create("output/figures/UMAP", 
+             recursive = T)
+}
+
+
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters_new
+
+# Plot UMAP projection
+UMAPPlot(object = seurat.combined,
+         label = TRUE, 
+         label.size = 6) + 
+  ggtitle("UMAP new projection and clust IDs")
+
+dev.copy(pdf, "output/figures/UMAP/UMAP_new_clust_IDs_numbered.pdf")
+dev.off()
+
+# Plot UMAP projection with old clust IDs
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters_old
+
+UMAPPlot(object = seurat.combined,
+         label = TRUE, 
+         label.size = 6) + 
+  ggtitle("UMAP new projection - original clust IDs")
+
+dev.copy(pdf, "output/figures/UMAP/UMAP_original_clust_IDs_numbered.pdf")
+dev.off()
+
+```
+
+### Rename clusters
+
+```{r rename_clusters}
+
+# Name clusters
+
+# Save cluster IDs - new ids = those after removal of clusters
+seurat.combined@meta.data$seurat_clusters_new <- seurat.combined@meta.data$seurat_clusters
+
+# Set Idents to cluster IDs following cluster removal 
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+
+# Rename classes.
+seurat.combined <- RenameIdents(object = seurat.combined,
+                                `0` = "Cytotoxic",
+                                `1` = "Naive_like_3",
+                                `2` = "Exhausted_1", 
+                                `3` = "Type_I_IFN",
+                                `4` = "Naive_like_1_CM", # Central memory?
+                                `5` = "Naive_like_2_SC", # Stem-cell-like
+                                `6` = "Stimulated_1", # Derived from cytotoxic ?
+                                `7` = "Stimulated_exhausted",
+                                `8` = "gd_T_non_g9d2", 
+                                `9` = "Exhausted_2",
+                                `10` = "MAIT", 
+                                `11` = "TRM", 
+                                `12` = "gd_T_g9d2", 
+                                `13` = "Proliferative")
+
+
+# Relevel idents variable to group clusters into order of future modules 
+
+# Module: Naive / Stem-like 
+# Naïve_like_1_CM
+# Naïve_like_2_SC
+# Naïve_like_3
+
+# Module: Activated
+# Cytotoxic
+# Type_I_IFN
+# Stimulated_1
+
+# Module: Exhaustion
+# Stimulated_exhausted
+# Exhausted_1, 
+# Exhausted_2
+# TRM
+
+# Module: Innate
+# gd_T_g9d2
+# gd_T_non_g9d2 
+# MAIT 
+
+# Module: Cycling
+# Proliferative
+
+
+# reset levels of factor variable 
+seurat.combined@active.ident <- factor(seurat.combined@active.ident, 
+                                       levels = c("Naive_like_1_CM",
+                                                  "Naive_like_2_SC", 
+                                                  "Naive_like_3", 
+                                                  "Cytotoxic",
+                                                  "Type_I_IFN",
+                                                  "Stimulated_1",
+                                                  "Stimulated_exhausted",
+                                                  "Exhausted_1",
+                                                  "Exhausted_2", 
+                                                  "TRM", 
+                                                  "gd_T_g9d2", 
+                                                  "gd_T_non_g9d2", 
+                                                  "MAIT",
+                                                  "Proliferative"))
+
+
+
+# Change "seurat_clusters" metadata label to new ident names as this slot is used in downstream plotting
+seurat.combined@meta.data$seurat_clusters <- Idents(seurat.combined)
+
+```
+
+### UMAP with Named clusters
+
+```{r Vis_Named_Clusters_UMAP}
+
+# Create output directory
+if(!dir.exists("output/figures/UMAP")){
+  dir.create("output/figures/UMAP", 
+             recursive = T)
+}
+
+
+##########################################
+# Plot UMAPs with cluster names
+##########################################
+
+
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+# UMAP named clusters
+UMAPPlot(object = seurat.combined,
+         pt.size = 1,
+         label = FALSE, 
+         cols = clust.cols) + 
+  ggtitle("UMAP named clusters")
+
+dev.copy(pdf, "output/figures/UMAP/UMAP_clusters.pdf")
+dev.off()
+
+# UMAP named clusters - labeled 
+UMAPPlot(object = seurat.combined,
+         label = TRUE, 
+         pt.size = 1,
+         label.size = 6,
+         cols = clust.cols) + 
+  NoLegend() +
+  ggtitle("UMAP named clusters")
+
+dev.copy(pdf, "output/figures/UMAP/UMAP_clusters_labeled.pdf")
+dev.off()
+
+
+#############
+# Condition
+#############
+
+# Split by condition
+UMAPPlot(object = seurat.combined,
+         label = FALSE, 
+         pt.size = 1,
+         split.by = "condition",
+         label.size = 6,
+         cols = clust.cols) + 
+  ggtitle("UMAP split by condition")
+
+dev.copy(pdf, "output/figures/UMAP/UMAP_splitby_conditions.pdf")
+dev.off()
+
+# Split by condition // No legend
+UMAPPlot(object = seurat.combined,
+         label = FALSE, 
+         pt.size = 1,
+         split.by = "condition",
+         label.size = 6,
+         cols = clust.cols) + 
+  ggtitle("UMAP split by condition") + 
+  NoLegend()
+
+dev.copy(pdf, "output/figures/UMAP/UMAP_splitby_conditions_Nolegend.pdf")
+dev.off()
+
+# Group by condition
+UMAPPlot(object = seurat.combined,
+         label = FALSE, 
+         pt.size = 1,
+         group.by = "condition",
+         cols = Condition.cols,
+         label.size = 6) + 
+  ggtitle("UMAP group by condition")
+
+dev.copy(pdf, "output/figures/UMAP/UMAP_groupby_conditions.pdf")
+dev.off()
+
+
+#############
+# Sample
+#############
+
+# Split by Sample
+UMAPPlot(object = seurat.combined,
+         label = FALSE, 
+         pt.size = 1,
+         split.by = "group",
+         label.size = 6,
+         cols = clust.cols) + 
+  ggtitle("UMAP split by Sample")
+
+dev.copy(pdf, "output/figures/UMAP/UMAP_splitby_sample.pdf")
+dev.off()
+
+
+# Group by Sample
+UMAPPlot(object = seurat.combined,
+         label = FALSE, 
+         group.by = "group",
+         pt.size = 1,
+         label.size = 6) + 
+  ggtitle("UMAP group by Sample")
+
+dev.copy(pdf, "output/figures/UMAP/UMAP_groupby_sample.pdf")
+dev.off()
+
+
+
+
+
+
+
+```
+
+### Saving dim reduction Embeddings to metadata
+
+```{r Save_dimreduction_embeddings}
+
+# UMAP embeddings
+seurat.combined <- AddMetaData(seurat.combined, seurat.combined@reductions$umap@cell.embeddings[,1], "UMAP_1")
+seurat.combined <- AddMetaData(seurat.combined, seurat.combined@reductions$umap@cell.embeddings[,2], "UMAP_2")
+
+# Save PCA (Dim 1 and 2) embeddings
+seurat.combined <- AddMetaData(seurat.combined, seurat.combined@reductions$pca@cell.embeddings[,1], "PCA_1")
+seurat.combined <- AddMetaData(seurat.combined, seurat.combined@reductions$pca@cell.embeddings[,2], "PCA_2")
+
+head(seurat.combined@meta.data)
+
+```
+
+### Create Cluster by condition metadata
+
+```{r Generate_metadata_for_Cluster_by_Condition}
+
+######################################################
+# Create additional Metadata for downstream analysis
+######################################################
+# Now that clusters are cleaned and renamed 
+# Generate a joint cluster & condition_ID variable
+
+# Using named clusters
+seurat.combined@meta.data$condition_clust <- paste(seurat.combined@meta.data$condition, 
+                                                   seurat.combined@meta.data$seurat_clusters, sep = "_")
+
+```
+
+## Export large data {.tabset}
+
+### Export seurat object
+
+```{r export_RDS}
+if(!quick.load){
+  saveRDS(seurat.combined, file = "Exported_RDS_files/seurat_combined_no_imputation.rds")
+}
+
+```
+
+### Save large data tables
+
+```{r write_data, eval = FALSE}
+
+if(long.compute){
+  
+  
+  # Create output directory
+  if(!dir.exists("output/tables/Large_dataframes")){
+    dir.create("output/tables/Large_dataframes", 
+               recursive = T)
+  }
+  
+  
+  # Raw data
+  save.data.frame.function(seurat.combined@assays$RNA@counts,
+                           path = "output/tables/Large_dataframes/", 
+                           title = "Raw_dataframe")
+  
+  # Normed data
+  save.data.frame.function(seurat.combined@assays$RNA@data,
+                           path = "output/tables/Large_dataframes/",
+                           title = "filtered_dataframe")
+  
+  # Scaled data
+  save.data.frame.function(seurat.combined@assays$RNA@scale.data,
+                           path = "output/tables/Large_dataframes/", 
+                           title = "scaled_dataframe")
+  
+  # PCA embeddings
+  save.data.frame.function(seurat.combined@reductions$pca@cell.embeddings,
+                           path = "output/tables/Large_dataframes/", 
+                           title = "RNA_PCA")
+  
+  # UMAP embeddings
+  save.data.frame.function(seurat.combined@reductions$umap@cell.embeddings, 
+                           path = "output/tables/Large_dataframes/", 
+                           title = "RNA_UMAP")
+  
+  # Metadata
+  save.data.frame.function(seurat.combined@meta.data,
+                           path = "output/tables/Large_dataframes/", 
+                           title = "Meta_data_dataframe")
+  
+  # Integrated normed values
+  save.data.frame.function(seurat.combined@assays$integrated@data, 
+                           path = "output/tables/Large_dataframes/", 
+                           title = "filtered_integrated_dataframe")
+  
+  # Integrated scaled data
+  save.data.frame.function(seurat.combined@assays$integrated@scale.data,
+                           path = "output/tables/Large_dataframes/", 
+                           title = "scaled_integrated_dataframe")
+  
+}
+
+```
+
+## Imputation {.tabset}
+
+### Imputation calculation
+
+```{r seurat_imputation}
+
+
+######################
+# Impute values 
+######################
+if(long.compute){
+  seurat.combined <- RunALRA(seurat.combined, 
+                             genes.use = rownames(seurat.combined))
+}
+
+# 8.37% of the values became negative in the scaling process and were set to zero
+# The matrix went from 29.63% nonzero to 38.95% nonzero
+
+
+####################
+# Calculate k value
+####################
+if(long.compute){
+  
+  Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+  seurat.combined.small <- subset(seurat.combined, downsample = 100)
+  
+  ALRA.out <- RunALRA(seurat.combined.small,
+                      k.only = TRUE)
+  
+  ggouts <- ALRAChooseKPlot(ALRA.out)
+  
+  ggouts
+  dev.copy(pdf, "output/QC/Imputation_K_plot.pdf")
+  dev.off()
+}
+
+
+# set default assay back to RNA
+DefaultAssay(seurat.combined) <- "RNA"
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+```
+
+## Export large data after imputation {.tabset}
+
+### Export seurat object with imputation
+
+```{r export_RDS}
+if(!quick.load){
+  saveRDS(seurat.combined, file = "Exported_RDS_files/seurat_combined.rds")
+}
+
+if(long.compute){
+  
+  
+  # Create output directory
+  if(!dir.exists("output/tables/Large_dataframes")){
+    dir.create("output/tables/Large_dataframes", 
+               recursive = T)
+  }
+  
+  
+  # Imputed values
+  save.data.frame.function(seurat.combined@assays$alra@counts,
+                           path = "output/tables/Large_dataframes/", 
+                           title = "Imputed_counts_dataframe")
+  
+}
+
+
+```
+
+## Visualise distribution of cells across clusters/condition/modules {.tabset}
+
+### Plot distribution of cells per each cluster
+
+```{r Distribution_cells_per_cluster}
+
+# Create output directory
+if(!dir.exists("output/figures/Clust_and_Module_distribution")){
+  dir.create("output/figures/Clust_and_Module_distribution", 
+             recursive = T)
+}
+
+################################
+# Plot cluster wise distribution
+################################
+default.mar <- par()$mar
+
+par(mar = c(10.1, 5.1, 4.1, 2.1))
+
+
+# Number of cells 
+x <- table(seurat.combined@meta.data$seurat_clusters)
+
+barplot(t(x), 
+        main = "Number of cells per clust",
+        ylab = "Number of cells",
+        cex.names = 1,
+        las = 2,
+        ylim = c(0, 2500),
+        legend = TRUE, 
+        beside = TRUE)
+
+
+dev.copy(pdf, "output/figures/Clust_and_Module_distribution/Number_cells_per_clust.pdf")
+dev.off()
+
+# Frequency 
+x <- prop.table(table(seurat.combined@meta.data$seurat_clusters)) * 100
+
+barplot(t(x), 
+        main = "Freq of cells per clust",
+        ylab = "% of total",
+        cex.names = 1, 
+        las = 2,
+        ylim = c(0, 20),
+        legend = TRUE, 
+        beside = TRUE)
+
+dev.copy(pdf, "output/figures/Clust_and_Module_distribution/Freq_cells_per_clust.pdf")
+dev.off()
+
+
+
+###################################################
+# Plot Freq per cluster per condition 
+###################################################
+
+# Be aware, US and Stim have diff total number of cells and therefore should be represented as a % normalised to total condition cell #
+
+condition.cell.n <- table(seurat.combined@meta.data$condition)
+US.cell.n <- condition.cell.n[1]
+Stim.cell.n <- condition.cell.n[2]
+
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+Cluster.cell.n <- table(Idents(seurat.combined), seurat.combined@meta.data$condition)
+
+Cluster.cell.n[,1] <- Cluster.cell.n[,1]/US.cell.n*100
+Cluster.cell.n[,2] <- Cluster.cell.n[,2]/Stim.cell.n*100
+
+colSums(Cluster.cell.n) # sanity check, both should = 100%
+
+barplot(t(Cluster.cell.n),
+        main = "% of cells per cluster per condition",
+        ylab = "% of cells",
+        col = Condition.cols,
+        cex.names = 1, 
+        las = 2,
+        ylim = c(0, 30), 
+        beside = TRUE, 
+        legend = TRUE)
+
+dev.copy(pdf, "output/figures/Clust_and_Module_distribution/Percent_cells_per_cluster_per_condition.pdf")
+dev.off()
+
+
+# reset margin to default 
+par(mar = c(default.mar))
+
+
+#########################################
+# Plot Module wise distribution
+#########################################
+
+# Plot total cell # per module 
+
+Module.cell.n <- table(seurat.combined@meta.data$Module)
+
+barplot(Module.cell.n, 
+        main = "# of cells per Module", 
+        xlab = "Module", 
+        ylab = "# of cells",
+        cex.names = 0.8, 
+        ylim = c(0, 5000))
+
+dev.copy(pdf, "output/figures/Clust_and_Module_distribution/Number_cells_per_Module.pdf")
+dev.off()
+
+
+# Plot freq of total per module
+Module.freq <- prop.table(table(seurat.combined@meta.data$Module))*100
+
+barplot(Module.freq,
+        main = "% of cells per Module",
+        xlab = "Module",
+        ylab = "% of cells",
+        cex.names = 0.8, 
+        ylim = c(0, 40))
+
+dev.copy(pdf, "output/figures/Clust_and_Module_distribution/Percent_cells_per_Module.pdf")
+dev.off()
+
+
+###################################################
+# Plot Freq per module per condition 
+###################################################
+
+# Be aware, US and Stim have diff total number of cells and therefore should be represented as a % normalised to total condition cell #
+
+condition.cell.n <- table(seurat.combined@meta.data$condition)
+US.cell.n <- condition.cell.n[1]
+Stim.cell.n <- condition.cell.n[2]
+
+Idents(seurat.combined) <- seurat.combined@meta.data$Module
+Module.cell.n <- table(Idents(seurat.combined), seurat.combined@meta.data$condition)
+
+Module.cell.n[,1] <- Module.cell.n[,1]/US.cell.n*100
+Module.cell.n[,2] <- Module.cell.n[,2]/Stim.cell.n*100
+
+colSums(Module.cell.n) # sanity check, both should = 100%
+
+
+barplot(t(Module.cell.n),
+        main = "% of cells per Module per condition",
+        xlab = "Module",
+        ylab = "% of cells",
+        col = Condition.cols,
+        cex.names = 0.8, 
+        ylim = c(0, 50), 
+        beside = TRUE, 
+        legend = TRUE)
+
+dev.copy(pdf, "output/figures/Clust_and_Module_distribution/Percent_cells_per_Module_per_condition.pdf")
+dev.off()
+
+
+
+```
+
+## DEG analysis {.tabset}
+
+### DEGs between clusters
+
+```{r DEGs_between_clusters}
+
+# Create output directory
+if(!dir.exists("output/tables/DEG_Clusters")){
+  dir.create("output/tables/DEG_Clusters", 
+             recursive = T)
+}
+
+# Set assay to RNA
+DefaultAssay(seurat.combined) <- "RNA"
+
+# Set Idents 
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+################
+# Positive only
+################
+
+# Find markers
+Cluster.markers.pos <- FindAllMarkers(seurat.combined,
+                                      assay = "RNA",
+                                      only.pos = TRUE,
+                                      min.diff.pct = 0.1,
+                                      return.thresh = 0.05)
+
+# Write data to file
+write.csv(Cluster.markers.pos, "output/tables/DEG_Clusters/Cluster_markers_unfiltered_pos.csv")
+
+# Filter by sig Padj val
+sum(Cluster.markers.pos$p_val_adj < 0.05) # 2,919 genes 
+
+write.csv(Cluster.markers.pos[Cluster.markers.pos$p_val_adj < 0.05, ], "output/tables/DEG_Clusters/Cluster_markers_sig_only_pos.csv")
+
+
+################
+# Pos and Neg
+################
+
+# Find markers
+Cluster.markers <- FindAllMarkers(seurat.combined,
+                                  assay = "RNA",
+                                  only.pos = FALSE,
+                                  min.diff.pct = 0.1,
+                                  return.thresh = 0.05)
+
+# Write data to file
+write.csv(Cluster.markers, "output/tables/DEG_Clusters/Cluster_markers_unfiltered.csv")
+
+# Filter by sig Padj val
+sum(Cluster.markers$p_val_adj < 0.05) # 4,890 genes 
+
+write.csv(Cluster.markers[Cluster.markers$p_val_adj < 0.05, ], "output/tables/DEG_Clusters/Cluster_markers_sig_only.csv")
+
+
+########################
+# Get top markers
+########################
+
+# Get top markers for each cluster - use Positive markers only
+sig.markers <- Cluster.markers.pos[Cluster.markers.pos$p_val_adj < 0.05, ]
+
+Cluster.vect <- unique(sig.markers$cluster)
+
+for(i in 1:length(Cluster.vect)){
+  
+  
+  print(paste0("Getting markers for cluster ", Cluster.vect[i]))
+  
+  input.df <- sig.markers[sig.markers$cluster == Cluster.vect[i], ]
+  
+  assign(paste0("Cluster_", Cluster.vect[i]), top_n(input.df, 40,  avg_logFC))
+  
+  
+  x <- eval(parse(text = paste0("Cluster_", Cluster.vect[i])))
+  write.csv(x, paste0("output/tables/DEG_Clusters/Top_40_markers_for_cluster_", Cluster.vect[i], ".csv"))
+  
+}
+
+
+```
+
+### DEGs of clusters between conditions
+
+```{r DEGs_of_clusts_between_conditions}
+
+# Create output directories
+if(!dir.exists("output/tables/DEG_Clusters_btn_conditions")){
+  dir.create("output/tables/DEG_Clusters_btn_conditions", 
+             recursive = T)
+}
+
+
+if(!dir.exists("output/figures/DEG_Clusters_btn_conditions")){
+  dir.create("output/figures/DEG_Clusters_btn_conditions", 
+             recursive = T)
+}
+
+
+# Set assay to RNA
+DefaultAssay(seurat.combined) <- "integrated"
+
+# Get vector of clusters
+clust.var <- seurat.combined@meta.data$seurat_clusters
+clust.var <- levels(clust.var)
+
+# Plot just the top 10 up and 10 downregulated DEGs
+for(i in 1:length(clust.var)){
+  
+  print(paste0("Analysis for cluster ", clust.var[i]))
+  
+  # Set idents to the condition_cluster
+  Idents(seurat.combined) <- seurat.combined@meta.data$condition_clust
+  
+  # Calculating DEGs for each cluster across condition
+  DEG.var <- FindMarkers(seurat.combined,
+                         ident.1 = paste0("Stim_", clust.var[i]), 
+                         ident.2 = paste0("US_", clust.var[i]),
+                         test.use = "wilcox",
+                         logfc.threshold = 0.25,
+                         min.pct = 0.1,
+                         only.pos = FALSE,
+                         verbose = FALSE)
+  
+  # create column for gene ID
+  DEG.var$gene <- rownames(DEG.var)
+  
+  # Write data to file
+  write.csv(DEG.var, paste0("output/tables/DEG_Clusters_btn_conditions/Stim_vs_US_DEG_clust_", clust.var[i], ".csv"))
+  
+  #########################################
+  # Get top DEGs for clusters Stim vs. US
+  #########################################
+  
+  print(paste0("Getting top markers for cluster ", clust.var[i], " Stim vs. US"))
+  
+  sig.markers <- DEG.var[DEG.var$p_val_adj < 0.05, ]
+  
+  assign(paste0("Condition_Cluster_DEGs_", clust.var[i]), top_n(sig.markers, 40,  avg_logFC))
+  
+  x <- eval(parse(text = paste0("Condition_Cluster_DEGs_", clust.var[i])))
+  write.csv(x, paste0("output/tables/DEG_Clusters_btn_conditions/Top_40_markers_for_Stim_vs_US_cluster_", clust.var[i], ".csv"))
+  
+  ############################################
+  # plotting DEG per cluster across condition
+  ############################################
+  
+  # Set idents to cluster ID
+  Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+  
+  # Subset for cluster ID
+  subset.seurat <- subset(seurat.combined, idents = paste0(clust.var[i]))
+  
+  # Set idents to condition var
+  Idents(subset.seurat) <- subset.seurat@meta.data$condition
+  
+  # Get top 10 genes
+  sig.genes <- DEG.var[DEG.var$p_val_adj < 0.05, ]
+  
+  # up-regulated genes
+  genes.to.label.1 <- top_n(sig.genes, 10, avg_logFC)$gene
+  
+  # Down-regulated genes
+  genes.to.label.2 <- top_n(sig.genes, -10, avg_logFC)$gene
+  
+  # Create vector of genes
+  genes.to.label <- unique(c(genes.to.label.1, genes.to.label.2))
+  
+  # Average expression
+  avg.subset.seurat <- log1p(AverageExpression(subset.seurat, verbose = FALSE)$RNA)
+  
+  # Create column with gene id 
+  avg.subset.seurat$gene <- rownames(avg.subset.seurat)
+  
+  # Generate plot
+  p1 <- ggplot(avg.subset.seurat, 
+               aes(US, Stim)) + 
+    geom_point() + 
+    ggtitle(paste0("Cluster ", clust.var[i]))
+  
+  p1 <-  LabelPoints(plot = p1,
+                     points = genes.to.label,
+                     repel = TRUE)
+  
+  print(plot(p1))
+  dev.copy(pdf, paste0("output/figures/DEG_Clusters_btn_conditions/ScatterPlot_Stim_vs_US_cluster_", clust.var[i], ".pdf"))
+  dev.off()
+  
+  # Remove large variable
+  rm(subset.seurat)
+  rm(DEG.var)
+  
+}
+
+
+
+
+
+
+
+
+
+
+# Plot All DEGs just to visualise the number of DEGs per cluster detected
+for(i in 1:length(clust.var)){
+  
+  print(paste0("Analysis for cluster ", clust.var[i]))
+  
+  # Set idents to the condition_cluster
+  Idents(seurat.combined) <- seurat.combined@meta.data$condition_clust
+  
+  # Calculating DEGs for each cluster across condition
+  DEG.var <- FindMarkers(seurat.combined,
+                         ident.1 = paste0("Stim_", clust.var[i]), 
+                         ident.2 = paste0("US_", clust.var[i]),
+                         test.use = "wilcox",
+                         logfc.threshold = 0.25,
+                         min.pct = 0.1,
+                         only.pos = FALSE,
+                         verbose = FALSE)
+  
+  # create column for gene ID
+  DEG.var$gene <- rownames(DEG.var)
+  
+  ############################################
+  # plotting DEG per cluster across condition
+  ############################################
+  
+  # Set idents to cluster ID
+  Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+  
+  # Subset for cluster ID
+  subset.seurat <- subset(seurat.combined, idents = paste0(clust.var[i]))
+  
+  # Set idents to condition var
+  Idents(subset.seurat) <- subset.seurat@meta.data$condition
+  
+  # Get all significant DEGs
+  genes.to.label <- DEG.var[DEG.var$p_val_adj < 0.05, "gene"]
+  
+  
+  # Average expression
+  avg.subset.seurat <- log1p(AverageExpression(subset.seurat, verbose = FALSE)$RNA)
+  
+  # Create column with gene id 
+  avg.subset.seurat$gene <- rownames(avg.subset.seurat)
+  
+  # Generate plot
+  p1 <- ggplot(avg.subset.seurat, 
+               aes(US, Stim)) + 
+    geom_point() + 
+    ggtitle(paste0("Cluster ", clust.var[i]))
+  
+  p1 <-  LabelPoints(plot = p1,
+                     points = genes.to.label,
+                     repel = TRUE)
+  
+  print(plot(p1))
+  dev.copy(pdf, paste0("output/figures/DEG_Clusters_btn_conditions/ScatterPlot_Stim_vs_US_cluster_", clust.var[i], "_all_Sig_genes.pdf"))
+  dev.off()
+  
+  # Remove large variable
+  rm(subset.seurat)
+  rm(DEG.var)
+  
+}
+
+
+
+
+
+```
+
+
+### Visualising gene expression accross conditions
+```{r Visualising_condition_differences}
+
+# Generate output directories
+if(!dir.exists("output/figures/DEG_Clusters_btn_conditions")){
+  dir.create("output/figures/DEG_Clusters_btn_conditions", 
+             recursive = T)
+}
+
+if(!dir.exists("output/figures/DEG_Clusters_btn_conditions/visualising_gene_expression")){
+  dir.create("output/figures/DEG_Clusters_btn_conditions/visualising_gene_expression", 
+             recursive = T)
+}
+
+
+#cluster.markers.df <- read.csv("output/tables/DEG_Clusters/Cluster_markers_unfiltered.csv")
+
+DefaultAssay(seurat.combined) <- "integrated"
+
+
+goi <- c("GZMB", "IFNG", "CD27", "CD28", "PDCD1", "CCL4", "PRF1", "TIGIT", "IL2RA", "CCL4L2")
+
+for(i in seq_along(goi)){
+  
+  print(VlnPlot(seurat.combined, 
+        pt.size = 0, 
+        log = FALSE,
+        feature = goi[i], 
+        cols = Condition.cols,
+        split.by = "condition"))
+  
+  dev.copy(pdf, paste0("output/figures/DEG_Clusters_btn_conditions/visualising_gene_expression/VlnPlot_", goi[i], ".pdf"))
+  dev.off()
+}
+
+
+  print(VlnPlot(seurat.combined, 
+        pt.size = 0, 
+        log = FALSE,
+        feature = "LAG3", 
+        cols = Condition.cols,
+        group.by = "condition"))
+
+
+
+
+```
+
+
+### singleCellHaystack DEG
+
+```{r singleCellHaystack}
+
+if(long.compute){
+  
+  # Create output directory
+  if(!dir.exists("output/figures/singleCellHaystack")){
+    dir.create("output/figures/singleCellHaystack")
+  }
+  
+  # Set seed for reproducibility 
+  set.seed(42)
+  
+  ##############################
+  # Set up input variables
+  ##############################
+  
+  # Get UMAP dims
+  umap.dims <- seurat.combined@reductions$umap@cell.embeddings
+  umap.dims <- as.data.frame(umap.dims)
+  
+  # Get expression data
+  exp.data <- seurat.combined@assays$integrated@data
+  exp.data <- as.matrix(exp.data)
+  
+  summary(rowSums(exp.data))
+  
+  # Determine gene detection
+  
+  # Above count 1
+  detected.genes <- exp.data > 1
+  
+  # Number of detected genes after thresholding
+  general.detection = apply(detected.genes, 2, sum)
+  ggplot(umap.dims, aes(x = UMAP_1, y = UMAP_2, colour = general.detection)) + labs(x = "UMAP1", y = "UMAP2") +
+    geom_point(size=2) + scale_color_gradient(low="white", high="red") + labs(color = "Det. genes")
+  
+  
+  # Run haystack DEG calculation
+  res.umap <- haystack(umap.dims, 
+                       detection = detected.genes, 
+                       method = "2D")
+  
+  class(res.umap)
+  
+  # top 10 DEGs
+  show_result_haystack(res.haystack = res.umap,
+                       n = 10)
+  
+  
+  # visualize genes of interest
+  plot_gene_haystack(umap.dims,
+                     expression = exp.data,
+                     gene = "CCL4",
+                     detection = detected.genes,
+                     high.resolution = TRUE,
+                     point.size = 1)
+  
+  
+  # set seurat params
+  DefaultAssay(seurat.combined) <- "integrated"
+  Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+  
+  # vis with featureplot
+  FeaturePlot(seurat.combined, 
+              feature = "HAVCR2", 
+              order = TRUE,
+              pt.size = 1)
+  
+  # Vis with Vln
+  VlnPlot(seurat.combined, 
+          assay = "RNA",
+          feature = "PDCD1", 
+          pt.size = 0)
+  
+  
+  # get the top most significant genes, and cluster them by their distribution pattern in the 2D plot
+  sorted.table <- show_result_haystack(res.haystack = res.umap,
+                                       p.value.threshold = 1e-10)
+  
+  gene.subset <- row.names(sorted.table)
+  length(gene.subset) # 1,353
+  
+  
+  # Export data
+  write.table(sorted.table, 
+              "output/tables/DEG_singleCellHaystack.txt", 
+              sep = "\t",
+              quote = FALSE)
+  
+  
+  # Use k-means clustering to group DEGs
+  km <- kmeans_haystack(umap.dims, 
+                        detection = detected.genes,
+                        genes = gene.subset,
+                        k = 10)
+  
+  km.clusters <- km$cluster
+  
+  
+  ###################
+  # Visualise DEGs
+  ###################
+  
+  goi <- show_result_haystack(res.haystack = res.umap,
+                              p.value.threshold = 1e-10, 
+                              n = 20)
+  goi <- rownames(goi)
+  
+  for(i in seq_along(goi)){
+    
+    # Featureplot
+    print(FeaturePlot(seurat.combined, 
+                      feature = goi[i], 
+                      reduction = "umap",
+                      order = TRUE,
+                      pt.size = 1))
+    
+    dev.copy(pdf, paste0("output/figures/singleCellHaystack/FeaturePlot_", goi[i], ".pdf"))
+    dev.off()
+    
+    # Vlnplot 
+    print(VlnPlot(seurat.combined, 
+                  assay = "RNA",
+                  feature = goi[i], 
+                  pt.size = 0))
+    
+    dev.copy(pdf, paste0("output/figures/singleCellHaystack/VlnPlot_", goi[i], ".pdf"))
+    dev.off()
+    
+    
+  }
+  
+  
+  
+  # Vis DEG clusters
+  
+  seurat.combined.small <- subset(seurat.combined, downsample = 300)
+  
+  
+  for(i in seq_len(max(km.clusters))){
+    goi <- names(km.clusters[km.clusters == i])
+    
+    print(DoHeatmap(seurat.combined.small, 
+                    features = goi) + NoLegend())
+    
+    dev.copy(pdf, paste0("output/figures/singleCellHaystack/DEG_heatmap_cluster_", i, ".pdf"))
+    dev.off()
+    
+  }
+  
+  
+  # Remove un-needed objects
+  rm(res.umap, 
+     sorted.table, 
+     umap.dims, 
+     general.detection, 
+     km.clusters, 
+     detected.genes, 
+     exp.data, 
+     km)
+  
+}
+```
+
+
+
+## Analysis of Stim Stimulated_1 and Stim Stimulated_Exhausted clusters {.tabset} // INCOMPLETE
+
+### DEGs between stimulation specific Stim_1 and Stimulated_Exhausted clusters
+
+```{r DEG_stim_clusters}
+
+# Aim 
+# Identify and visualise the difference between Stimulated clusters Stimulated_1 and Stimulated_exhausted
+
+# Also, should look at the overlap of clonotypes betwen these two clusters
+
+
+
+
+# Output directory
+if(!dir.exists("output/figures/Stim_1_vs_Stim_exhausted")){
+  dir.create("output/figures/Stim_1_vs_Stim_exhausted", 
+             recursive = T)}
+
+
+# Run DEG analysis
+DefaultAssay(seurat.combined) <- "integrated"
+
+Idents(seurat.combined) <- seurat.combined@meta.data$condition_clust
+unique(Idents(seurat.combined))
+
+
+DEG.markers <- FindMarkers(seurat.combined, 
+                           ident.1 = "Stim_Stimulated_1", 
+                           ident.2 = "Stim_Stimulated_exhausted", 
+                           slot = "data", 
+                           logfc.threshold = 0,
+                           test.use = "wilcox",
+                           only.pos = FALSE)
+
+DEG.markers <- 
+  DEG.markers %>%
+  filter(p_val_adj < 0.05)
+
+write.csv(DEG.markers, "output/tables/DEG_Stim_stim1_vs_Stim_Stim_exhausted.csv")
+
+
+
+  
+#################################
+# Create visualisations
+#################################
+
+###########
+# Volcano
+###########
+
+# Format data
+volcano.data <- DEG.markers %>%
+  dplyr::select(avg_logFC, p_val_adj)
+
+colnames(volcano.data) <- c("logFC", "FDR")
+
+keyvals <- colour.points(volcano.data)
+
+
+# get list of top 10 up and 10 downregulated genes
+goi.up <- volcano.data %>%
+  dplyr::filter(FDR < 0.05) %>%
+  top_n(15, logFC)
+
+goi.dn <- volcano.data %>%
+  dplyr::filter(FDR < 0.05) %>%
+  top_n(-15, logFC)
+
+# combine vectors
+goi <- unique(c(rownames(goi.up), rownames(goi.dn)))
+
+
+custom.enhanced.volcano(volcano.data, 
+                        selectLab = goi, 
+                        colCustom = keyvals, 
+                        xlim = c(-3.5, 3.5),
+                        title = "Stim1 vs Stim Exhausted")
+
+
+dev.copy(pdf, "output/figures/Stim_1_vs_Stim_exhausted/Volcano.pdf")
+dev.off()
+
+#############
+# Heatmaps
+#############
+
+# All clusters 
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+seurat.combined.small <- subset(seurat.combined, downsample = 300)
+
+# All genes significantly different
+goi <- DEG.markers %>%
+  arrange(desc(avg_logFC))
+
+
+DoHeatmap(seurat.combined.small, 
+          features = rownames(goi)) + 
+  NoLegend()
+
+dev.copy(pdf, "output/figures/Stim_1_vs_Stim_exhausted/Heatmap_all_clusters_allsig_genes.pdf")
+dev.off()
+
+# All genes > or < 1 fold change 
+goi <- DEG.markers %>%
+  dplyr::filter(avg_logFC > 1 | avg_logFC < -1) %>%
+  arrange(desc(avg_logFC))
+
+
+DoHeatmap(seurat.combined.small, 
+          features = rownames(goi)) + 
+  NoLegend()
+
+dev.copy(pdf, "output/figures/Stim_1_vs_Stim_exhausted/Heatmap_all_clusters.pdf")
+dev.off()
+
+
+######################################################
+# Do DEG analysis across clonally related clusters 
+######################################################
+
+DefaultAssay(seurat.combined) <- "integrated"
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+temp.seurat <- subset(seurat.combined, idents = c("Exhausted_1", "Exhausted_2",
+                                                  "Cytotoxic", "Type_I_IFN",
+                                                  "Stimulated_exhausted", "Stimulated_1"))
+
+DefaultAssay(temp.seurat) <- "integrated"
+
+# Set Idents 
+Idents(temp.seurat) <- temp.seurat@meta.data$seurat_clusters
+
+# Find markers
+DEG.markers <- FindAllMarkers(temp.seurat,
+                              assay = "RNA",
+                              only.pos = FALSE,
+                              min.diff.pct = 0.1,
+                              return.thresh = 0.05)
+
+
+DEG.markers <- 
+  DEG.markers %>%
+  filter(p_val_adj < 0.05)
+
+length(DEG.markers$gene) # 2,640 genes 
+
+write.csv(DEG.markers, "output/tables/DEG_Cytotoxic_TypeI_Stim1_StimExhausted_Exhausted_all_sig.csv")
+
+
+##############################
+# Visualise data
+##############################
+
+temp.seurat.small <- subset(temp.seurat, downsample = 300)
+
+goi <- DEG.markers %>%
+  group_by(cluster) %>%
+  top_n(50, avg_logFC) %>%
+  pull(gene)
+
+goi <- unique(goi)
+
+DoHeatmap(temp.seurat.small, 
+          goi) + 
+  NoLegend()
+
+dev.copy(pdf, "output/figures/Stim_1_vs_Stim_exhausted/Heatmap_clonally_related_clusters_DEG_top_50.pdf")
+dev.off()
+
+
+
+
+
+########################
+# Annotated heatmap 
+########################
+
+goi <- DEG.markers %>%
+  group_by(cluster) %>%
+  top_n(100, avg_logFC) %>%
+  arrange(desc(avg_logFC), .by_group = TRUE) %>%
+  pull(gene)
+
+goi <- unique(goi)
+
+
+# Genes to be labeled if present in plotted heatmap
+genes.id <- c("EOMES", "TCF7", "CCR7",
+              "IL7R", "IFI6", "ISG15", "XCL1", "TNF", "IL2", "IFNG", "LAG3",
+              "TIGIT", "CD226", "GNLY", "PDCD1", "PRF1", "GATA3", "CTLA4", "CTSW")
+  
+# Colour annotation for column labels 
+names(clust.cols) <- clust.names
+
+clust.cols.temp <- clust.cols[names(clust.cols) %in% c("Cytotoxic", "Type_I_IFN", "Stimulated_1",
+                                                       "Stimulated_exhausted", "Exhausted_1", "Exhausted_2")]
+
+
+cluster.order <- c("Cytotoxic", "Type_I_IFN", "Stimulated_1", "Stimulated_exhausted", "Exhausted_1", "Exhausted_2")
+
+# Plot heatmap downsampled single cell values
+annotated.heatmap(temp.seurat.small, 
+                  cluster.id = "seurat_clusters",
+                  assay.use = "integrated",
+                  average.expression = FALSE,
+                  goi = goi, 
+                  genes.to.label = genes.id, 
+                  col_order = cluster.order, 
+                  col.colours = clust.cols.temp, 
+                  range.val = c(-2, 0, 2))
+
+dev.copy(pdf, "output/figures/DEG_cytotoxic_and_stim_clusters/Heatmap_highlighted_DEGs.pdf")
+dev.off()
+
+
+rm(temp.seurat, temp.seurat.small)
+
+
+#####################################
+# Plot Nebulosa density UMAPs 
+#####################################
+
+goi <- DEG.markers %>%
+  group_by(cluster) %>%
+  top_n(10, avg_logFC) %>%
+  pull(gene)
+
+goi <- unique(goi)
+
+DefaultAssay(seurat.combined) <- "RNA"
+
+for(i in seq_along(goi)){
+  
+  print(Nebulosa::plot_density(seurat.combined, 
+                               goi[i], 
+                               pal = "inferno"))
+  
+  dev.copy(pdf, paste0("output/figures/DEG_cytotoxic_and_stim_clusters/Density_UMAP_", goi[i], ".pdf"))
+  dev.off()
+}
+
+
+
+
+```
+
+
+
+## Visualise DEGs {.tabset}
+
+### Heatmaps and dotplots of Cluster DEGs
+
+```{r Heatmaps_and_dotplots_of_Cluster_DEGs}
+
+# Output directory
+# Heatmaps
+if(!dir.exists("output/figures/Cluster_DEG_Heatmaps")){
+  dir.create("output/figures/Cluster_DEG_Heatmaps", 
+             recursive = T)
+}
+
+# Dotplots
+if(!dir.exists("output/figures/Cluster_DEG_dotplots")){
+  dir.create("output/figures/Cluster_DEG_dotplots", 
+             recursive = T)
+}
+
+
+
+# Set assay to RNA
+DefaultAssay(seurat.combined) <- "integrated"
+
+# Set Idents 
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+# Downsample 
+seurat.combined.small <- subset(seurat.combined, downsample = 300)
+
+
+# Get average expression
+average.seurat <- AverageExpression(seurat.combined,
+                                    assay = "RNA",
+                                    slot = "data",
+                                    verbose = TRUE,
+                                    return.seurat = TRUE)
+
+
+################################################
+# Visualise top markers for each Cluster
+################################################
+# as single cell heatmap, averaged heatmap, and dotplot
+
+
+# get vector of clusters to iterate over
+Cluster.vect <- unique(seurat.combined.small@meta.data$seurat_clusters)
+
+
+for(i in 1:length(Cluster.vect)){
+  
+  print(paste0("Evaluating cluster = ", Cluster.vect[i]))
+  
+  x <- eval(parse(text = paste0("Cluster_", Cluster.vect[i])))
+  
+  # Single cell heatmap
+  print(DoHeatmap(seurat.combined.small, 
+                  features = x$gene, 
+                  size = 4, 
+                  angle = 90, 
+                  raster = FALSE) + 
+          NoLegend()
+  )
+  
+  dev.copy(pdf, paste0("output/figures/Cluster_DEG_Heatmaps/Heatmap_topDEGs_clust_", Cluster.vect[i], ".pdf"))
+  dev.off()
+  
+  
+  # Average expression heatmap
+  print(DoHeatmap(average.seurat, 
+                  features = x$gene, 
+                  size = 4, 
+                  angle = 90, 
+                  draw.lines = FALSE,
+                  raster = FALSE) + 
+          NoLegend()
+  )
+  
+  dev.copy(pdf, paste0("output/figures/Cluster_DEG_Heatmaps/Heatmap_topDEGs_clust_", Cluster.vect[i], "_average.pdf"))
+  dev.off()
+  
+  
+  print(DotPlot(seurat.combined, 
+                assay = "RNA",
+                features = x$gene, 
+                dot.scale = 8) + 
+          RotatedAxis() +  
+          theme(text = element_text(size = 4)) + 
+          NoLegend()
+  )
+  
+  dev.copy(pdf, paste0("output/figures/Cluster_DEG_dotplots/DotPlot_TopDEGs_clust_", Cluster.vect[i], ".pdf"))
+  dev.off()
+  
+  
+}
+
+
+```
+
+### Large heatmaps of top DEGs by foldchange // Average and single cell
+
+```{r Large_Heatmaps_of_top_DEGs}
+
+# Output directory
+if(!dir.exists("output/figures/Large_Summary_heatmaps")){
+  dir.create("output/figures/Large_Summary_heatmaps", 
+             recursive = T)
+}
+
+
+###########################
+# Get top overall DEGs
+###########################
+
+# Set assay to integrated
+DefaultAssay(seurat.combined) <- "integrated"
+
+# Set Idents 
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+# Downsample 
+seurat.combined.small <- subset(seurat.combined, downsample = 300)
+
+# Get average expression
+average.seurat <- AverageExpression(seurat.combined,
+                                    assay = "integrated",
+                                    slot = "data",
+                                    verbose = TRUE,
+                                    return.seurat = TRUE)
+
+
+
+# Get top cluster markers
+sig.genes <- Cluster.markers[Cluster.markers$p_val_adj < 0.05, ]
+
+clusts <- unique(sig.genes$cluster)
+output.vect <- NA
+top.n <- 40
+
+for(i in 1:length(clusts)){
+  
+  temp.gene <- sig.genes[sig.genes$cluster == paste0(clusts[i]), ]
+  temp.top <- dplyr::top_n(temp.gene, top.n, avg_logFC)$gene
+  
+  output.vect <- c(output.vect, temp.top)
+  output.vect <- unique(output.vect)
+}
+
+
+DoHeatmap(average.seurat, 
+          features = output.vect, 
+          size = 4, 
+          angle = 90, 
+          draw.lines = FALSE,
+          raster = FALSE) + 
+  NoLegend()
+
+dev.copy(pdf, "output/figures/Large_Summary_heatmaps/Heatmap_top_up_genes_bycluster_Averaged.pdf")
+dev.off()
+
+DoHeatmap(seurat.combined.small, 
+          features = output.vect, 
+          size = 4, 
+          angle = 90, 
+          draw.lines = TRUE,
+          raster = FALSE) + 
+  NoLegend()
+
+dev.copy(pdf, "output/figures/Large_Summary_heatmaps/Heatmap_top_up_genes_bycluster.pdf")
+dev.off()
+
+
+```
+ 
+ 
+### Large heatmap annotated
+
+```{r large_annotated_heatmap}
+
+# Output directory
+if(!dir.exists("output/figures/Large_Summary_heatmaps")){
+  dir.create("output/figures/Large_Summary_heatmaps", 
+             recursive = T)
+}
+
+
+##################################################################
+# Use complexheatmap to generate a manuscript ready figure
+##################################################################
+
+# Source custom function // loaded in custom functions chunk 
+#source("R/annotate_seurat_heatmap.R")
+
+######################################################################
+# Generate a vector of the top DEGs to be plotted in the heatmap
+######################################################################
+
+# Ensure markers table is loaded
+Cluster.markers <- read.csv("output/tables/DEG_Clusters/Cluster_markers_sig_only.csv")
+
+
+# Get top cluster markers
+sig.genes <- Cluster.markers[Cluster.markers$p_val_adj < 0.05, ]
+
+clusts <- unique(sig.genes$cluster)
+output.vect <- NA
+top.n <- 40
+
+for(i in 1:length(clusts)){
+  
+  temp.gene <- sig.genes[sig.genes$cluster == paste0(clusts[i]), ]
+  temp.top <- dplyr::top_n(temp.gene, top.n, avg_logFC)$gene
+  
+  output.vect <- c(output.vect, temp.top)
+  output.vect <- unique(output.vect)
+}
+
+top.genes <- output.vect
+
+# Genes to be labeled if present in plotted heatmap
+genes.id <- c("KLRB1", "TRAV1-2", "IL4I1", "IL18RAP", "TRBV21-1", "TRBV2", "TRGV9", "TRDV2",  "DPP4", 
+                 "IFNG", "TNF", "TCF7", "ENTPD1", "PDCD1", "TIGIT", "LAYN", "EOMES", "GZMA", "GZMB", "GZMK",
+                 "CXCR3", "TOX", "ZNF683", "CD226", "CXCL13", "CD160", "TBX21", "LAG3", "MKI67", "GNLY", "NKG7", "SELL", "IL7R")
+
+# Colour annotation for column labels 
+names(clust.cols) <- clust.names
+
+# Plot heatmap averaged values
+annotated.heatmap(seurat.combined, 
+                  cluster.id = "seurat_clusters",
+                  assay.use = "integrated",
+                  average.expression = TRUE,
+                  goi = top.genes, 
+                  genes.to.label = genes.id, 
+                  col_order = clust.names, 
+                  col.colours = clust.cols, 
+                  range.val = c(-2, 0, 2))
+
+dev.copy(pdf, "output/figures/Large_Summary_heatmaps/Heatmap_top_up_genes_bycluster_highlighted_geneIDs_averaged.pdf")
+dev.off()
+
+
+# Plot heatmap downsampled single cell values
+annotated.heatmap(seurat.combined, 
+                  cluster.id = "seurat_clusters",
+                  assay.use = "integrated",
+                  average.expression = FALSE,
+                  goi = top.genes, 
+                  genes.to.label = genes.id, 
+                  col_order = clust.names, 
+                  col.colours = clust.cols, 
+                  range.val = c(-2, 0, 2))
+
+dev.copy(pdf, "output/figures/Large_Summary_heatmaps/Heatmap_top_up_genes_bycluster_highlighted_geneIDs.pdf")
+dev.off()
+```
+
+### DEGs and selected genes Vlnplots / Clusters
+
+```{r Vln_feature_plots}
+
+# Create output directories
+if(!dir.exists("output/figures/Top_DEG_plots/FeaturePlots")){
+  dir.create("output/figures/Top_DEG_plots/FeaturePlots", 
+             recursive = T)
+}
+
+if(!dir.exists("output/figures/Top_DEG_plots/VlnPlots")){
+  dir.create("output/figures/Top_DEG_plots/VlnPlots", 
+             recursive = T)
+}
+
+# Set assay
+DefaultAssay(seurat.combined) <- "RNA"
+
+
+# Custom list of genes to plot
+
+
+goi <- c("IFNG", "TNF", "ENTPD1",
+         "PDCD1", "TIGIT", "LAYN", 
+         "EOMES", "GZMA", "GZMB", 
+         "GZMK", "CXCR3", "TOX",
+         "CASZ1", "CD226", "CXCL13",
+         "CD160", "TBX21",
+         "TRBC1", "CD8A", "CD8B", 
+         "CD4",
+         "FOXP3", "IL2RA", "CTLA4", 
+         "CD14", "LYZ", 
+         "PRF1", "NKG7", "GNLY", 
+         "FCGR3A",
+         "KLRB1", "KLRC1", 
+         "MKI67", 
+         "KIT", 
+         "HAVCR2", "LAG3", "TCF7",
+         "ICOS", 
+         "CCR7", "IL7R", "CD7", "CD69",  
+         "ITGAX", "ITGAM", "IL3RA",
+         "CD86", "CD83", "IL4I1")
+
+
+
+################################################################
+# Plot Feature plot and VlnPlot for top DEGs for Clusters
+################################################################
+
+
+# Generate vector of genes to plot
+x <- read.csv("output/tables/DEG_Clusters/Cluster_markers_sig_only.csv")
+
+Top.cluster.genes <- x %>% 
+  dplyr::group_by(cluster) %>%
+  dplyr::top_n(10, avg_logFC) %>%
+  dplyr::ungroup() %>% 
+  dplyr::select(gene)
+
+Top.cluster.genes <- unique(Top.cluster.genes$gene)
+
+
+# set idents 
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+
+# Add custom genes 
+Top.cluster.genes <- unique(c(Top.cluster.genes, goi))
+
+for(i in 1:length(Top.cluster.genes)){
+  
+  print(paste0("Plotting ", Top.cluster.genes[i]))
+  
+  # Plot VlnPlot
+  print(VlnPlot(seurat.combined, 
+                features = Top.cluster.genes[i], 
+                log = TRUE,
+                cols = clust.cols,
+                pt.size = 0) + 
+          NoLegend())
+  
+  dev.copy(pdf, paste0("output/figures/Top_DEG_plots/VlnPlots/VlnPlot_", Top.cluster.genes[i], ".pdf"))
+  dev.off()
+  
+  # Plot feature plot on UMAP projection
+  print(FeaturePlot(seurat.combined,
+                    features = Top.cluster.genes[i],
+                    order = TRUE,
+                    pt.size = 1,
+                    reduction = "umap") + 
+          NoLegend())
+  
+  dev.copy(pdf, paste0("output/figures/Top_DEG_plots/FeaturePlots/FeaturePlot_", Top.cluster.genes[i], ".pdf"))
+  dev.off()
+}
+
+
+```
+
+### DEGs and selected genes Vlnplots / Clusters / Imputed
+
+```{r Vln_feature_plots_imputed}
+
+# Create output directories
+if(!dir.exists("output/figures/Top_DEG_plots_Imputed/FeaturePlots")){
+  dir.create("output/figures/Top_DEG_plots_Imputed/FeaturePlots", 
+             recursive = T)
+}
+
+# Create output directories
+if(!dir.exists("output/figures/Top_DEG_plots_Imputed/VlnPlots")){
+  dir.create("output/figures/Top_DEG_plots_Imputed/VlnPlots", 
+             recursive = T)
+}
+
+# Set assay
+DefaultAssay(seurat.combined) <- "alra"
+
+
+
+# Custom list of genes to plot
+
+
+goi <- c("IFNG", "TNF", "ENTPD1",
+         "PDCD1", "TIGIT", "LAYN", 
+         "EOMES", "GZMA", "GZMB", 
+         "GZMK", "CXCR3", "TOX",
+         "CASZ1", "CD226", "CXCL13",
+         "CD160", "TBX21",
+         "TRBC1", "CD8A", "CD8B", 
+         "CD4",
+         "FOXP3", "IL2RA", "CTLA4", 
+         "CD14", "LYZ", 
+         "PRF1", "NKG7", "GNLY", 
+         "FCGR3A",
+         "KLRB1", "KLRC1", 
+         "MKI67", 
+         "KIT", 
+         "HAVCR2", "LAG3", "TCF7",
+         "ICOS", 
+         "CCR7", "IL7R", "CD7", "CD69",  
+         "ITGAX", "ITGAM", "IL3RA",
+         "CD86", "CD83", "IL4I1")
+
+
+
+
+################################################################
+# Plot Feature plot and VlnPlot for top DEGs for Clusters
+################################################################
+
+# Generate vector of genes to plot
+x <- read.csv("output/tables/DEG_Clusters/Cluster_markers_sig_only.csv")
+
+Top.cluster.genes <- x %>% 
+  dplyr::group_by(cluster) %>%
+  dplyr::top_n(10, avg_logFC) %>%
+  dplyr::ungroup() %>% 
+  dplyr::select(gene)
+
+Top.cluster.genes <- unique(Top.cluster.genes$gene)
+
+
+# set idents 
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+
+# Add custom genes 
+Top.cluster.genes <- unique(c(Top.cluster.genes, goi))
+
+for(i in 1:length(Top.cluster.genes)){
+  
+  print(paste0("Plotting ", Top.cluster.genes[i]))
+  
+  # Plot VlnPlot
+  print(VlnPlot(seurat.combined, 
+                features = Top.cluster.genes[i], 
+                log = TRUE,
+                cols = clust.cols,
+                pt.size = 0) + 
+          NoLegend())
+  
+  dev.copy(pdf, paste0("output/figures/Top_DEG_plots_Imputed/VlnPlots/VlnPlot_", Top.cluster.genes[i], "_imputed.pdf"))
+  dev.off()
+  
+  # Plot feature plot on UMAP projection
+  print(FeaturePlot(seurat.combined,
+                    features = Top.cluster.genes[i],
+                    order = TRUE,
+                    pt.size = 1,
+                    reduction = "umap") + 
+          NoLegend())
+  
+  dev.copy(pdf, paste0("output/figures/Top_DEG_plots_Imputed/FeaturePlots/FeaturePlot_", Top.cluster.genes[i], "_imputed.pdf"))
+  dev.off()
+}
+
+
+
+
+```
+
+### Volcano DEGs
+
+```{r Volcano_plots}
+
+# Generate output directories
+if(!dir.exists("output/figures/VolcanoPlots/Clusters")){
+  dir.create("output/figures/VolcanoPlots/Clusters", 
+             recursive = TRUE)
+}
+
+##############################
+# Install and load package
+##############################
+
+# edited enhancedvolcano() function to have the default variables for aesthetics I want // loaded in custom functions chunk
+#source("R/Enhanced_volcano_custom_defaults.R")
+
+
+
+################
+# Clusters
+################
+
+cluster.markers.df <- read.csv("output/tables/DEG_Clusters/Cluster_markers_unfiltered.csv")
+
+
+cluster.var <- unique(cluster.markers.df$cluster)
+
+
+for(i in 1:length(cluster.var)){
+  
+  # format data
+  volcano.data <- clean.data(cluster.markers.df,
+                             group.id = cluster.var[i])
+  
+  keyvals <- colour.points(volcano.data)
+  
+  
+  # get list of top 10 up and 10 downregulated genes
+  goi.up <- volcano.data %>%
+    dplyr::filter(FDR < 0.05) %>%
+    top_n(10, logFC)
+  
+  goi.dn <- volcano.data %>%
+    dplyr::filter(FDR < 0.05) %>%
+    top_n(-10, logFC)
+  
+  # combine vectors
+  goi <- unique(c(rownames(goi.up), rownames(goi.dn)))
+  
+  
+  
+  print(custom.enhanced.volcano(volcano.data, 
+                                selectLab = goi, 
+                                colCustom = keyvals, 
+                                title = paste0(cluster.var[i])))
+  
+  
+  dev.copy(pdf, paste0("output/figures/VolcanoPlots/Clusters/Volcano_", cluster.var[i], ".pdf"))
+  dev.off()
+  
+  
+}
+
+
+
+
+
+
+
+
+
+########################################################################
+### Below code is kept for any future tweeking of volcano aesthetics 
+########################################################################
+
+
+# Custom point size for points of particular type 
+# pointSize = c(ifelse(volcano.data$genes %in% goi, 10, 4))
+
+# Add custom ticks
+# +
+#  ggplot2::coord_cartesian(xlim=c(-1.5, 3)) +
+#  ggplot2::scale_x_continuous(
+#    breaks=seq(-1.5, 3, 0.5))
+
+
+
+
+#EnhancedVolcano(volcano.data,
+#                lab = rownames(volcano.data),
+#                x = 'logFC',
+#                y = 'FDR',
+#                selectLab = goi,
+#xlim = c(-2.5, 2.5),
+#ylim = c(0, 500),
+#                title = "DNAM1 High vs. Neg",
+#                subtitle = "",
+#                ylab = bquote(~-Log[10]~adjusted~italic(P)),
+##                pCutoff = 0.05,
+#                FCcutoff = 0.25,
+#                pointSize = 5, 
+#col = c("black", "black", "black", "red2"),
+#                colCustom = keyvals,
+#                colAlpha = 0.2, 
+#                drawConnectors = TRUE,
+#                widthConnectors = 0.5,
+#                colConnectors = 'grey30',
+#                typeConnectors = "open",
+#                labSize = 4,
+#                gridlines.major = TRUE,
+#                gridlines.minor = FALSE,
+#                border = 'partial',
+#                borderWidth = 0.5,
+#                borderColour = 'black')   
+
+```
+
+
+
+
+## Type I IFN cluster analysis {.tabset} // INCOMPLETE 
+
+### Plotting top DEGs in Type I IFN cluster
+```{r Type_I_IFN_cluster_vis}
+
+# Aim 
+# Visualise gene expression of the Type I IFN cluster
+
+# Generate output directories
+if(!dir.exists("output/figures/Type_I_IFN")){
+  dir.create("output/figures/Type_I_IFN", 
+             recursive = TRUE)
+}
+
+# Set assay to integrated
+DefaultAssay(seurat.combined) <- "integrated"
+
+# Set Idents 
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+# Calculate DEGs found in Type I IFN vs everything else 
+TypeI.markers <- FindMarkers(seurat.combined,
+                             ident.1 = "Type_I_IFN",
+                             assay = "integrated", 
+                             only.pos = TRUE)
+
+write.csv(TypeI.markers, "output/tables/Type_I_IFN_upregulated_markers.csv")
+
+Top.DEGs <- 
+  TypeI.markers %>% 
+  dplyr::filter(p_val_adj < 0.05) %>%
+  top_n(20, avg_logFC) %>%
+  rownames()
+
+# Add transcription factors identified in next code chunk 
+Top.DEGs <- unique(c(Top.DEGs, "IRF7", "STAT1", "PLSCR1", "SP110"))
+
+for(i in seq_along(Top.DEGs)){
+  
+  print(plot_density(seurat.combined,
+                     Top.DEGs[i], 
+                     pal = "inferno"))
+  
+  dev.copy(pdf, paste0("output/figures/Type_I_IFN/Density_UMAP_", Top.DEGs[i], ".pdf"))
+  dev.off()
+}
+
+
+```
+
+
+### Type I IFN cluster Transcription factors
+
+```{r TF_analysis}
+
+# Create output dir
+# Generate output directories
+if(!dir.exists("output/figures/Type_I_IFN")){
+  dir.create("output/figures/Type_I_IFN", 
+             recursive = TRUE)
+}
+
+
+# Searching for TFs
+TF.ref.list <- read.delim("Data/TFcheckpoint.txt") # http://www.tfcheckpoint.org/index.php/browse
+
+dim(TF.ref.list) # 1020, 11
+colnames(TF.ref.list)
+head(TF.ref.list)
+
+TypeI.markers <- read.csv("output/tables/Type_I_IFN_upregulated_markers.csv", row.names = 1)
+
+# Up-regulated TFs
+sig.genes <- TypeI.markers %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  rownames()
+
+sig.genes <- unique(sig.genes)
+
+TF.logic <- sig.genes %in% TF.ref.list$Gene_symbol
+
+TF.DEG <- sig.genes[TF.logic]
+
+
+########################################
+# Plot TFs differentially regulated 
+########################################
+
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+seurat.combined.small <- subset(seurat.combined, downsample = 300)
+
+average.seurat <- AverageExpression(seurat.combined,
+                                    assay = "integrated",
+                                    slot = "data",
+                                    verbose = TRUE,
+                                    return.seurat = TRUE)
+
+DoHeatmap(average.seurat, 
+          features = TF.DEG, 
+          draw.lines = FALSE, 
+          raster = FALSE) + NoLegend()
+
+dev.copy(pdf, "output/figures/Type_I_IFN/Heatmap_TFs_upregulated_in_Type_I_IFN_average.pdf")
+dev.off()
+
+
+DoHeatmap(seurat.combined.small, 
+          features = TF.DEG, 
+          draw.lines = TRUE, 
+          raster = FALSE) + NoLegend()
+
+dev.copy(pdf, "output/figures/Type_I_IFN/Heatmap_TFs_upregulated_in_Type_I_IFN.pdf")
+dev.off()
+
+
+```
+
+
+### Creation and establishment of Type I IFN signature 
+```{r Type_I_signature}
+
+# Aim: 
+# Establish a signature that can identify Type I IFN cluster in this dataset and be applied to external validation datasets 
+# Goal is to have a minimal gene signature that can accurately and specifically identify Type I IFN cells
+
+
+# Set assay to integrated
+DefaultAssay(seurat.combined) <- "integrated"
+
+# Set Idents 
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+# Calculate DEGs found in Type I IFN vs everything else 
+TypeI.markers <- FindMarkers(seurat.combined,
+                             ident.1 = "Type_I_IFN",
+                             assay = "integrated", 
+                             only.pos = FALSE)
+
+
+# Downsample 
+seurat.combined.small <- subset(seurat.combined, downsample = 300)
+
+# Get average expression
+average.seurat <- AverageExpression(seurat.combined,
+                                    assay = "integrated",
+                                    slot = "data",
+                                    verbose = TRUE,
+                                    return.seurat = TRUE)
+
+
+
+# Number of genes that are significantly DEGs
+
+# Total 
+TypeI.markers %>% 
+  dplyr::filter(p_val_adj < 0.05) %>%
+  nrow() # 255 genes 
+
+# Up-regulated only 
+TypeI.markers %>% 
+  dplyr::filter(p_val_adj < 0.05 & avg_logFC > 0) %>%
+  nrow() # 105 genes 
+
+
+# Iterate over generating a gene signature of various sizes
+
+n.val <- c(10, 20, 30, 40, 50, 60, 70, 80, 90, 100)
+
+for(i in seq_along(n.val)){
+
+  # Generate signature using the top x genes in Type I cluster
+  IFN.sig <- 
+    TypeI.markers %>% 
+    dplyr::filter(p_val_adj < 0.05) %>%
+    dplyr::top_n(n.val[i], avg_logFC) %>%
+    rownames()
+  
+  
+# Plot heatmap of gene expression within signature
+DoHeatmap(average.seurat,
+          features = IFN.sig, 
+          draw.lines = FALSE) + ggtitle(paste0("Signature using ", n.val[i])) + NoLegend()
+
+
+
+# Create and calculate module score using gene signature 
+seurat.combined <- AddModuleScore(seurat.combined, 
+                                  features = list(IFN.sig), 
+                                  assay = "integrated", 
+                                  name = "IFNsig",
+                                  ctrl = 80,
+                                  seed = 42)
+
+
+# Visualise gene signature module score on defined clusters
+VlnPlot(seurat.combined, "IFNsig1",
+        pt.size = 0, 
+        assay = "integrated", 
+        slot = "data",
+        cols = clust.cols)
+
+
+temp <- seurat.combined@meta.data %>%
+  group_by(seurat_clusters) %>%
+  summarize(mean = mean(IFNsig1), 
+            n = n(), 
+            median = median(IFNsig1),
+            qs = quantile(IFNsig1, c(0.75)))
+
+
+temp <- temp %>%
+  filter(seurat_clusters != "Type_I_IFN") %>%
+  summarize(max = max(qs))
+
+
+print(paste0("threshold max = ", signif(temp$max)))
+
+# threshold = 0.4
+
+
+
+temp <- seurat.combined@meta.data %>%
+  dplyr::mutate(classification = case_when(IFNsig1 <= temp$max ~ "Other", 
+                                          IFNsig1 > temp$max ~ "IFN_clust"))
+
+
+
+
+
+temp <- temp %>%
+  mutate(response_var = case_when(seurat_clusters == "Type_I_IFN" ~ 1,
+                                  TRUE ~ 0), 
+         prediction_var = case_when(classification == "IFN_clust" ~ 1, 
+                                    TRUE ~ 0))
+
+
+
+roc_obj <- roc(response = temp$response_var,
+               predictor = temp$prediction_var, 
+               ci = TRUE, 
+               ci.alpha = 0.9,
+               stratified = FALSE,
+               plot = TRUE, 
+               auc.polygon = TRUE, 
+               max.auc.polygon = TRUE, 
+               grid = TRUE, 
+               print.auc = TRUE, 
+               show.thres = TRUE)
+
+
+#sens.ci <- ci.se(roc_obj)
+
+#plot(sens.ci, type = "shape", col = "lightblue")
+#plot(sens.ci, type = "bars")
+
+print(paste0("for a signature of ", n.val[i], roc_obj$auc))
+
+}
+
+
+
+write.csv(Top.UP.genes, "output/tables/TypeI_IFN_sig.csv")
+
+
+```
+
+### Type I signature validation
+```{r Type_I_signature_validation_Cillo_dataset}
+
+
+
+
+
+
+Cillo_et_al <- readRDS("Exported_RDS_files/Cillo_et_al_seurat_object_filt.rds")
+
+
+Idents(Cillo_et_al) <- Cillo_et_al@meta.data$cell_type
+
+Cillo_et_al <- subset(Cillo_et_al, ident = "cd8.cells")
+
+
+Cillo_et_al <- AddModuleScore(Cillo_et_al, 
+                              features = list(IFN.sig), 
+                              name = "IFNsig",
+                              ctrl = 80,
+                              seed = 42)
+
+
+sort(unique(Cillo_et_al@meta.data$clusterID))
+
+
+
+x <- Cillo_et_al@meta.data %>%
+  filter(clusterID == 1)
+
+unique(x$cell_type)
+
+
+
+
+
+
+VlnPlot(Cillo_et_al, 
+        feature = "IFNsig1",
+        group.by = "cell_type",
+        pt.size = 0)
+
+
+VlnPlot(Cillo_et_al, 
+        feature = "MKI67",
+        group.by = "clusterID",
+        pt.size = 0.1)
+
+
+VlnPlot(Cillo_et_al, 
+        feature = "ISG15",
+        group.by = "cell_type",
+        pt.size = 0.2)
+
+
+
+
+
+VlnPlot(Cillo_et_al, 
+        feature = "IFNsig1",
+        group.by = "clusterID",
+        pt.size = 0)
+
+
+
+
+
+FeaturePlot(Cillo_et_al, "IFNsig1")
+
+UMAPPlot(Cillo_et_al, "IFNsig1")
+
+# Set assay to RNA
+DefaultAssay(Cillo_et_al) <- "RNA"
+
+# Set Idents 
+Idents(Cillo_et_al) <- Cillo_et_al@meta.data$clusterID
+
+################
+# Positive only
+################
+
+# Find markers
+Cluster.markers.pos <- FindAllMarkers(Cillo_et_al,
+                                      assay = "RNA",
+                                      only.pos = TRUE,
+                                      min.diff.pct = 0.1,
+                                      return.thresh = 0.05)
+
+
+
+Cluster.markers.pos %>%
+  dplyr::filter()
+
+
+
+
+
+
+Idents(Cillo_et_al) <- Cillo_et_al@meta.data$sample
+
+
+Cillo_et_al.small <- subset(Cillo_et_al, downsample = 100)
+
+# Get average expression
+average.cillo <- AverageExpression(Cillo_et_al.small,
+                                    assay = "RNA",
+                                    slot = "data",
+                                    verbose = TRUE,
+                                    return.seurat = TRUE)
+
+
+DoHeatmap(average.cillo,
+          features = Top.UP.genes, 
+          draw.lines = FALSE)
+
+```
+
+
+
+## Inhibitory receptor expression analysis {.tabset} // INCOMPLETE 
+
+### Inhibitory receptor co-expression
+```{r inhibitory_receptor_coexpression}
+
+# Generate output directories
+if(!dir.exists("output/figures/IR_expression")){
+  dir.create("output/figures/IR_expression", 
+             recursive = TRUE)
+}
+
+
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+DefaultAssay(seurat.combined) <- "integrated"
+
+seurat.combined.small <- subset(seurat.combined, downsample = 300)
+
+inhibitory.receptors <- c("HAVCR2", "LAG3", "PDCD1", "TIGIT", "ENTPD1", "TOX", 
+                          "CTLA4", "VSIR", "TNFRSF9", "PRF1", "IFNG", "GZMA", "GZMB")
+
+DoHeatmap(seurat.combined.small, 
+          inhibitory.receptors)
+
+
+inhibitory.receptors <- c("HAVCR2", "LAG3", "PDCD1", "TIGIT", "TOX", "CTLA4", "ENTPD1")
+
+for(i in seq_along(inhibitory.receptors)){
+  
+  
+  print(Nebulosa::plot_density(seurat.combined, 
+                               inhibitory.receptors[i], 
+                               pal = "inferno"))
+  
+  dev.copy(pdf, paste0("output/figures/IR_expression/Density_UMAP_", inhibitory.receptors[i], ".pdf"))
+  dev.off()
+  
+  
+}
+
+
+# Plot 
+
+markers <- c("HAVCR2", "LAG3", "PDCD1", "ENTPD1")
+
+z <- Nebulosa::plot_density(seurat.combined, 
+                       , 
+                       joint = TRUE, 
+                       pal = "inferno")
+
+
+z[[5]]
+
+
+
+
+```
+
+
+## Cell-cell receptor-ligand analysis {.tabset}
+
+### Celltalker analysis
+
+```{r celltalker}
+
+# Create output directories
+if(!dir.exists("output/figures/Cell_cell_interaction/celltalker")){
+  dir.create("output/figures/Cell_cell_interaction/celltalker", 
+             recursive = T)
+}
+
+
+# Ref dataset supplied with celltalker
+head(ramilowski_pairs)
+tail(ramilowski_pairs)
+
+dim(ramilowski_pairs) #There are 2,557 unique ligand/receptor interactions in this dataset
+
+
+###########################################################################
+#Identification of differentially expressed ligands and receptors
+###########################################################################
+
+# Identify ligands and receptors in our dataset
+ligs <- as.character(unique(ramilowski_pairs$ligand))
+recs <- as.character(unique(ramilowski_pairs$receptor))
+
+ligs.present <- rownames(seurat.combined)[rownames(seurat.combined) %in% ligs]
+recs.present <- rownames(seurat.combined)[rownames(seurat.combined) %in% recs]
+
+genes.to.use <- union(ligs.present,recs.present)
+length(genes.to.use) # 760
+
+
+# Use FindAllMarkers for deferentially expressed ligands and receptors between groups
+
+# Set idents to clusters
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+ligand.markers <- FindAllMarkers(seurat.combined,
+                                 assay = "RNA", 
+                                 features = genes.to.use,
+                                 only.pos = TRUE)
+
+nrow(ligand.markers) # 269 
+
+
+# Filter by adjusted P.value 
+ligand.markers <- ligand.markers[ligand.markers$p_val_adj < 0.05, ]
+
+nrow(ligand.markers) # 254
+
+# get vector of unique ligands/receptors
+ligs.recs.use <- unique(ligand.markers$gene)
+length(ligs.recs.use) # 111
+
+
+
+
+# Filter ramilowski pairs
+interactions.forward1 <- ramilowski_pairs[as.character(ramilowski_pairs$ligand) %in% ligs.recs.use, ]
+
+interactions.forward2 <- ramilowski_pairs[as.character(ramilowski_pairs$receptor) %in% ligs.recs.use, ]
+
+interact.for <- rbind(interactions.forward1, interactions.forward2)
+
+dim(interact.for) # 494 ligand receptor interactions
+
+
+
+
+# Create data for celltalker
+DefaultAssay(seurat.combined) <- "RNA"
+
+expr.mat <- GetAssayData(seurat.combined, 
+                         slot = "counts")
+
+# define clusters and groups(condition)
+defined.clusters <- seurat.combined@meta.data$seurat_clusters
+defined.groups <- seurat.combined@meta.data$condition
+
+
+# Need to get a replicates vector 
+defined.replicates <- seurat.combined@meta.data$group
+defined.replicates <- gsub("S1", "US_1", defined.replicates)
+defined.replicates <- gsub("S2", "US_2", defined.replicates)
+defined.replicates <- gsub("S3", "Stim_1", defined.replicates)
+defined.replicates <- gsub("S4", "Stim_2", defined.replicates)
+
+# Needs to be a named vector
+names(defined.clusters) <- rownames(seurat.combined@meta.data)
+names(defined.groups) <- rownames(seurat.combined@meta.data)
+names(defined.replicates) <- rownames(seurat.combined@meta.data)
+
+# should be a factor vector
+defined.clusters <- factor(defined.clusters, levels = c("Naïve_like_1_CM",
+                                                        "Naïve_like_2_SC",
+                                                        "Naïve_like_3",
+                                                        "Cytotoxic",
+                                                        "Type_I_IFN",
+                                                        "Stimulated_1",
+                                                        "Stimulated_exhausted",
+                                                        "Exhausted_1",
+                                                        "Exhausted_2",
+                                                        "TRM",
+                                                        "gd_T_g9d2",
+                                                        "gd_T_non_g9d2",
+                                                        "MAIT",
+                                                        "Proliferative"))
+
+defined.groups <- factor(defined.groups, levels = c("US",
+                                                    "Stim"))
+
+defined.replicates <- factor(defined.replicates, levels = c("US_1",
+                                                            "US_2",
+                                                            "Stim_1",
+                                                            "Stim_2"))
+
+
+
+reshaped.matrices <- reshape_matrices(count.matrix = expr.mat,
+                                      clusters = defined.clusters,
+                                      groups = defined.groups,
+                                      replicates = defined.replicates,
+                                      ligands.and.receptors = interact.for)
+
+
+#Check out the hierarchy of the tibble
+reshaped.matrices
+reshaped.matrices$group
+reshaped.matrices$samples
+
+unnest(reshaped.matrices,
+       cols = "samples")
+
+names(pull(unnest(reshaped.matrices, cols = "samples"))[[1]])
+
+# small bug in create_lig_rec_tib function, required small modification 
+source("R/Modified_Celltalker_function.R")
+
+consistent.lig.recs <- create_lig_rec_tib.mod(exp.tib = reshaped.matrices,
+                                              clusters = defined.clusters,
+                                              groups = defined.groups,
+                                              replicates = defined.replicates,
+                                              cells.reqd = 10,
+                                              freq.pos.reqd = 0.5,
+                                              ligands.and.receptors = interact.for)
+
+
+
+
+
+consistent.lig.recs
+
+
+unnest(consistent.lig.recs[1,2], 
+       cols = "lig.rec.exp")
+
+pull(unnest(consistent.lig.recs[1,2],
+            cols = "lig.rec.exp")[1,2])[[1]]
+
+# Determine putative ligand/receptor pairs
+put.int <- putative_interactions(ligand.receptor.tibble = consistent.lig.recs,
+                                 clusters = defined.clusters,
+                                 groups = defined.groups,
+                                 freq.group.in.cluster = 0.05,
+                                 ligands.and.receptors = interact.for)
+
+# Identify and visualise unique ligand/receptor pairs in a group
+
+# Identify unique ligand/receptor interactions present in each sample
+unique.ints <- unique_interactions(put.int,
+                                   group1 = "US",
+                                   group2 = "Stim",
+                                   interact.for)
+
+temp.df <- as.data.frame(unique.ints)
+
+# Get data to plot circos unique to US
+US.to.plot <- pull(unique.ints[1,2])[[1]]
+for.circos.US <- pull(put.int[1,2])[[1]][US.to.plot]
+
+circos_plot(interactions = for.circos.US,
+            clusters = defined.clusters, 
+            ligand.col = "lightgreen", 
+            receptor.col = "blue",
+            interactions.col = "lightgray") 
+
+dev.copy(pdf, "output/figures/Cell_cell_interaction/celltalker/Celltalker_unique_US_clusters.pdf")
+dev.off()
+
+
+
+
+#Get data to plot circos unique to Stim
+Stim.to.plot <- pull(unique.ints[2,2])[[1]]
+for.circos.Stim <- pull(put.int[2,2])[[1]][Stim.to.plot]
+
+circos_plot(interactions = for.circos.Stim,
+            clusters = defined.clusters, 
+            ligand.col = "lightgreen", 
+            receptor.col = "blue",
+            interactions.col = "lightgray")
+
+dev.copy(pdf, "output/figures/Cell_cell_interaction/celltalker/Celltalker_unique_Stim_clusters.pdf")
+dev.off()
+
+
+
+
+
+# Get data to plot circos common 
+Common.to.plot <- pull(unique.ints[3,2])[[1]]
+for.circos.common <- pull(put.int[1,2])[[1]][Common.to.plot]
+
+circos_plot(interactions = for.circos.common,
+            clusters = defined.clusters, 
+            ligand.col = "lightgreen", 
+            receptor.col = "blue",
+            interactions.col = "lightgray")
+
+dev.copy(pdf, "output/figures/Cell_cell_interaction/celltalker/Celltalker_Common_clusters.pdf")
+dev.off()
+
+
+
+
+```
+
+### iTalk
+
+```{r iTalk}
+
+# Create output directories
+if(!dir.exists("output/figures/Cell_cell_interaction/iTALK")){
+  dir.create("output/figures/Cell_cell_interaction/iTALK", 
+             recursive = T)
+}
+
+
+#############################
+# Run analysis for clusters
+#############################
+
+# Downsample dataset
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+seurat.combined.small <- subset(seurat.combined, downsample = 300)
+
+iTalk.input <- as.data.frame(seurat.combined.small@assays$RNA@data)
+
+# Append metadata
+temp <- as.data.frame(seurat.combined.small@meta.data)
+sum(rownames(temp) != colnames(iTalk.input))
+
+iTalk.input <- t(iTalk.input)
+iTalk.input <- as.data.frame(iTalk.input)
+
+iTalk.input$cell_type <- temp$seurat_clusters
+
+
+# find top 50 percent highly expressed genes
+highly_exprs_genes <- rawParse(iTalk.input, top_genes = 50, stats = 'mean')
+
+# find the ligand-receptor pairs from highly expressed genes
+comm_list<-c('growth factor','other','cytokine','checkpoint')
+
+cell_col <- structure(c('Red','Blue','Green','Purple', 'Orange', 'Grey','Black', "Yellow", "Darkred", "lightblue", "Pink", "burlywood", "Brown", "Darkgreen"), names = unique(iTalk.input$cell_type))
+
+
+par(mfrow = c(1,2))
+par(mfrow = c(1,1))
+
+res <- NULL
+
+for(comm_type in comm_list){
+  res_cat <- FindLR(highly_exprs_genes, 
+                    datatype = 'mean count', 
+                    comm_type = comm_type)
+  
+  res_cat <- res_cat[order(res_cat$cell_from_mean_exprs*res_cat$cell_to_mean_exprs, 
+                           decreasing = TRUE), ]
+  
+  #plot by ligand category
+  
+  #top 50 ligand-receptor pairs
+  LRPlot(res_cat[1:50,],
+         datatype = 'mean count', 
+         cell_col = cell_col,
+         link.arr.lwd = res_cat$cell_from_mean_exprs[1:50], 
+         link.arr.width = res_cat$cell_to_mean_exprs[1:50])
+  title(comm_type)
+  
+  dev.copy(pdf, paste0("output/figures/Cell_cell_interaction/iTALK/Ligand_receptor_plot_", comm_type, ".pdf"))
+  dev.off()
+  
+  res <- rbind(res,res_cat)
+}
+
+
+
+
+
+
+# Archived code below to plot network 1 by 1 for each cell type
+
+#for(i in 1:14){
+
+# col.vec <- rep("#BEBEBE00", 14)
+#col.vec[i] <- "Red"
+
+
+#cell_col <- structure(col.vec, names = unique(iTalk.input$cell_type))
+
+#NetView(res_cat, 
+#        col = cell_col,
+#        vertex.label.cex = 1,
+#        label = FALSE,
+#        arrow.width = 1, 
+#        edge.max.width = 20)
+
+#}
+
+
+```
+
+
+### Cellphonedb
+
+```{r Cellphonedb}
+
+# Create output directories
+if(!dir.exists("output/tables/cellphonedb")){
+  dir.create("output/tables/cellphonedb", 
+             recursive = T)
+}
+
+# Cellphonedb is a python program - can also be used via an online webportal
+
+# Prepare and export data for cellphonedb analysis
+
+
+# Export dataset of all cells (US and Stim)
+
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+save.data.frame.function(seurat.combined@assays$RNA@data,
+                         path = "output/tables/cellphonedb/", 
+                         title = "cellphonedb_both_conditions_normed")
+
+
+# Metadata with cluster annotation
+tmp.meta.data <- cbind(rownames(seurat.combined@meta.data),
+                       seurat.combined@meta.data[ ,"seurat_clusters", drop = F])
+
+write.table(tmp.meta.data,
+            "output/tables/cellphonedb/Metadata_both_conditions_clusters.txt",
+            sep="\t", 
+            quote = FALSE, 
+            row.names = FALSE)
+
+
+# Export dataset of just US cells
+Idents(seurat.combined) <- seurat.combined@meta.data$condition
+
+temp.seurat <- subset(seurat.combined, idents = "US")
+
+Idents(temp.seurat) <- temp.seurat@meta.data$seurat_clusters
+
+save.data.frame.function(temp.seurat@assays$RNA@data,
+                         path = "output/tables/cellphonedb/", 
+                         title = "cellphonedb_US_normed")
+
+# Metadata with cluster annotations
+tmp.meta.data <- cbind(rownames(temp.seurat@meta.data), temp.seurat@meta.data[ ,"seurat_clusters", drop = F])
+
+write.table(tmp.meta.data,
+            "output/tables/cellphonedb/Metadata_US_clusters.txt",
+            sep="\t", 
+            quote = FALSE, 
+            row.names = FALSE)
+
+
+
+# Export dataset of just Stim cells
+Idents(seurat.combined) <- seurat.combined@meta.data$condition
+
+temp.seurat <- subset(seurat.combined, idents = "Stim")
+
+Idents(temp.seurat) <- temp.seurat@meta.data$seurat_clusters
+
+save.data.frame.function(temp.seurat@assays$RNA@data, 
+                         path = "output/tables/cellphonedb/", 
+                         title = "cellphonedb_Stim_normed")
+
+# Metadata with cluster annotations
+tmp.meta.data <- cbind(rownames(temp.seurat@meta.data), temp.seurat@meta.data[ ,"seurat_clusters", drop = F])
+
+write.table(tmp.meta.data,
+            "output/tables/cellphonedb/Metadata_Stim_clusters.txt",
+            sep="\t", 
+            quote = FALSE, 
+            row.names = FALSE)
+
+
+rm(tmp.meta.data, temp.seurat)
+
+
+```
+
+### Export for NATMI analysis in python
+
+```{r NATMI_export}
+
+# Create output directory
+if(!dir.exists("output/tables/NATMI")){
+  dir.create("output/tables/NATMI", 
+             recursive = T)
+}
+
+##########################################
+# All clusters in both conditions
+##########################################
+
+# Expression data
+write.csv(100 * (exp(as.matrix(GetAssayData(object = seurat.combined, assay = "RNA", slot = "data"))) - 1),
+          "output/tables/NATMI/Expression_data_all_clusters_both_conditions.csv", 
+          row.names = TRUE)
+
+
+# Metadata
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+write.csv(Idents(seurat.combined),
+          "output/tables/NATMI/metadata_all_clusters_both_conditions.csv",
+          row.names = TRUE)
+
+
+
+###########################
+# All clusters in US Only
+###########################
+Idents(seurat.combined) <- seurat.combined@meta.data$condition
+temp.seurat <- subset(seurat.combined, idents = "US")
+
+
+# Expression data
+write.csv(100 * (exp(as.matrix(GetAssayData(object = temp.seurat, assay = "RNA", slot = "data"))) - 1),
+          "output/tables/NATMI/Expression_data_all_clusters_US_only.csv", 
+          row.names = TRUE)
+
+
+# Metadata
+Idents(temp.seurat) <- temp.seurat@meta.data$seurat_clusters
+
+write.csv(Idents(temp.seurat),
+          "output/tables/NATMI/metadata_all_clusters_US_only.csv",
+          row.names = TRUE)
+
+rm(temp.seurat)
+
+
+###########################
+# All clusters in Stim Only
+###########################
+Idents(seurat.combined) <- seurat.combined@meta.data$condition
+temp.seurat <- subset(seurat.combined, idents = "Stim")
+
+
+# Expression data
+write.csv(100 * (exp(as.matrix(GetAssayData(object = temp.seurat, assay = "RNA", slot = "data"))) - 1),
+          "output/tables/NATMI/Expression_data_all_clusters_Stim_only.csv", 
+          row.names = TRUE)
+
+
+# Metadata
+Idents(temp.seurat) <- temp.seurat@meta.data$seurat_clusters
+
+write.csv(Idents(temp.seurat),
+          "output/tables/NATMI/metadata_all_clusters_Stim_only.csv",
+          row.names = TRUE)
+
+rm(temp.seurat)
+
+######################################
+# Only T-cell clusters in US Only
+######################################
+
+Idents(seurat.combined) <- seurat.combined@meta.data$condition
+temp.seurat <- subset(seurat.combined, idents = "US")
+
+Idents(temp.seurat) <- temp.seurat@meta.data$seurat_clusters
+
+keep.ids <- unique(Idents(temp.seurat))[!grepl(paste0(c("gd_T_*.", "MAIT", "TRM"), collapse = "|"), unique(Idents(temp.seurat)))]
+keep.ids <- as.character(keep.ids)
+
+temp.seurat <- subset(temp.seurat, idents = keep.ids)
+
+
+# Expression data
+write.csv(100 * (exp(as.matrix(GetAssayData(object = temp.seurat, assay = "RNA", slot = "data"))) - 1),
+          "output/tables/NATMI/Expression_data_Tcell_clusters_US_only.csv", 
+          row.names = TRUE)
+
+
+# Metadata
+Idents(temp.seurat) <- temp.seurat@meta.data$seurat_clusters
+
+write.csv(Idents(temp.seurat),
+          "output/tables/NATMI/metadata_Tcell_clusters_US_only.csv",
+          row.names = TRUE)
+
+rm(temp.seurat)
+
+######################################
+# Only T-cell clusters in Stim Only
+######################################
+
+Idents(seurat.combined) <- seurat.combined@meta.data$condition
+temp.seurat <- subset(seurat.combined, idents = "Stim")
+
+Idents(temp.seurat) <- temp.seurat@meta.data$seurat_clusters
+
+keep.ids <- unique(Idents(temp.seurat))[!grepl(paste0(c("gd_T_*.", "MAIT", "TRM"), collapse = "|"), unique(Idents(temp.seurat)))]
+keep.ids <- as.character(keep.ids)
+
+temp.seurat <- subset(temp.seurat, idents = keep.ids)
+
+
+# Expression data
+write.csv(100 * (exp(as.matrix(GetAssayData(object = temp.seurat, assay = "RNA", slot = "data"))) - 1),
+          "output/tables/NATMI/Expression_data_Tcell_clusters_Stim_only.csv", 
+          row.names = TRUE)
+
+
+# Metadata
+Idents(temp.seurat) <- temp.seurat@meta.data$seurat_clusters
+
+write.csv(Idents(temp.seurat),
+          "output/tables/NATMI/metadata_Tcell_clusters_Stim_only.csv",
+          row.names = TRUE)
+
+rm(temp.seurat)
+
+
+
+```
+
+## GSEA analysis {.tabset}
+
+### Scillus
+
+```{r Scillus_GSEA}
+
+#remotes::install_github("xmc811/Scillus")
+
+# Scillus package would not compile
+# I took the functions and made a new .R file
+# Some of the functions called and used in this script required modifications to work outside of the package environment
+
+
+#source("~/Documents/Work/Sciebo/Scripts/Packages/Scillus_package/Scillus_functions.R")
+#load("~/Documents/Work/Sciebo/Scripts/Packages/Scillus_package/pathways.hallmark.rda")
+
+
+# Create output directories
+if(!dir.exists("output/figures/GO_analysis/Scillus_GO")){
+  dir.create("output/figures/GO_analysis/Scillus_GO", 
+             recursive = T)
+}
+
+
+######################
+# Cluster analysis
+######################
+
+# set idents to cluster
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+
+# get a broad list of DEG markers 
+Cluster.markers <- FindAllMarkers(seurat.combined,
+                                  assay = "RNA",
+                                  only.pos = FALSE,
+                                  min.diff.pct = 0.1,
+                                  logfc.threshold = 0,
+                                  return.thresh = 0.01)
+
+
+
+
+# Threshold marker list by P value and fold change for GO analysis 
+
+GO.markers <- Cluster.markers[Cluster.markers$p_val_adj < 0.05, ]
+GO.markers <- GO.markers[abs(GO.markers$avg_logFC) > 0.25, ]
+dim(Cluster.markers) # 8,635 genes
+dim(GO.markers) # 4,890 genes
+
+table(GO.markers$cluster) # number of genes DEG per cluster // used to justify using topn = 100
+
+# Plot Gene Ontology analysis
+# CC, BP, MF
+
+# To plot graph for a specific cluster use below code
+#plot_cluster_go(Module.markers, cluster_name = "Activated", org = "human", ont = "MF")
+
+# CC 
+pdf("output/figures/GO_analysis/Scillus_GO/GO_Clusters_CC.pdf", width = 20, height = 20)
+
+plot_all_cluster_go(GO.markers,
+                    topn = 100,
+                    org = "human", 
+                    ont = "CC")
+
+dev.off()
+
+
+# BP 
+pdf("output/figures/GO_analysis/Scillus_GO/GO_Clusters_BP.pdf", width = 20, height = 20)
+
+plot_all_cluster_go(GO.markers,
+                    topn = 100,
+                    org = "human", 
+                    ont = "BP")
+
+dev.off()
+
+# MF 
+pdf("output/figures/GO_analysis/Scillus_GO/GO_Clusters_MF.pdf", width = 20, height = 20)
+
+plot_all_cluster_go(GO.markers,
+                    topn = 100,
+                    org = "human", 
+                    ont = "MF")
+dev.off()
+
+
+
+
+# Perform GSEA 
+#gsea_res <- test_GSEA(Cluster.markers, 
+#                      pathway = pathways.hallmark)
+
+
+#plot_GSEA(gsea_res)
+#dev.copy(pdf, "output/figures/GO_analysis/Scillus_GO/GSEA_Clusters.pdf")
+#dev.off()
+
+
+```
+
+
+### Clust module analysis
+
+```{r Clust_module_analysis}
+
+# Python program 
+# output data for use in Clust analysis 
+
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+seurat.combined.small <- subset(seurat.combined, downsample = 30)
+
+output.df <- GetAssayData(seurat.combined.small, assay = "integrated", slot = "data")
+
+colnames(output.df) <- seurat.combined.small@meta.data$seurat_clusters
+
+colnames(output.df)
+
+
+
+
+average.seurat <- AverageExpression(seurat.combined, assays = "integrated", return.seurat = TRUE)
+
+output.df <- GetAssayData(average.seurat, assay = "integrated", slot = "data")
+
+remove.index <- grepl(paste0(c("TRM", "gd_T", "Prolif", "MAIT"), collapse = "|"), colnames(output.df))
+output.df <- output.df[,!remove.index]
+colnames(output.df)
+
+write.table(output.df, file="output/tables/Clust_matrix.tsv", quote=FALSE, sep='\t', col.names = NA)
+
+
+```
+
+
+## Misc analysis {.tabset}
+
+### Secretome // Unfinished chunk
+
+```{r Secretome}
+
+# set working dir
+setwd(working.dir)
+
+# Create output directories
+if(!dir.exists("output/figures/Secretome")){
+  dir.create("output/figures/Secretome",
+             recursive = T)}
+
+output.dir <- "output/figures/Secretome"
+setwd(output.dir)
+
+# Read in data
+chemo.cytokines <- read.csv(paste0(working.dir, "/Data/Secretome/ChemoCytokines.csv"))
+receptors <- read.csv(paste0(working.dir, "/Data/Secretome/receptors.csv"))
+
+
+# Set idents
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+
+# Identify which of the query genes are in the database
+query.genes <- unique(c(chemo.cytokines$GeneID, receptors$GeneID))
+
+logic.vec <- rownames(seurat.combined) %in% query.genes
+genes.to.test <- rownames(seurat.combined)[logic.vec]
+
+
+# Run DEG test on all genes in query set that can be found in database
+Query.DEG <- FindAllMarkers(seurat.combined,
+                            assay = "RNA",
+                            features = genes.to.test,
+                            only.pos = FALSE,
+                            min.diff.pct = 0.1,
+                            logfc.threshold = 0,
+                            return.thresh = 0.01)
+
+
+# Filter Query.DEG for sig and arrange by LogFC within groups for nicer plotting
+genes.plot <- Query.DEG %>% 
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::group_by(cluster) %>%
+  dplyr::arrange(desc(avg_logFC), .by_group = TRUE) %>%
+  dplyr::select(gene)
+
+genes.plot <- unique(genes.plot$gene)
+
+
+# Get average expression
+average.seurat <- AverageExpression(seurat.combined,
+                                    assay = "RNA",
+                                    slot = "data",
+                                    verbose = TRUE,
+                                    return.seurat = TRUE)
+
+
+# Plot all genes DEG from query list
+DoHeatmap(average.seurat, 
+          features = genes.plot, 
+          size = 4, 
+          angle = 90, 
+          draw.lines = FALSE,
+          raster = FALSE)
+
+dev.copy(pdf, "All_sig_genes.pdf")
+dev.off()
+
+
+
+# Plot just chemokine and cytokine genes
+logic.vec <- genes.plot %in% receptors$GeneID
+chemo.cytokine.genes <- genes.plot[!logic.vec]
+
+DoHeatmap(average.seurat, 
+          features = chemo.cytokine.genes, 
+          size = 4, 
+          angle = 90, 
+          draw.lines = FALSE,
+          raster = FALSE)
+
+dev.copy(pdf, "Chemo_cytokine_genes.pdf")
+dev.off()
+
+
+# Plot just receptor genes
+logic.vec <- genes.plot %in% receptors$GeneID
+receptor.genes <- genes.plot[logic.vec]
+
+DoHeatmap(average.seurat, 
+          features = receptor.genes, 
+          size = 4, 
+          angle = 90, 
+          draw.lines = FALSE,
+          raster = FALSE)
+
+dev.copy(pdf, "Receptor_genes.pdf")
+dev.off()
+
+
+# Return to working dir
+setwd(working.dir)
+
+# remove unneeded variables
+rm(receptor.genes, genes.plot, receptors, chemo.cytokine.genes, average.seurat, Query.DEG)
+```
+
+## Additional analysis {.tabset}
+
+### Cell cycle analysis
+
+```{r cell_cycle}
+
+# Analyse if there is any enrichment for cell cycle stage
+
+if(!dir.exists("output/figures/cell_cycle")){
+  dir.create("output/figures/cell_cycle")
+}
+
+##################################
+# Ensure idents is set up
+##################################
+
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+
+
+################
+# Read in data
+################
+
+exp.mat <- read.table(file = "Data/Cell_cycle_input_dataset/nestorawa_forcellcycle_expressionMatrix.txt", 
+                      header = TRUE, 
+                      as.is = TRUE, row.names = 1)
+
+# A list of cell cycle markers, from Tirosh et al, 2015, is loaded with Seurat.
+# We can segregate this list into markers of G2/M phase and markers of S phase
+
+cc.genes$s.genes
+cc.genes$g2m.genes
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+
+
+#######################
+# Cell cycle analysis
+#######################
+
+seurat.combined <- CellCycleScoring(seurat.combined, 
+                                    s.features = s.genes, 
+                                    g2m.features = g2m.genes, 
+                                    set.ident = FALSE)
+
+
+head(seurat.combined@meta.data)
+
+
+#######################
+# Visualisation
+#######################
+
+UMAPPlot(seurat.combined, 
+         group.by = "Phase",
+         split.by = "condition",
+         pt.size = 1)
+
+dev.copy(pdf, "output/figures/cell_cycle/UMAP_CellCycle_Phase.pdf")
+dev.off()
+
+
+FeaturePlot(seurat.combined, 
+            reduction = "umap",
+            features = "S.Score",
+            pt.size = 1.5, 
+            label = TRUE, 
+            label.size = 5,
+            order = TRUE, 
+            cols = c("lightgray", "orange", "red")) + NoLegend()
+
+dev.copy(pdf, "output/figures/cell_cycle/FeaturePlot_S.pdf")
+dev.off()
+
+FeaturePlot(seurat.combined, 
+            reduction = "umap",
+            features = "G2M.Score",
+            pt.size = 1.5, 
+            label = TRUE, 
+            label.size = 5,
+            order = TRUE, 
+            cols = c("lightgray", "orange", "red")) + NoLegend()
+
+dev.copy(pdf, "output/figures/cell_cycle/FeaturePlot_G2M.pdf")
+dev.off()
+
+#######################
+# Vln plots
+#######################
+
+VlnPlot(seurat.combined, 
+        features = "S.Score")
+
+dev.copy(pdf, "output/figures/cell_cycle/VlnPlot_Sscore.pdf")
+dev.off()
+
+
+VlnPlot(seurat.combined,
+        features = "G2M.Score")
+
+dev.copy(pdf, "output/figures/cell_cycle/VlnPlot_G2Mscore.pdf")
+dev.off()
+
+#######################
+# Ridge plots
+#######################
+
+RidgePlot(seurat.combined, 
+          features = c("S.Score", "G2M.Score"), 
+          log = TRUE)
+
+dev.copy(pdf, "output/figures/cell_cycle/RidgePlot_S_and_G2Mscore.pdf")
+dev.off()
+
+
+table(seurat.combined@meta.data$Phase)
+
+
+```
+
+### CytoTRACE
+
+```{r cytoTRACE_analysis}
+
+#####################
+# Install package
+#####################
+
+#BiocManager::install("sva")
+
+# change with path to your local download of CytoTRACE.tar.gz file
+#devtools::install_local("~/Documents/Work/Sciebo/Scripts/Packages/CytoTRACE_0.3.3.tar.gz")
+
+# run in terminal 
+# pip install scanoramaCT
+# pip install numpy
+
+# Example dataset
+#data.file <- read.delim("CytoTRACE_Analysis/Example_datasets/Bone_marrow_10x_matrix.txt")
+#data.pheno <- read.delim("CytoTRACE_Analysis/Example_datasets/Bone_marrow_10x_metadata.txt")
+
+
+##############################
+# Create output directories
+##############################
+
+if(!dir.exists("output/figures/CytoTRACE")){
+  dir.create("output/figures/CytoTRACE", 
+             recursive = T)}
+
+
+# Prepare data
+
+# Expression matrix (Raw data)
+data.file <- as.data.frame(seurat.combined@assays$RNA@counts)
+head(data.file[1:10, 1:10])
+
+# Metadata file
+data.pheno <- as.data.frame(seurat.combined@meta.data)
+head(data.pheno)
+
+# Run cytoTRACE
+Trace.object <- CytoTRACE(data.file,
+                          enableFast = TRUE,
+                          ncores = 6, 
+                          subsamplesize = 1000)
+
+
+# Create phenotype label vector
+pheno.labels <- as.character(data.pheno$seurat_clusters)
+names(pheno.labels) <- rownames(data.pheno)
+
+
+# Plot data
+plotCytoTRACE(Trace.object,
+              emb = data.pheno[ , c("UMAP_1", "UMAP_2")],
+              phenotype = pheno.labels,
+              outputDir = "output/figures/CytoTRACE/")
+
+
+
+plotCytoGenes(Trace.object, 
+              numOfGenes = 50,
+              outputDir = "output/figures/CytoTRACE/")
+
+
+
+
+# Remove variables to save space and prevent errors
+rm(data.file, data.pheno, Trace.object, pheno.labels)
+
+
+```
+
+
+### Analysis with Augur
+
+```{r Augur_Analysis, echo = TRUE, eval = FALSE}
+
+if(long.compute){
+  
+  # Install packages required
+  
+  #devtools::install_github("const-ae/sparseMatrixStats")
+  #devtools::install_github("neurorestore/Augur")
+  #install.packages("glmnet")
+  
+  
+  ####################################  
+  # Run Augur analysis on clusters
+  ####################################  
+  
+  # Metadata info 
+  metadata.df <- seurat.combined@meta.data
+  
+  # see which cols to keep
+  colnames(metadata.df)
+  
+  # Select just cluster and condition cols 
+  metadata.df <- metadata.df %>%
+    dplyr::select(seurat_clusters, condition)
+  
+  # Name cols for input into augur function
+  colnames(metadata.df) <- c("cell_type", "label")
+  
+  # output expression dataset
+  normed.df <- seurat.combined@assays$RNA@data
+  
+  # Run Augur analysis // ~45 min compute time
+  augur.out <- Augur::calculate_auc(normed.df,
+                                    metadata.df, 
+                                    n_threads = 8)
+  
+  # Output is stored in AUC slot 
+  augur.out$AUC
+  
+  # Save RDS file
+  saveRDS(augur.out, "Exported_RDS_files/Augur_output_clusters.rds")
+  rm(augur.out)
+  
+  
+  
+  ###################################
+  # Run Augur analysis on modules
+  ###################################
+  
+  # Metadata info 
+  metadata.df <- seurat.combined@meta.data
+  
+  # see which cols to keep
+  colnames(metadata.df)
+  
+  # Select just cluster and condition cols 
+  metadata.df <- metadata.df %>%
+    dplyr::select(Module, condition)
+  
+  # Name cols for input into augur function
+  colnames(metadata.df) <- c("cell_type", "label")
+  
+  
+  # output expression dataset
+  normed.df <- seurat.combined@assays$RNA@data
+  
+  # Run Augur analysis // ~10 min compute time
+  augur.out <- Augur::calculate_auc(normed.df,
+                                    metadata.df, 
+                                    n_threads = 8)
+  
+  # Output is stored in AUC slot 
+  augur.out$AUC
+  
+  # Save RDS file
+  saveRDS(augur.out, "Exported_RDS_files/Augur_output_module.rds")
+  rm(augur.out)
+  
+}
+
+```
+
+
+
+
+### Align with reference dataset
+
+```{r align_with_ref_dataset}
+
+#remotes::install_github("satijalab/seurat", ref = "release/4.0.0")
+#remotes::install_github("jlmelville/uwot")
+#remotes::install_github("mojaveazure/seurat-disk")
+
+
+library(Seurat)
+library(SeuratDisk)
+library(ggplot2)
+library(patchwork)
+
+
+
+reference <- LoadH5Seurat("../data/pbmc_multimodal.h5seurat")
+
+DimPlot(reference, 
+        reduction = "wnn.umap", 
+        group.by = "celltype.l2", 
+        label = TRUE, 
+        label.size = 3, 
+        repel = TRUE) + 
+  NoLegend()
+
+
+anchors <- FindTransferAnchors(
+  reference = reference,
+  query = pbmc3k,
+  normalization.method = "SCT",
+  reference.reduction = "spca",
+  dims = 1:50)
+
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+## Cell-classification model {.tabset}
+
+### scPred
+```{r scPred_model_creation}
+
+# Set default assay
+DefaultAssay(seurat.combined) <- "integrated"
+
+# Set idents
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+#keep.idents <- unique(seurat.combined@meta.data$seurat_clusters)
+
+#pattern.remove <- c("gd_T_g9d2", "gd_T_non_g9d2", "TRM", "MAIT", "Proliferative")
+#index.val <- grepl(paste0(pattern.remove, collapse = "|"), keep.idents)
+#keep.idents <- keep.idents[!index.val]
+
+
+# subset dataset to include only Type I IFN cells 
+#temp.seurat <- subset(seurat.combined, ident = keep.idents)
+
+#temp.seurat <- RunPCA(temp.seurat, 
+#                      npcs = 30, 
+#                      verbose = TRUE)
+
+
+
+#UMAPPlot(temp.seurat)
+
+
+
+# Get feature space
+reference.obj <- getFeatureSpace(seurat.combined,
+                                 pvar = "seurat_clusters",
+                                 reduction = "pca")
+
+
+# Train model - in parallel
+num.cores <- 5
+cl <- makePSOCKcluster(num.cores) 
+registerDoParallel(cl)
+
+
+reference.obj <- trainModel(reference.obj, 
+                            model = "svmRadial", 
+                            allowParallel = TRUE)
+
+stopCluster(cl)
+
+
+
+# Access probabilities 
+get_probabilities(reference.obj) %>% head()
+
+# Access scpred object slot 
+get_scpred(reference.obj)
+
+# Plot prediction probability
+plot_probabilities(reference.obj)
+
+
+
+
+################################################
+# Load Cillo_et_al dataset (TIL data only)
+################################################
+# Processed in Cillo_et_al script 
+
+Cillo_et_al <- readRDS("Exported_RDS_files/Cillo_et_al_seurat_object_filt.rds")
+
+Cillo_et_al <- scPredict(Cillo_et_al, reference.obj)
+
+crossTab(Cillo_et_al, "cell_type", "scpred_prediction", output = "prop")
+
+
+Cillo_et_al@meta.data$cell_type
+
+
+
+DimPlot(Cillo_et_al, 
+        group.by = "scpred_prediction", 
+        reduction = "umap")
+
+
+
+
+DimPlot(Cillo_et_al, 
+        group.by = "scpred_prediction", 
+        reduction = "scpred")
+
+Cillo_et_al <- RunUMAP(Cillo_et_al,
+                       reduction = "scpred",
+                       dims = 1:30)
+
+DimPlot(Cillo_et_al,
+        group.by = "scpred_prediction", 
+        label = TRUE, 
+        repel = TRUE, 
+        cols = col.vec)
+
+
+col.vec <- rep("Grey", length(unique(Cillo_et_al@meta.data$scpred_prediction)))
+
+col.vec[c(14)] <- c("Red")
+
+
+DimPlot(Cillo_et_al,
+        group.by = "clusterID", 
+        label = TRUE, 
+        repel = TRUE)
+
+
+
+x <- get_classifiers(reference.obj)[["Type_I_IFN"]]
+
+
+
+head(seurat.object.filt@meta.data)
+
+DimPlot(Cillo_et_al, 
+        group.by = "cell_type", 
+        reduction = "umap")
+
+
+DimPlot(Cillo_et_al, 
+        group.by = "clusterID", 
+        reduction = "umap", 
+        cols = col.vec)
+
+
+col.vec <- rep("Grey", length(unique(seurat.object.filt@meta.data$clusterID)))
+
+col.vec[c(2, 4)] <- c("Red", "Blue")
+
+
+# clusters 2 and 4 IFN?
+
+
+
+Cluster.markers.pos <- read.csv("output/tables/DEG_Clusters/Cluster_markers_unfiltered_pos.csv")
+
+colnames(Cluster.markers.pos)
+
+
+temp <- Cluster.markers.pos %>%
+  dplyr::filter(cluster == "Type_I_IFN") %>%
+  dplyr::top_n(10, avg_logFC) %>%
+  dplyr::pull(gene)
+
+gene 
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+\#\#\# TO DO \#\#\#\#\#\#\#\#\#\#\# \# scclusteval - to determine
+stability of identified clusters \# VDJdb epitope prediction for
+clonotypes \# group clonotypes by Gliph cluster \# Vis/analyse epitope
+and Gliph cluster data \# Complex and richness of gliph clusters \#
+SENIC analysis of Transcription factor regulon activity in clusters \#
+Data-mining for Type I IFN clusters in HNSCC and other cancer datasets
+\# Transcription factor analysis - both expression and downstream gene
+regulation analysis
+
+## Transcription factor analysis {.tabset}
+
+### Progeny Analysis
+
+```{r Progeny_analysis}
+
+# Create output directory
+if(!dir.exists("output/figures/GO_analysis/Progeny")){
+  dir.create("output/figures/GO_analysis/Progeny", 
+             recursive = TRUE)}
+
+## We compute the Progeny activity scores and add them to our Seurat object
+## as a new assay called Progeny. 
+
+DefaultAssay(seurat.combined) <- "RNA"
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+
+seurat.combined <- progeny(seurat.combined, 
+                           scale = FALSE, 
+                           organism = "Human", 
+                           top = 500,
+                           perm = 1,
+                           return_assay = TRUE)
+
+
+## We can now directly apply Seurat functions in our Progeny scores. 
+## For instance, we scale the pathway activity scores. 
+seurat.combined <- Seurat::ScaleData(seurat.combined, assay = "progeny")
+
+## We transform Progeny scores into a data frame to better handling the results
+progeny_scores_df <-
+    as.data.frame(t(GetAssayData(seurat.combined, slot = "scale.data",
+        assay = "progeny"))) %>%
+    rownames_to_column("Cell") %>%
+    gather(Pathway, Activity, -Cell)
+
+
+## We create a data frame with the specification of the cells that belong to 
+## each cluster to match with the Progeny scores.
+CellsClusters <- data.frame(Cell = names(Idents(seurat.combined)),
+                            CellType = as.character(Idents(seurat.combined)),
+                            stringsAsFactors = FALSE)
+
+
+
+
+## We match Progeny scores with the cell clusters.
+progeny_scores_df <- inner_join(progeny_scores_df, CellsClusters)
+
+## We summarize the Progeny scores by cellpopulation
+summarized_progeny_scores <- progeny_scores_df %>%
+  group_by(Pathway, CellType) %>%
+  summarise(avg = mean(Activity), std = sd(Activity))
+
+
+## We prepare the data for the plot
+summarized_progeny_scores_df <- summarized_progeny_scores %>%
+  dplyr::select(-std) %>%
+  spread(Pathway, avg) %>%
+  data.frame(row.names = 1, check.names = FALSE, stringsAsFactors = FALSE)
+
+paletteLength = 100
+myColor = colorRampPalette(c("Darkblue", "white","red"))(paletteLength)
+
+progenyBreaks = c(seq(min(summarized_progeny_scores_df), 0,
+                      length.out=ceiling(paletteLength/2) + 1),
+                  seq(max(summarized_progeny_scores_df)/paletteLength,
+                      max(summarized_progeny_scores_df),
+                      length.out=floor(paletteLength/2)))
+
+
+progeny_hmap = pheatmap(t(summarized_progeny_scores_df[,-1]),fontsize=14,
+                        fontsize_row = 10,
+                        color=myColor, breaks = progenyBreaks,
+                        main = "PROGENy (500)", angle_col = 45,
+                        treeheight_col = 0,  border_color = NA)
+
+dev.copy(pdf, "output/figures/GO_analysis/Progeny/Progeny_heatmap.pdf")
+dev.off()
+
+unique(progeny_scores_df$Pathway)
+
+DefaultAssay(seurat.combined) <- "RNA"
+
+```
+
+### Searching for TFs
+
+```{r TF_analysis}
+
+# Create output dir
+if(!dir.exists("output/figures/Transcription_factors")){
+  dir.create("output/figures/Transcription_factors", 
+             recursive = T)}
+
+
+# Searching for TFs
+TF.ref.list <- read.delim("Data/TFcheckpoint.txt") # http://www.tfcheckpoint.org/index.php/browse
+
+dim(TF.ref.list) # 1020, 11
+colnames(TF.ref.list)
+head(TF.ref.list)
+
+Cluster.markers <- read.csv("output/tables/DEG_Clusters/Cluster_markers_unfiltered.csv", row.names = 1)
+
+
+
+# Up-regulated TFs
+sig.genes <- Cluster.markers %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::filter(avg_logFC > 0.5 | avg_logFC < -0.5) %>%
+  dplyr::select(gene)
+
+sig.genes <- unique(sig.genes$gene)
+TF.logic <- sig.genes %in% TF.ref.list$Gene_symbol
+
+TF.DEG <- sig.genes[TF.logic]
+
+
+
+
+########################################
+# Plot TFs differentially regulated 
+########################################
+
+
+seurat.combined.small <- subset(seurat.combined, downsample = 300)
+
+average.seurat <- AverageExpression(seurat.combined,
+                                    assay = "integrated",
+                                    slot = "data",
+                                    verbose = TRUE,
+                                    return.seurat = TRUE)
+
+DoHeatmap(average.seurat, 
+          features = TF.DEG, 
+          draw.lines = FALSE, 
+          raster = FALSE)
+
+dev.copy(pdf, "output/figures/Transcription_factors/Heatmap_of_TF_diff_expressed.pdf")
+dev.off()
+
+
+
+########################################################
+# Plot TF heatmap but only annotate specific genes 
+########################################################
+
+# Source custom function // loaded in custom functions chunk 
+#source("R/annotate_seurat_heatmap.R")
+
+# Colour annotation for column labels 
+names(clust.cols) <- clust.names
+
+genes.id <- c("BACH2", "EOMES", "KLF2", "ZEB2", "IRF4", "TCF7", "JUNB", "ATF4", "IRF7", "STAT1")
+
+# Plot heatmap averaged values
+annotated.heatmap(seurat.combined, 
+                  cluster.id = "seurat_clusters",
+                  assay.use = "integrated",
+                  average.expression = TRUE,
+                  goi = TF.DEG, 
+                  genes.to.label = genes.id, 
+                  col_order = clust.names, 
+                  col.colours = clust.cols, 
+                  range.val = c(-2, 0, 2))
+
+dev.copy(pdf, "output/figures/Large_Summary_heatmaps/Heatmap_top_up_genes_bycluster_highlighted_geneIDs_averaged.pdf")
+dev.off()
+
+
+# Plot heatmap downsampled single cell values
+annotated.heatmap(seurat.combined, 
+                  cluster.id = "seurat_clusters",
+                  assay.use = "integrated",
+                  average.expression = FALSE,
+                  goi = top.genes, 
+                  genes.to.label = genes.id, 
+                  col_order = clust.names, 
+                  col.colours = clust.cols, 
+                  range.val = c(-2, 0, 2))
+
+dev.copy(pdf, "output/figures/Large_Summary_heatmaps/Heatmap_top_up_genes_bycluster_highlighted_geneIDs.pdf")
+dev.off()
+
+
+
+```
+
+
+### RcisTarget
+
+```{r TF_regulation}
+
+# Create output directory 
+if(!dir.exists("output/figures/RcisTarget")){
+  dir.create("output/figures/RcisTarget",
+             recursive = TRUE)}
+
+if(!dir.exists("output/tables/RcisTarget")){
+  dir.create("output/tables/RcisTarget",
+             recursive = TRUE)}
+
+
+###################################
+# Generate input gene lists 
+###################################
+
+Cluster.markers <- read.csv("output/tables/DEG_Clusters/Cluster_markers_unfiltered.csv", row.names = 1)
+
+
+UP.genes <- Cluster.markers %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::filter(avg_logFC > 0.5) %>%
+  dplyr::select(gene)
+
+UP.genes <- unique(UP.genes$gene)
+
+DN.genes <- Cluster.markers %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::filter(avg_logFC < -0.5) %>%
+  dplyr::select(gene)
+
+DN.genes <- unique(DN.genes$gene)
+
+geneLists <- list(UP = UP.genes, 
+                  DN = DN.genes)
+
+
+
+Clust.genes <- Cluster.markers %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::group_by(cluster) %>%
+  dplyr::filter(avg_logFC > 0.5) %>%
+  dplyr::select(gene)
+
+unique(Clust.genes$cluster)
+
+
+geneLists <- list(Naive_like_1_CM = Clust.genes[Clust.genes$cluster == "Naive_like_1_CM", ]$gene, 
+                  Naive_like_2_SC = Clust.genes[Clust.genes$cluster == "Naive_like_2_SC", ]$gene, 
+                  Naive_like_3 = Clust.genes[Clust.genes$cluster == "Naive_like_3", ]$gene, 
+                  Cytotoxic = Clust.genes[Clust.genes$cluster == "Cytotoxic", ]$gene,
+                  Type_I_IFN = Clust.genes[Clust.genes$cluster == "Type_I_IFN", ]$gene, 
+                  Stimulated_1 = Clust.genes[Clust.genes$cluster == "Stimulated_1", ]$gene,
+                  Stimulated_exhausted = Clust.genes[Clust.genes$cluster == "Stimulated_exhausted", ]$gene, 
+                  Exhausted_1 = Clust.genes[Clust.genes$cluster == "Exhausted_1", ]$gene,
+                  Exhausted_2 = Clust.genes[Clust.genes$cluster == "Exhausted_2", ]$gene,
+                  TRM = Clust.genes[Clust.genes$cluster == "TRM", ]$gene,
+                  gd_T_g9d2 = Clust.genes[Clust.genes$cluster == "gd_T_g9d2", ]$gene,
+                  gd_T_non_g9d2 = Clust.genes[Clust.genes$cluster == "gd_T_non_g9d2", ]$gene,
+                  MAIT = Clust.genes[Clust.genes$cluster == "MAIT", ]$gene,
+                  Proliferative = Clust.genes[Clust.genes$cluster == "Proliferative", ]$gene)
+
+
+
+
+
+
+
+# Available motif databased - in order of narrow -> large search space
+# available datasets can be found at = https://resources.aertslab.org/cistarget/
+
+# Download database
+#featherURL <- "https://resources.aertslab.org/cistarget/databases/homo_sapiens/hg38/refseq_r80/mc9nr/gene_based/hg38__refseq-r80__10kb_up_and_down_tss.mc9nr.feather" 
+
+#download.file(featherURL, destfile=basename(featherURL)) # saved in current dir
+
+
+# Read in database
+motifRankings <- importRankings("Data/RcisTarget_feather_files/hg38__refseq-r80__10kb_up_and_down_tss.mc9nr.feather")
+
+# Load mouse motif annotations
+data("motifAnnotations_hgnc")
+
+TF.vec <- unique(motifAnnotations_hgnc$TF)
+
+
+# perform analysis
+motifEnrichmentTable_wGenes <- cisTarget(geneLists, 
+                                         motifRankings,
+                                         motifAnnot = motifAnnotations_hgnc, 
+                                         #highlightTFs = c("EOMES", "TBX21", "BATF3"),
+                                         nCores = 6)
+
+
+
+
+# Add motif logo to table
+motifEnrichmentTable_wGenes_wLogo <- addLogo(motifEnrichmentTable_wGenes)
+
+
+ 
+# to view output data 
+resultsSubset <- motifEnrichmentTable_wGenes_wLogo[1:50,]
+
+datatable(resultsSubset[,-c("enrichedGenes", "TF_lowConf"), with=FALSE], 
+          escape = FALSE, # To show the logo
+          filter="top", options=list(pageLength=10))
+
+
+
+# Write data to file 
+write.csv(motifEnrichmentTable_wGenes_wLogo, "output/tables/RcisTarget/motif_enrichment_table_withLogo_10kb.csv")
+
+
+# Extract all high confidence transcription factors for each geneset
+anotatedTfs <- lapply(split(motifEnrichmentTable_wGenes$TF_highConf,
+                            motifEnrichmentTable_wGenes$geneSet),
+                      function(x) {
+                        genes <- gsub(" \\(.*\\). ", "; ", x, fixed=FALSE)
+                        genesSplit <- unique(unlist(strsplit(genes, "; ")))
+                        return(genesSplit)
+                        })
+                      
+
+fix.list.length <- function(input.list){
+  temp <- unlist(lapply(input.list, length))
+  x.max <- max(temp)
+  
+  output.list <- lapply(input.list, function(x){
+    
+    remain <- x.max - length(x)
+    return(paste0(c(x, rep(NA, remain))))
+  })
+  
+  return(output.list)
+}
+
+anotatedTfs.export <- fix.list.length(anotatedTfs)  
+
+# Write data to file 
+write.csv(anotatedTfs.export, "output/tables/RcisTarget/Transcription_factors_annotated_to_motifs_with_highConf.csv")
+rm(anotatedTfs.export)
+
+
+# Filter predicted TFs based on those that are also significantly DEGs
+
+index.vec <- names(geneLists)
+DEG.predicted.TFs <- list()
+
+for(i in 1:length(index.vec)){
+  
+  DEG.var <- geneLists[[paste0(index.vec[i])]]
+  TF.var <- anotatedTfs[[paste0(index.vec[i])]]
+  DEG.predicted.TFs[[paste0(index.vec[i])]]<- DEG.var[DEG.var %in% TF.var]
+  names(DEG.predicted.TFs)[i] <- paste0(index.vec[i])
+  print(DEG.predicted.TFs)
+}
+
+
+
+
+DEG.predicted.TFs.export <- fix.list.length(DEG.predicted.TFs)  
+
+# Write data to file 
+write.csv(DEG.predicted.TFs.export, "output/tables/RcisTarget/Transcription_factors_predicted_which_are_also_DEG.csv")
+rm(DEG.predicted.TFs.export)
+
+
+
+
+
+
+# Plot heatmaps of DEG predicted TFs
+
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+seurat.combined.small <- subset(seurat.combined, downsample = 300)
+
+average.seurat <- AverageExpression(seurat.combined,
+                                    assay = "integrated",
+                                    slot = "data",
+                                    verbose = TRUE,
+                                    return.seurat = TRUE)
+
+x <- unique(unlist(DEG.predicted.TFs))
+
+DoHeatmap(average.seurat, 
+          features = x, 
+          draw.lines = FALSE, 
+          raster = FALSE)
+
+dev.copy(pdf, "output/figures/RcisTarget/Heatmap_predicted_TFs_dif_expressed.pdf")
+dev.off()
+
+
+
+```
+
+## Trajectory analysis {.tabset}
+
+## Need to amend root node settings etc
+
+### Preparing data for trajectory analysis
+
+```{r Trajectory_data_prep, eval = TRUE}
+
+library(dyno)
+library(dynplot)
+library(dynmethods)
+library(dynutils)
+library(dynwrap)
+library(tidyverse)
+dynwrap::test_docker_installation(detailed = TRUE)
+
+############################
+# Read in and prepare data
+############################
+
+# Read in dataframes
+raw.data <- as.data.frame(seurat.combined@assays$RNA@counts)
+normed.data <- as.data.frame(seurat.combined@assays$RNA@data)
+
+
+# data is organized cols = cells and rows = genes
+head(raw.data[1:10, 1:10])
+head(normed.data[1:10, 1:10])
+
+# Need to inverse data for input into dyno package
+raw.data <- t(raw.data)
+head(raw.data[1:10, 1:10])
+
+normed.data <- t(normed.data)
+head(normed.data[1:10, 1:10])
+
+# Check data structure
+dim(raw.data) # 11,658 cells and 16,295 genes
+dim(normed.data) # 11,658 cells and 16,295 genes
+
+
+if(long.compute){  
+  ##########################################
+  # Creating Dyno formatted data structure
+  ##########################################
+  
+  Dyno.data <- wrap_expression(counts = raw.data,
+                               expression = normed.data)
+  
+  # Add grouping info
+  metadata.df <- seurat.combined@meta.data
+  
+  group.vect <- metadata.df$seurat_clusters
+  names(group.vect) <- rownames(metadata.df)
+  
+  Dyno.data <- add_grouping(Dyno.data,
+                            grouping = group.vect)
+  
+  
+  # Add dim reduction
+  logic.vect <- grepl("*UMAP", colnames(metadata.df))
+  
+  UMAP.dims <- metadata.df[ , logic.vect]
+  UMAP.dims <- as.matrix(UMAP.dims)
+  
+  Dyno.data <- add_dimred(Dyno.data,
+                          dimred = UMAP.dims)
+  
+  
+  
+}else{
+  
+  
+  
+  # Create vectors and matrix needed for visualisation of pre-calculated trajectories
+  
+  # Create grouping vector
+  metadata.df <- seurat.combined@meta.data
+  
+  group.vect <- metadata.df$seurat_clusters
+  names(group.vect) <- rownames(metadata.df)
+  
+  # Create dim reduction matrix
+  logic.vect <- grepl("*UMAP", colnames(metadata.df))
+  
+  UMAP.dims <- metadata.df[ , logic.vect]
+  UMAP.dims <- as.matrix(UMAP.dims)
+  
+  
+}
+
+
+
+
+```
+
+### Running trajectory analysis
+
+```{r trajectory_analysis, eval = FALSE}
+
+if(long.compute){
+  
+  
+  
+  ################################################
+  # selecting best trajectory method for dataset
+  ################################################
+  # Using shiny app to get guidelines
+  # guidelines <- guidelines_shiny(Dyno.total.data)
+  
+  
+  answers <- dynguidelines::answer_questions(multiple_disconnected = NULL, 
+                                             expect_topology = NULL, 
+                                             expected_topology = NULL, 
+                                             n_cells = 11658, 
+                                             n_features = 18295, 
+                                             memory = "16GB", 
+                                             prior_information = NULL, 
+                                             docker = TRUE)
+  
+  guidelines.vals <- dynguidelines::guidelines(answers = answers) 
+  
+  methods.selected <- guidelines.vals$methods_selected
+  
+  print(methods.selected)
+  
+  
+  #####################
+  # Infer Trajectory
+  #####################
+  
+  ##############
+  # Slingshot
+  ##############
+  
+  slingshot <- infer_trajectory(Dyno.data, 
+                                method = "dynverse/ti_slingshot:v0.9.9.01", 
+                                parameters = NULL, 
+                                give_priors = NULL, 
+                                seed = set.seed(42),
+                                verbose = TRUE)
+  
+  saveRDS(slingshot, file = "Exported_RDS_files/combined_slingshot.rds")
+  rm(slingshot)
+  
+  
+  ##############
+  # Scorpius
+  ##############
+  
+  scorpius <- infer_trajectory(Dyno.data, 
+                               method = ti_scorpius(), 
+                               parameters = NULL, 
+                               give_priors = NULL, 
+                               seed = set.seed(42),
+                               verbose = TRUE)
+  
+  saveRDS(scorpius, file = "Exported_RDS_files/combined_scorpius.rds")
+  rm(scorpius)
+  
+  
+  ##############
+  # Angle
+  ##############
+  
+  angle <- infer_trajectory(Dyno.data, 
+                            method = ti_angle(), 
+                            parameters = NULL, 
+                            give_priors = NULL, 
+                            seed = set.seed(42),
+                            verbose = TRUE)
+  
+  saveRDS(angle, file = "Exported_RDS_files/combined_angle.rds")
+  rm(angle)
+  
+}
+
+
+```
+
+### Visualisation trajectory analysis
+
+```{r Visualisation_trajectory, eval = TRUE}
+
+####################################
+# Visualise exported trajectories 
+####################################
+
+
+# Create output directory
+if(!dir.exists("output/figures/Trajectories")){
+  dir.create("output/figures/Trajectories",
+             recursive = T)}
+
+
+
+###############
+# Slingshot
+###############
+
+# Create output directory
+if(!dir.exists("output/figures/Trajectories/Slingshot")){
+  dir.create("output/figures/Trajectories/Slingshot",
+             recursive = T)}
+
+
+# Read data
+slingshot <- readRDS("Exported_RDS_files/combined_slingshot.rds")
+
+# Modify variables
+
+# Set root milestone
+slingshot <- add_root(trajectory = slingshot, 
+                        root_milestone_id = "1")
+
+dynplot::plot_dimred(slingshot, 
+                     dimred = UMAP.dims,
+                     hex_cells = TRUE, 
+                     label_milestones = TRUE,
+                     color_cells = "pseudotime")
+
+dev.copy(pdf, "output/figures/Trajectories/Slingshot/Combined_plot_pseudotime.pdf")
+dev.off()
+
+
+dynplot::plot_dimred(slingshot, 
+                     dimred = UMAP.dims,
+                     hex_cells = TRUE, 
+                     grouping = group.vect,
+                     label_milestones = TRUE,
+                     color_cells = "grouping")
+
+dev.copy(pdf, "output/figures/Trajectories/Slingshot/Combined_plot_clusters.pdf")
+dev.off()
+
+
+# Rename milestone labels
+milestone.labels <- c("Naive_memory", "Cytotoxic", "Stem-like", "Exhausted")
+names(milestone.labels) <- c(1, 2, 3, 4)
+
+slingshot <- label_milestones(slingshot, 
+                                 labelling = milestone.labels)
+
+dynplot::plot_dimred(slingshot, 
+                     dimred = UMAP.dims,
+                     hex_cells = TRUE, 
+                     grouping = group.vect,
+                     label_milestones = TRUE,
+                     color_cells = "grouping")
+
+dev.copy(pdf, "output/figures/Trajectories/Slingshot/Slingshot_named_milestones.pdf")
+dev.off()
+
+
+# Cacluate trajectory feature importance
+
+overall_feature_importances <- dynfeature::calculate_overall_feature_importance(slingshot, 
+                                                                                expression_source = normed.data)
+
+top.features <- overall_feature_importances %>% 
+  top_n(50, importance) %>% 
+  pull(feature_id)
+
+
+plot_heatmap(slingshot, 
+             expression_source = normed.data, 
+             features_oi = top.features)
+
+dev.copy(pdf, "output/figures/Trajectories/Slingshot/Combined_heatmap_top50_important_features.pdf")
+dev.off()
+
+
+# Calculate milestone importance
+for(i in 1:length(slingshot$milestone_ids)){
+  
+  # Because milestone ids are not in order get the corresponding ID name for each milestone #
+  logic.var <- names(slingshot$milestone_labelling) == i
+  milestone.name <- paste0(slingshot$milestone_labelling[logic.var])
+  
+  
+  milestone.feature.importance <- calculate_milestone_feature_importance(slingshot,
+                                                                         expression_source = normed.data, 
+                                                                         milestones_oi = i, 
+                                                                         verbose = TRUE)
+  
+  
+  top.features <- milestone.feature.importance %>% 
+    top_n(25, importance) %>% 
+    pull(feature_id)
+  
+  print(plot_heatmap(slingshot, 
+                     expression_source = normed.data, 
+                     features_oi = top.features))
+  
+  dev.copy(pdf, paste0("output/figures/Trajectories/Slingshot/Combined_heatmap_top25_milestone_", milestone.name, "_important_features.pdf"))
+  dev.off()
+  
+  
+}
+
+
+
+################################################
+# Base plots of other trajectories calculated
+################################################
+
+
+# Generate list of exported trajectories 
+trajectories_master <- list.files("Exported_RDS_files/", ".rds")
+
+print(trajectories_master)
+
+for(i in 1:length(trajectories_master)){
+  
+  print(paste0("Plotting ", trajectories_master[i]))
+  
+  trajectory.val <- readRDS(paste0("Exported_RDS_files/", trajectories_master[i]))
+  trajectory.name <- gsub(".rds", "", trajectories_master[i])
+  
+  
+  #####################
+  # Plot trajectory
+  #####################
+  
+  # Vis pseudotime
+  print(dynplot::plot_dimred(trajectory.val, 
+                             dimred = UMAP.dims,
+                             hex_cells = TRUE, 
+                             label_milestones = TRUE,
+                             color_cells = "pseudotime"))
+  
+  dev.copy(pdf, paste0("output/figures/Trajectories/Pseudotime_", trajectory.name, ".pdf"))
+  dev.off()
+  
+  # Overlay clusters
+  print(dynplot::plot_dimred(trajectory.val, 
+                             dimred = UMAP.dims,
+                             hex_cells = TRUE, 
+                             grouping = group.vect,
+                             label_milestones = TRUE,
+                             color_cells = "grouping"))
+  
+  dev.copy(pdf, paste0("output/figures/Trajectories/Clusters_", trajectory.name, ".pdf"))
+  dev.off()
+  
+  # Group clusters
+  print(dynplot::plot_dimred(trajectory.val, 
+                             color_cells = "grouping",
+                             color_density = "grouping",
+                             dimred = UMAP.dims,
+                             hex_cells = TRUE,
+                             grouping = group.vect))
+  
+  dev.copy(pdf, paste0("output/figures/Trajectories/Clusters_grouped_", trajectory.name, ".pdf"))
+  dev.off()
+  
+}
+
+
+rm(trajectory.val)
+
+
+
+
+```
+
+### Monocle trajectory
+
+```{r Monocle_analysis}
+
+# Create output directory
+if(!dir.exists("output/figures/Trajectories/monocle")){
+  dir.create("output/figures/Trajectories/monocle",
+             recursive = T)}
+
+# Load library
+library("monocle")
+
+# Set assay and idents
+DefaultAssay(seurat.combined) <- "integrated"
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+unique(Idents(seurat.combined))
+
+# convert seurat object to a cell data set
+cds <- SeuratWrappers::as.cell_data_set(seurat.combined, 
+                                        group.by = "seurat_clusters")
+
+# Cluster cells
+cds <- monocle3::cluster_cells(cds, 
+                               reduction_method = "UMAP")
+
+# Plot cell partition
+p1 <- monocle3::plot_cells(cds, show_trajectory_graph = FALSE)
+p2 <- monocle3::plot_cells(cds, color_cells_by = "partition", show_trajectory_graph = FALSE)
+
+p1|p2
+
+# Learn graph
+cds <- monocle3::learn_graph(cds)
+
+# Plot monocle trajectory
+monocle3::plot_cells(cds,
+                     label_groups_by_cluster = FALSE, 
+                     label_leaves = FALSE, 
+                     label_branch_points = FALSE)
+
+dev.copy(pdf, "output/figures/Trajectories/monocle/Monocle_trajectory.pdf")
+dev.off()
+
+
+# Plot monocle trajectory with leaves and branch points labelled
+monocle3::plot_cells(cds, 
+                     label_groups_by_cluster = FALSE,
+                     label_leaves = TRUE, 
+                     label_branch_points = TRUE)
+
+dev.copy(pdf, "output/figures/Trajectories/monocle/Monocle_trajectory_branchpoints_labelled.pdf")
+dev.off()
+
+
+
+
+
+
+
+####### WORK in progress ################
+cds <- monocle3::order_cells(cds)
+
+
+monocle3::plot_cells(cds, 
+                     color_cells_by = "pseudotime", 
+                     label_cell_groups = FALSE,
+                     label_leaves = FALSE, 
+                     label_branch_points = FALSE)
+
+
+gene_module_df <- monocle3::find_gene_modules(cds, resolution = 1e-2)
+
+unique(gene_module_df$module)
+
+goi <- gene_module_df %>% 
+  filter(module %in% c(7)) %>%
+  dplyr::select(id)
+
+
+
+
+monocle3::plot_cells(cds, 
+           genes= goi$id,
+           group_cells_by="partition",
+           color_cells_by="partition",
+           show_trajectory_graph=FALSE)
+
+monocle3::plot_cells(cds,
+           color_cells_by = "cluster",
+           label_groups_by_cluster=FALSE,
+           label_leaves=FALSE,
+           label_branch_points=FALSE)
+
+
+
+AFD_genes <- c("ICOS", "PDCD1", "IFNG")
+AFD_lineage_cds <- cds[rowData(cds) %in% AFD_genes, ]
+
+my_genes <- row.names(subset(fData(cds), gene_short_name %in% goi$id)) 
+cds_subset <- HSMM[my_genes,]
+
+monocle3::plot_genes_in_pseudotime(cds,
+                         color_cells_by="cluster",
+                         label_by_short_name = F,
+                         min_expr=0.5)
+
+?plot_genes_in_pseudotime
+
+ciliated_cds_pr_test_res <- monocle3::graph_test(cds, neighbor_graph="principal_graph", cores=4)
+pr_deg_ids <- row.names(subset(ciliated_cds_pr_test_res, q_value < 0.05))
+
+
+```
+
+### Exporting metadata for velocity analysis
+
+```{r exporting_metadata}
+# export metadata for velocity analysis 
+meta.data <- seurat.combined@meta.data
+
+colnames(meta.data)
+head(meta.data)
+
+# Remove non-necessary columns 
+meta.data <- meta.data %>%
+  dplyr::select(group, condition, seurat_clusters, UMAP_1, UMAP_2, PCA_1, PCA_2, Module, condition_clust, condition_module)
+
+# Create new barcode columns 
+meta.data$uniq_barcode <- rownames(meta.data)
+
+meta.data$barcode <- gsub(".*_", "", rownames(meta.data))
+
+write.table(meta.data, "output/tables/Meta_data.txt", sep = "\t", row.names = F, quote = F)
+
+
+
+```
+
+## Analysis optimisation code {.tabset}
+
+### Optimise UMAP
+
+```{r Optimise_UMAP_vis, eval = FALSE}
+
+
+if(long.compute){
+  
+  # determine best min distance & neighbour val for UMAP
+  
+  # Set assay 
+  DefaultAssay(seurat.combined) <- "integrated"
+  
+  # Set Idents
+  Idents(seurat.combined) <- seurat.combined@meta.data$Module
+  
+  UMAP.optimise(seurat.combined)
+}
+
+# Default of n.neighbor = 30 and min.dist = 0.3 work well
+
+```
+
+### Altering the cluster calling resolution
+
+```{r Differing_clust_resolution, eval = FALSE, echo = FALSE}
+
+if(long.compute){
+  
+  # Set assay 
+  DefaultAssay(seurat.combined) <- "RNA"
+  
+  clust.res.optimise(seurat.combined)
+  
+}
+
+```
+
+## Script info {.tabset}
+
+### Run time
+
+```{r code_runtime, eval = TRUE}
+
+# calculate compute time for compiling code so far
+compute.time <- Sys.time()
+print(compute.time-start.time)
+
+
+```
+
+## Code archive {.tabset}
+
+### ProjecTILs
+
+```{r ProjecTILs, eval = FALSE}
+
+# Use ProjecTILs package from Carmona Lab to map TILS to mouse T cell atlas 
+
+# Create output directory
+if(!dir.exists("output/figures/ProjecTILs")){
+  dir.create("output/figures/ProjecTILs",
+             recursive = T)}
+
+# Load package as install failed. Killed: 9 error
+devtools::load_all("~/Documents/Work/Sciebo/Scripts/Packages/ProjecTILs-master-devbranch/")
+
+#library(Seurat)
+library(ProjecTILs)
+library(gridExtra)
+
+# load reference map 
+ref <- load.reference.map()
+
+# project dataset onto mouse Atlas
+query.projected <- make.projection(seurat.combined, 
+                                   query.assay = "RNA", 
+                                   filter.cells = FALSE,
+                                   ref = ref,
+                                   human.ortho = TRUE)
+
+# plot projection on mouse Atlas
+plot.projection(ref, query.projected)
+
+# predict cell state
+query.projected <- cellstate.predict(ref = ref,
+                                     query = query.projected)
+
+# Evaluate cluster call 
+table(query.projected$functional.cluster, query.projected$seurat_clusters)
+
+# Sanity check for rough overlay of UMAP dims 
+temp.names <- rownames(query.projected@reductions$umap@cell.embeddings)
+temp.names <- gsub("Q_", "", temp.names)
+sum(temp.names != rownames(seurat.combined@reductions$umap@cell.embeddings))
+
+# Change umap dims to original projection 
+query.projected@reductions$umap@cell.embeddings <- seurat.combined@reductions$umap@cell.embeddings
+rownames(query.projected@reductions$umap@cell.embeddings) <- paste0("Q_", rownames(query.projected@reductions$umap@cell.embeddings))
+
+
+
+# show were cells sit by highlighting a single cell annotation each time 
+
+# Loop over all clusters 
+
+for(i in 1:9){
+  
+# set up col vector
+temp.cols <- rep("Grey", 9)
+
+# Set 1 cluster to be highlighted 
+temp.cols[i] <- "Blue"
+
+
+print(DimPlot(query.projected,
+        reduction = "umap", 
+        group.by = "functional.cluster", 
+        pt.size = 1, 
+        cols = temp.cols,
+        label = FALSE))
+
+dev.copy(pdf, paste0("output/figures/ProjecTILs/MouseAtlas_projection_cluster_", i, ".pdf"))
+dev.off()
+  
+  
+}
+
+
+```
+
+
+
+
+
+
+
+### Colour Scheme
+```{r colour_scheme}
+
+
+Condition.cols <- c("turquoise", "red")
+
+clust.cols <- c("#565556", # Naive_like_1_CM
+                "#A3A2A2", # Naive_like_2_SC
+                "#000000", # Naive_like_3
+                "#006838", # Cytotoxic
+                "#A6D854", # Type_I_IFN
+                "#00A79D", # Stimulated_1
+                "#FFBC00", # Stimulated_exhausted
+                "#FF6700", # Exhausted_1
+                "#FF0606", # Exhausted_2
+                "#EE2A7B", # TRM
+                "#DA1C5C", # gd_T_g9d2
+                "#E78AC3", # gd_T_non_g9d2
+                "#9E1F63", # MAIT 
+                "#662D91") # Proliferative
+
+
+
+
+UMAPPlot(seurat.combined, 
+         cols = clust.cols)
+
+
+
+
+
+
+```
+
+
+
+
+
+
