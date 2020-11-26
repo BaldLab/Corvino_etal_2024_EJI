@@ -40,6 +40,7 @@ Built with R version `{r} getRversion()`
 # CellRanger was used for sequence alignment/QC/counts/TCR calls - performed by Ross (QIMR, Brisbane, Aus)
 # DC was provided the output from CellRanger (counts matrix) and used this as input for analysis within this script
 
+#
 ```
 
 ### Environment
@@ -67,7 +68,7 @@ long.compute <- TRUE
 # Install packages
 ###################
 
-pkgs <- c("remedy", "Seurat", "dplyr", "rstudioapi",
+pkgs <- c("remedy", "dplyr", "rstudioapi",
           "cowplot", "ggplot2", "grid", "gridExtra",
           "styler", "stringr", "inlmisc", "RColorBrewer",
           "readxl", "devtools", "tidyverse", "hdf5r", "scales",
@@ -4632,6 +4633,9 @@ if(long.compute){
 
 ```{r align_with_ref_dataset}
 
+
+
+
 #remotes::install_github("satijalab/seurat", ref = "release/4.0.0")
 #remotes::install_github("jlmelville/uwot")
 #remotes::install_github("mojaveazure/seurat-disk")
@@ -4644,26 +4648,65 @@ library(patchwork)
 
 
 
-reference <- LoadH5Seurat("../data/pbmc_multimodal.h5seurat")
+reference <- LoadH5Seurat("Data/pbmc_multimodal.h5seurat")
+
+Idents(reference) <- reference@meta.data$celltype.l3
+length(unique(reference@meta.data$celltype.l3))
+
+reference <- subset(reference, downsample = 1000)
+
 
 DimPlot(reference, 
         reduction = "wnn.umap", 
-        group.by = "celltype.l2", 
+        group.by = "celltype.l3", 
+        label = TRUE, 
+        label.size = 3, 
+        repel = TRUE) + 
+  NoLegend()
+
+Idents(reference) <- reference@meta.data$celltype.l1
+unique(reference@meta.data$celltype.l1)
+
+reference <- subset(reference, idents = c("CD8 T", "NK", "other T"))
+
+DimPlot(reference, 
+        reduction = "wnn.umap", 
+        group.by = "celltype.l3", 
         label = TRUE, 
         label.size = 3, 
         repel = TRUE) + 
   NoLegend()
 
 
+query.data <- SCTransform(seurat.combined, verbose = FALSE)
+
+
+query.data@assays$SCT@data
+head(x = rownames(x = query.data))
+
+
+library(SeuratData)
+InstallData('pbmc3k')
+
+pbmc3k <- SCTransform(pbmc3k, verbose = FALSE)
+
+DefaultAssay(pbmc3k) <- "RNA"
+reference
+
+
+
+
 anchors <- FindTransferAnchors(
   reference = reference,
   query = pbmc3k,
+  project.query = FALSE,
+  npcs = NULL,
   normalization.method = "SCT",
-  reference.reduction = "spca",
-  dims = 1:50)
+  reduction = "pcaproject",
+  dims = 1:20)
 
 
-
+?FindTransferAnchors
 
 
 ```
