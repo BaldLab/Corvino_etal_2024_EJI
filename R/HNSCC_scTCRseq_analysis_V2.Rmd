@@ -3468,12 +3468,15 @@ dev.off()
 
 
 # Select clones using freq stimulated
-stimulatable.clones <- rownames(clonotype.freq)[clonotype.freq[,1] >= 50]
-unstimulatable.clones <- rownames(clonotype.freq)[clonotype.freq[,1] <= 40]
+#stimulatable.clones <- rownames(clonotype.freq)[clonotype.freq[,1] >= 50]
+#unstimulatable.clones <- rownames(clonotype.freq)[clonotype.freq[,1] <= 40]
 
 
+stimulatable.clones <- rownames(clonotype.freq)[clonotype.freq[,1] >= 30]
+unstimulatable.clones <- rownames(clonotype.freq)[clonotype.freq[,1] <= 10]
 
-
+length(unique(stimulatable.clones))
+length(unique(unstimulatable.clones))
 
 
 # # Bin clonotypes by there distribution frequency
@@ -3519,6 +3522,9 @@ seurat.exhausted <- AddMetaData(object = seurat.exhausted,
                                 col.name = "Stim_potential",
                                 metadata = meta.data.temp)
 
+table(seurat.exhausted@meta.data$Stim_potential)
+
+
 # Plot data
 DimPlot(seurat.exhausted, 
         pt.size = 2, 
@@ -3536,9 +3542,23 @@ Stim.potential.markers <- FindMarkers(seurat.exhausted,
 
 Stim.potential.markers <- Stim.potential.markers %>%
   dplyr::filter(p_val_adj < 0.05) %>%
-  dplyr::arrange(avg_logFC)
+  dplyr::arrange(desc(avg_log2FC))
 
 Stim.potential.markers
+
+Stim.potential.markers %>%
+  dplyr::top_n(10, avg_log2FC)
+
+Stim.potential.markers %>%
+  dplyr::top_n(-10, avg_log2FC)
+
+
+write.csv(Stim.potential.markers, "DEG_restimability.csv")
+
+
+Stim.potential.markers %>%
+  dplyr::filter(p_val_adj < 0.01)
+
 
 
 # Perform UMAP dim reduction 
@@ -3557,10 +3577,27 @@ UMAPPlot(seurat.exhausted, group.by = "Stim_potential")
 
 # Vis gene expression
 FeaturePlot(seurat.exhausted, 
-            "HLA-DRB5")
+            "CTSW")
+
+
+VlnPlot(seurat.exhausted,
+        group.by = "Stim_potential",
+        "CTSW",
+        assay = "RNA", 
+        pt.size = 1)
+
+
+Nebulosa::plot_density(seurat.exhausted, "CTSW")
+
+
+
+
+
+
+
 
 FeaturePlot(seurat.tcr, 
-            "MAD2L2")
+            "MTRNR2L8")
 
 FeaturePlot(seurat.tcr, order = T,
             "CD38", pt.size = 2)

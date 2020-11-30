@@ -4236,6 +4236,104 @@ write.table(output.df, file="output/tables/Clust_matrix.tsv", quote=FALSE, sep='
 
 ## Misc analysis {.tabset}
 
+### Milo Differential abundance analysis Knn graph 
+
+```{r Differential_abundance_analysis}
+
+#devtools::install_github("MikeDMorgan/miloR") 
+
+#BiocManager::install("edgeR")
+#BiocManager::install("limma")
+ 
+library(miloR)
+library(SingleCellExperiment)
+library(scater)
+library(dplyr)
+library(patchwork)
+
+
+
+
+library(Seurat)
+
+seurat.combined@meta.data$sample <- seurat.combined@meta.data$group
+
+logic.vec <- seurat.combined@meta.data$sample == "S3"
+seurat.combined@meta.data$sample[logic.vec] <- "S1"
+
+logic.vec <- seurat.combined@meta.data$sample == "S4"
+seurat.combined@meta.data$sample[logic.vec] <- "S2"
+
+seurat.combined.sce <- as.SingleCellExperiment(seurat.combined)
+seurat.combined.sce.milo <- Milo(seurat.combined.sce)
+rm(seurat.combined.sce)
+
+length(unique(seurat.combined@meta.data$seurat_clusters))
+
+traj_milo <- buildGraph(seurat.combined.sce.milo, k = 14, d = 20)
+
+traj_milo
+
+
+traj_milo <- makeNhoods(traj_milo, prop = 0.5, k = 14, d=30, refined = TRUE)
+
+plotNhoodSizeHist(traj_milo)
+
+traj_milo <- countCells(traj_milo,
+                        meta.data = data.frame(colData(traj_milo)), 
+                        sample = "group")
+
+
+head(nhoodCounts(traj_milo))
+
+
+
+traj_design <- data.frame(colData(traj_milo))[,c("group", "condition")]
+
+
+traj_design <- distinct(traj_design)
+
+traj_design
+
+
+traj_milo <- calcNhoodDistance(traj_milo, d=20)
+
+da_results <- testNhoods(traj_milo,
+                         design = ~ condition,
+                         design.df = traj_design)
+
+
+
+da_results %>%
+  arrange(- SpatialFDR) %>%
+  head()
+
+da_results %>%
+  arrange(SpatialFDR) %>%
+  head()
+
+
+traj_milo <- buildNhoodGraph(traj_milo)
+
+
+
+plotUMAP(traj_milo) + 
+  plotNhoodGraphDA(traj_milo, da_results, alpha=0.8) +
+  plot_layout(guides="collect")
+
+
+
+
+DimPlot(seurat.combined, reduction = "pca", split.by = "condition")
+
+
+
+
+```
+
+
+
+
 ### Secretome // Unfinished chunk
 
 ```{r Secretome}
