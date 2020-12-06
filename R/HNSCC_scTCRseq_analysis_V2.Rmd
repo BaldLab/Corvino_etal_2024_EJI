@@ -2795,7 +2795,7 @@ setwd(working.dir)
 
 ## Investigating Stimulated and Stimulated exhausted clusters {.tabset}
 
-### Stimulated_1 cluster
+### Stimulated_1 cluster // Incomplete
 ```{r Stimulated_1_cluster_analysis}
 
 # Purpose
@@ -2965,7 +2965,6 @@ UMAPPlot(clonotype.seurat,
          pt.size = 2)
 
 ```
-
 
 
 ### Export or read in tcr seurat object
@@ -3408,34 +3407,44 @@ sum(x)
 ## Work in progress {.tabset}
 
 
-#### WORK IN PROGRESS BELOW
+#### WORK IN PROGRESS BELOW // I am here
 
+## Identifying stimulatable clonotypes {.tabset}
 
-### Evaluating the ability for clonotypes to be restimed
-```{r Evaluating_clonotype_restim_ability}
+### Evaluating Exhausted clones for the ability to be stimulated
+```{r Evaluating_exhausted_clones_for_stimulation}
 
 # set working dir
 setwd(working.dir)
 
 # Create output directories
-if(!dir.exists("output_tcr/figures/Clonotype_restimability")){
-  dir.create("output_tcr/figures/Clonotype_restimability",
+if(!dir.exists("output_tcr/figures/Exhausted_restimability")){
+  dir.create("output_tcr/figures/Exhausted_restimability",
              recursive = TRUE)}
 
-output.dir <- "output_tcr/figures/Clonotype_restimability"
+output.dir <- "output_tcr/figures/Exhausted_restimability"
 setwd(output.dir)
 
 
-# Filter dataset for clonesize.min > 3 
+# Variable info 
+query.clusters <- c("Stimulated_exhausted", "Exhausted_1", "Exhausted_2")
+source.clusters <- c("Exhausted_1", "Exhausted_2")
+target.clusters <- c("Stimulated_exhausted")
+
+# Clone size minimum 
 clonesize.min <- 3
+
+
+# Filter dataset by clonesize minimum
 clonotypes <- seurat.tcr@meta.data %>%
   dplyr::filter(Total_clonotype_n > clonesize.min) %>%
   dplyr::select(CTaa, seurat_clusters, condition, Clonotype_overlap)
 
+
 # Get clonotypes found in Exhausted US subsets that are shared with Stim
 Ex.clonotypes <- clonotypes %>%
   dplyr::filter(Clonotype_overlap == "Shared" & condition == "US") %>%
-  dplyr::filter(seurat_clusters %in% c("Exhausted_1", "Exhausted_2")) %>%
+  dplyr::filter(seurat_clusters %in% source.clusters) %>%
   dplyr::select(CTaa)
 
 Ex.clonotypes <- unique(Ex.clonotypes$CTaa)
@@ -3445,7 +3454,7 @@ length(Ex.clonotypes) # 94 clonotypes
 # Within Stimulated condition filter dataset by Ex.clonotypes
 Query.clonotypes <- clonotypes %>%
   dplyr::filter(Clonotype_overlap == "Shared" & condition == "Stim") %>%
-  dplyr::filter(seurat_clusters %in% c("Stimulated_exhausted", "Exhausted_1", "Exhausted_2")) %>%
+  dplyr::filter(seurat_clusters %in% query.clusters) %>%
   dplyr::filter(CTaa %in% Ex.clonotypes) %>%
   dplyr::select(seurat_clusters, CTaa)
 
@@ -3457,50 +3466,56 @@ length(unique(Query.clonotypes$CTaa)) # 89 clonotypes // diff in number is due t
 source(paste0(working.dir, "/R/Clonotype_distribution_function.R"))
 
 clonotype.freq <- Get.distribution(Query.clonotypes, 
-                                   threshold.rowval = 1)
+                                   query.clusters = query.clusters,
+                                   source.clusters = source.clusters,
+                                   target.clusters = target.clusters,
+                                   rename.source = "Exhausted",
+                                   rename.target = "Stim_Exhausted_1",
+                                   threshold.rowval = 3)
+
+
 
 # Plot clonotype.freq
-temp <- t(clonotype.freq)
-barplot(temp[,], beside = T, las = 2, legend = T)
+barplot(t(clonotype.freq), beside = T, las = 2, legend = T)
 
 dev.copy(pdf, "Barplot_clonotype_freq_distribution.pdf")
 dev.off()
 
 
 # Select clones using freq stimulated
-#stimulatable.clones <- rownames(clonotype.freq)[clonotype.freq[,1] >= 50]
-#unstimulatable.clones <- rownames(clonotype.freq)[clonotype.freq[,1] <= 40]
+stim.minimum <- 40
+unstim.max <- 20
+
+stimulatable.clones <- rownames(clonotype.freq)[clonotype.freq[,"Stim_Exhausted_1"] >= stim.minimum]
+unstimulatable.clones <- rownames(clonotype.freq)[clonotype.freq[,"Stim_Exhausted_1"] <= unstim.max]
+
+length(unique(stimulatable.clones)) # 39 clones
+length(unique(unstimulatable.clones)) # 26 clones
+
+# Visualise threshold chosen
+barplot(t(clonotype.freq),
+        beside = TRUE,
+        las = 2,
+        legend = TRUE) +
+  abline(h = c(stim.minimum, unstim.max),
+         col = c("Blue", "Red"),
+         lwd = "3")
+
+dev.copy(pdf, "Barplot_clonotype_freq_distribution_threshold.pdf")
+dev.off()
 
 
-stimulatable.clones <- rownames(clonotype.freq)[clonotype.freq[,1] >= 30]
-unstimulatable.clones <- rownames(clonotype.freq)[clonotype.freq[,1] <= 10]
-
-length(unique(stimulatable.clones))
-length(unique(unstimulatable.clones))
-
-
-# # Bin clonotypes by there distribution frequency
-# # get top and bottom 10 clonotypes
-# stimulatable.clones <- rownames(clonotype.freq)[1:10]
-# 
-# n.val <- nrow(clonotype.freq)
-# unstimulatable.clones <- rownames(clonotype.freq)[(n.val-9):n.val]
-# 
-
-
-# Reduce seurat object to these clones in US condition only
+# Reduce seurat object to these clones in US Exhausted clusters only
 clonotypes <- seurat.tcr@meta.data %>%
   dplyr::filter(CTaa %in% c(unstimulatable.clones, stimulatable.clones)) %>%
-  dplyr::filter(seurat_clusters %in% c("Exhausted_1", "Exhausted_2")) %>%
+  dplyr::filter(seurat_clusters %in% source.clusters) %>%
   dplyr::filter(condition == "US") %>%
   dplyr::select(CTaa, seurat_clusters, condition, Clonotype_overlap)
 
-dim(clonotypes) # 96 cells
+dim(clonotypes) # 338 cells
 unique(clonotypes$seurat_clusters)
-length(unique(clonotypes$CTaa)) # 20 clones
+length(unique(clonotypes$CTaa)) # 65 clones
 
-# 96 cells before stm
-# 294 cells after stim 
 
 # Subset seurat object
 keep.cells <- rownames(clonotypes)
@@ -3544,8 +3559,6 @@ Stim.potential.markers <- Stim.potential.markers %>%
   dplyr::filter(p_val_adj < 0.05) %>%
   dplyr::arrange(desc(avg_log2FC))
 
-Stim.potential.markers
-
 Stim.potential.markers %>%
   dplyr::top_n(10, avg_log2FC)
 
@@ -3553,12 +3566,8 @@ Stim.potential.markers %>%
   dplyr::top_n(-10, avg_log2FC)
 
 
-write.csv(Stim.potential.markers, "DEG_restimability.csv")
-
-
-Stim.potential.markers %>%
-  dplyr::filter(p_val_adj < 0.01)
-
+write.csv(Stim.potential.markers, 
+          paste0("DEG_restimability_", stim.minimum, "_", unstim.max, ".csv"))
 
 
 # Perform UMAP dim reduction 
@@ -3574,6 +3583,633 @@ seurat.exhausted <- RunUMAP(object = seurat.exhausted,
 
 UMAPPlot(seurat.exhausted, group.by = "group")
 UMAPPlot(seurat.exhausted, group.by = "Stim_potential")
+
+
+
+#############################################
+# Append metadata to larger seurat object
+#############################################
+
+# Create metadata for unstimable and stimable clonotypes
+meta.data.temp <- seurat.tcr@meta.data$CTaa
+names(meta.data.temp) <- rownames(seurat.tcr@meta.data)
+logic.vec <- meta.data.temp %in% unstimulatable.clones
+meta.data.temp[logic.vec] <- "Unstimable"
+
+logic.vec <- meta.data.temp %in% stimulatable.clones
+meta.data.temp[logic.vec] <- "Stimable"
+
+logic.vec <- meta.data.temp %in% c("Unstimable", "Stimable")
+meta.data.temp[!logic.vec] <- "Other"
+
+unique(meta.data.temp)
+
+
+seurat.tcr <- AddMetaData(object = seurat.tcr, 
+                          col.name = "Exhausted_Stim_potential",
+                          metadata = meta.data.temp)
+
+
+UMAPPlot(seurat.tcr, 
+         group.by = "Exhausted_Stim_potential", 
+         pt.size = 2,
+         split.by = "condition",
+         cols = c("#BEBEBE33", "Blue", "Red"))
+
+
+# return to working directory 
+setwd(working.dir)
+
+```
+
+
+### Evaluating Cytotoxic and Type I IFN clones for the ability to be stimulated
+```{r Evaluating_Cytotoxic_and_Type_I_IFN_clones_for_stimulation}
+
+# set working dir
+setwd(working.dir)
+
+# Create output directories
+if(!dir.exists("output_tcr/figures/Cytotoxic_TypeI_restimability")){
+  dir.create("output_tcr/figures/Cytotoxic_TypeI_restimability",
+             recursive = TRUE)}
+
+output.dir <- "output_tcr/figures/Cytotoxic_TypeI_restimability"
+setwd(output.dir)
+
+
+
+# Variable info 
+query.clusters <- c("Stimulated_1", "Cytotoxic", "Type_I_IFN")
+source.clusters <- c("Cytotoxic", "Type_I_IFN")
+target.clusters <- c("Stimulated_1")
+
+# Clone size minimum 
+clonesize.min <- 3
+
+
+# Filter dataset by clonesize minimum
+clonotypes <- seurat.tcr@meta.data %>%
+  dplyr::filter(Total_clonotype_n > clonesize.min) %>%
+  dplyr::select(CTaa, seurat_clusters, condition, Clonotype_overlap)
+
+
+# Get clonotypes found in Cytotoxic or Type I IFN US subsets that are shared with Stim
+CytoIFN.clonotypes <- clonotypes %>%
+  dplyr::filter(Clonotype_overlap == "Shared" & condition == "US") %>%
+  dplyr::filter(seurat_clusters %in% source.clusters) %>%
+  dplyr::select(CTaa)
+
+CytoIFN.clonotypes <- unique(CytoIFN.clonotypes$CTaa)
+length(CytoIFN.clonotypes) # 103 clonotypes
+
+
+# Within Stimulated condition filter dataset by Ex.clonotypes
+Query.clonotypes <- clonotypes %>%
+  dplyr::filter(Clonotype_overlap == "Shared" & condition == "Stim") %>%
+  dplyr::filter(seurat_clusters %in% query.clusters) %>%
+  dplyr::filter(CTaa %in% CytoIFN.clonotypes) %>%
+  dplyr::select(seurat_clusters, CTaa)
+
+length(Query.clonotypes$CTaa) 
+length(unique(Query.clonotypes$CTaa)) # 97 clonotypes
+
+
+
+
+# To clean up analysis - generated an external function 
+source(paste0(working.dir, "/R/Clonotype_distribution_function.R"))
+
+clonotype.freq <- Get.distribution(Query.clonotypes, 
+                                   query.clusters = query.clusters,
+                                   source.clusters = source.clusters,
+                                   target.clusters = target.clusters,
+                                   rename.source = "CytoIFN",
+                                   rename.target = "Stim_1",
+                                   threshold.rowval = 3)
+
+
+# Plot clonotype.freq
+barplot(t(clonotype.freq), beside = T, las = 2, legend = T)
+
+dev.copy(pdf, "Barplot_clonotype_freq_distribution.pdf")
+dev.off()
+
+
+# Select clones using freq stimulated
+stim.minimum <- 40
+unstim.max <- 20
+
+stimulatable.clones <- rownames(clonotype.freq)[clonotype.freq[,"Stim_1"] >= stim.minimum]
+unstimulatable.clones <- rownames(clonotype.freq)[clonotype.freq[, "Stim_1"] <= unstim.max]
+
+length(unique(stimulatable.clones)) # 23 clones
+length(unique(unstimulatable.clones)) # 21 clones
+
+# Visualise threshold chosen
+barplot(t(clonotype.freq),
+        beside = TRUE,
+        las = 2,
+        legend = TRUE) +
+  abline(h = c(stim.minimum, unstim.max),
+         col = c("Blue", "Red"),
+         lwd = "3")
+
+dev.copy(pdf, "Barplot_clonotype_freq_distribution_threshold.pdf")
+dev.off()
+
+
+# Reduce seurat object to these clones in US Exhausted clusters only
+clonotypes <- seurat.tcr@meta.data %>%
+  dplyr::filter(CTaa %in% c(unstimulatable.clones, stimulatable.clones)) %>%
+  dplyr::filter(seurat_clusters %in% source.clusters) %>%
+  dplyr::filter(condition == "US") %>%
+  dplyr::select(CTaa, seurat_clusters, condition, Clonotype_overlap)
+
+dim(clonotypes) # 287 cells
+unique(clonotypes$seurat_clusters)
+length(unique(clonotypes$CTaa)) # 44 clones
+
+
+# Subset seurat object
+keep.cells <- rownames(clonotypes)
+
+seurat.cytoIFN <- subset(seurat.tcr, cells = keep.cells)
+
+# Annotate metadata in seurat object 
+meta.data.temp <- seurat.cytoIFN@meta.data$CTaa
+names(meta.data.temp) <- rownames(seurat.cytoIFN@meta.data)
+logic.vec <- meta.data.temp %in% unstimulatable.clones
+meta.data.temp[logic.vec] <- "Unstimable"
+
+logic.vec <- meta.data.temp %in% stimulatable.clones
+meta.data.temp[logic.vec] <- "Stimable"
+
+
+
+seurat.cytoIFN <- AddMetaData(object = seurat.cytoIFN, 
+                                col.name = "Stim_potential",
+                                metadata = meta.data.temp)
+
+table(seurat.cytoIFN@meta.data$Stim_potential)
+
+
+# Plot data
+DimPlot(seurat.cytoIFN, 
+        pt.size = 2, 
+        group.by = "Stim_potential", 
+        split.by = "group")
+
+
+# Perform dif gene expression
+Idents(seurat.cytoIFN) <- seurat.cytoIFN@meta.data$Stim_potential
+
+
+Stim.potential.markers <- FindMarkers(seurat.cytoIFN, 
+                                      ident.1 = "Stimable", 
+                                      ident.2 = "Unstimable")
+
+Stim.potential.markers <- Stim.potential.markers %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::arrange(desc(avg_log2FC))
+
+Stim.potential.markers %>%
+  dplyr::top_n(10, avg_log2FC)
+
+Stim.potential.markers %>%
+  dplyr::top_n(-10, avg_log2FC)
+
+
+write.csv(Stim.potential.markers, 
+          paste0("DEG_restimability_", stim.minimum, "_", unstim.max, ".csv"))
+
+
+# Perform UMAP dim reduction 
+seurat.cytoIFN <- RunUMAP(object = seurat.cytoIFN,
+                            reduction = "pca",
+                            reduction.key = "Subset_UMAP",
+                            dims = 1:20,
+                            umap.method = "uwot",
+                            n.neighbors = 30, # 5 to 50
+                            min.dist = 0.3, # Sensible values are in the range 0.001 to 0.5
+                            seed.use = 42)
+
+
+UMAPPlot(seurat.cytoIFN, group.by = "group")
+UMAPPlot(seurat.cytoIFN, group.by = "Stim_potential")
+
+
+
+#############################################
+# Append metadata to larger seurat object
+#############################################
+
+# Create metadata for unstimable and stimable clonotypes
+meta.data.temp <- seurat.tcr@meta.data$CTaa
+names(meta.data.temp) <- rownames(seurat.tcr@meta.data)
+logic.vec <- meta.data.temp %in% unstimulatable.clones
+meta.data.temp[logic.vec] <- "Unstimable"
+
+logic.vec <- meta.data.temp %in% stimulatable.clones
+meta.data.temp[logic.vec] <- "Stimable"
+
+logic.vec <- meta.data.temp %in% c("Unstimable", "Stimable")
+meta.data.temp[!logic.vec] <- "Other"
+
+unique(meta.data.temp)
+
+
+seurat.tcr <- AddMetaData(object = seurat.tcr, 
+                          col.name = "CytoIFN_Stim_potential",
+                          metadata = meta.data.temp)
+
+
+UMAPPlot(seurat.tcr, 
+         group.by = "CytoIFN_Stim_potential", 
+         pt.size = 2,
+         split.by = "condition",
+         cols = c("#BEBEBE33", "Blue", "Red"))
+
+
+# return to working directory 
+setwd(working.dir)
+
+```
+
+
+### Any clonotype movement
+```{r Any_clonotype_movement}
+
+# set working dir
+setwd(working.dir)
+
+# Create output directories
+if(!dir.exists("output_tcr/figures/Clonotype_movement")){
+  dir.create("output_tcr/figures/Clonotype_movement",
+             recursive = TRUE)}
+
+output.dir <- "output_tcr/figures/Clonotype_movement"
+setwd(output.dir)
+
+# Variable info 
+query.clusters <- c("Stimulated_1", "Cytotoxic", "Type_I_IFN", "Stimulated_exhausted", "Exhausted_1", "Exhausted_2")
+source.clusters <- c("Cytotoxic", "Type_I_IFN", "Exhausted_1", "Exhausted_2")
+target.clusters <- c("Stimulated_1", "Stimulated_exhausted")
+
+# Clone size minimum 
+clonesize.min <- 3
+
+
+# Filter dataset by clonesize minimum
+clonotypes <- seurat.tcr@meta.data %>%
+  dplyr::filter(Total_clonotype_n > clonesize.min) %>%
+  dplyr::select(CTaa, seurat_clusters, condition, Clonotype_overlap)
+
+
+# Get clonotypes found in Cytotoxic or Type I IFN US subsets that are shared with Stim
+CytoIFN.clonotypes <- clonotypes %>%
+  dplyr::filter(Clonotype_overlap == "Shared" & condition == "US") %>%
+  dplyr::filter(seurat_clusters %in% source.clusters) %>%
+  dplyr::select(CTaa)
+
+CytoIFN.clonotypes <- unique(CytoIFN.clonotypes$CTaa)
+length(CytoIFN.clonotypes) # 103 clonotypes
+
+
+# Within Stimulated condition filter dataset by Ex.clonotypes
+Query.clonotypes <- clonotypes %>%
+  dplyr::filter(Clonotype_overlap == "Shared" & condition == "Stim") %>%
+  dplyr::filter(seurat_clusters %in% query.clusters) %>%
+  dplyr::filter(CTaa %in% CytoIFN.clonotypes) %>%
+  dplyr::select(seurat_clusters, CTaa)
+
+length(Query.clonotypes$CTaa) 
+length(unique(Query.clonotypes$CTaa)) # 97 clonotypes
+
+
+
+
+# To clean up analysis - generated an external function 
+source(paste0(working.dir, "/R/Clonotype_distribution_function.R"))
+
+clonotype.freq <- Get.distribution(Query.clonotypes, 
+                                   query.clusters = query.clusters,
+                                   source.clusters = source.clusters,
+                                   target.clusters = target.clusters,
+                                   rename.source = "CytoIFN_or_Exhaust",
+                                   rename.target = "Stim",
+                                   threshold.rowval = 3)
+
+
+# Plot clonotype.freq
+barplot(t(clonotype.freq), beside = T, las = 2, legend = T)
+
+dev.copy(pdf, "Barplot_clonotype_freq_distribution.pdf")
+dev.off()
+
+
+# Select clones using freq stimulated
+stim.minimum <- 40
+unstim.max <- 20
+
+stimulatable.clones <- rownames(clonotype.freq)[clonotype.freq[,"Stim"] >= stim.minimum]
+unstimulatable.clones <- rownames(clonotype.freq)[clonotype.freq[, "Stim"] <= unstim.max]
+
+length(unique(stimulatable.clones)) # 64 clones
+length(unique(unstimulatable.clones)) # 48 clones
+
+# Visualise threshold chosen
+barplot(t(clonotype.freq),
+        beside = TRUE,
+        las = 2,
+        legend = TRUE) +
+  abline(h = c(stim.minimum, unstim.max),
+         col = c("Blue", "Red"),
+         lwd = "3")
+
+dev.copy(pdf, "Barplot_clonotype_freq_distribution_threshold.pdf")
+dev.off()
+
+
+# Reduce seurat object to these clones in US Exhausted clusters only
+clonotypes <- seurat.tcr@meta.data %>%
+  dplyr::filter(CTaa %in% c(unstimulatable.clones, stimulatable.clones)) %>%
+  dplyr::filter(seurat_clusters %in% source.clusters) %>%
+  dplyr::filter(condition == "US") %>%
+  dplyr::select(CTaa, seurat_clusters, condition, Clonotype_overlap)
+
+dim(clonotypes) # 634 cells
+unique(clonotypes$seurat_clusters)
+length(unique(clonotypes$CTaa)) # 112 clones
+
+
+# Subset seurat object
+keep.cells <- rownames(clonotypes)
+
+seurat.cytoIFN <- subset(seurat.tcr, cells = keep.cells)
+
+# Annotate metadata in seurat object 
+meta.data.temp <- seurat.cytoIFN@meta.data$CTaa
+names(meta.data.temp) <- rownames(seurat.cytoIFN@meta.data)
+logic.vec <- meta.data.temp %in% unstimulatable.clones
+meta.data.temp[logic.vec] <- "Unstimable"
+
+logic.vec <- meta.data.temp %in% stimulatable.clones
+meta.data.temp[logic.vec] <- "Stimable"
+
+
+
+seurat.cytoIFN <- AddMetaData(object = seurat.cytoIFN, 
+                                col.name = "Stim_potential",
+                                metadata = meta.data.temp)
+
+table(seurat.cytoIFN@meta.data$Stim_potential)
+
+
+# Plot data
+DimPlot(seurat.cytoIFN, 
+        pt.size = 2, 
+        group.by = "Stim_potential", 
+        split.by = "group")
+
+
+# Perform dif gene expression
+Idents(seurat.cytoIFN) <- seurat.cytoIFN@meta.data$Stim_potential
+
+
+Stim.potential.markers <- FindMarkers(seurat.cytoIFN, 
+                                      ident.1 = "Stimable", 
+                                      ident.2 = "Unstimable")
+
+Stim.potential.markers <- Stim.potential.markers %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::arrange(desc(avg_log2FC))
+
+Stim.potential.markers %>%
+  dplyr::top_n(10, avg_log2FC)
+
+Stim.potential.markers %>%
+  dplyr::top_n(-10, avg_log2FC)
+
+
+write.csv(Stim.potential.markers, 
+          paste0("DEG_restimability_", stim.minimum, "_", unstim.max, ".csv"))
+
+
+# Perform UMAP dim reduction 
+seurat.cytoIFN <- RunUMAP(object = seurat.cytoIFN,
+                            reduction = "pca",
+                            reduction.key = "Subset_UMAP",
+                            dims = 1:20,
+                            umap.method = "uwot",
+                            n.neighbors = 30, # 5 to 50
+                            min.dist = 0.3, # Sensible values are in the range 0.001 to 0.5
+                            seed.use = 42)
+
+
+UMAPPlot(seurat.cytoIFN, group.by = "group")
+UMAPPlot(seurat.cytoIFN, group.by = "Stim_potential")
+
+
+
+#############################################
+# Append metadata to larger seurat object
+#############################################
+
+# Create metadata for unstimable and stimable clonotypes
+meta.data.temp <- seurat.tcr@meta.data$CTaa
+names(meta.data.temp) <- rownames(seurat.tcr@meta.data)
+logic.vec <- meta.data.temp %in% unstimulatable.clones
+meta.data.temp[logic.vec] <- "Unstimable"
+
+logic.vec <- meta.data.temp %in% stimulatable.clones
+meta.data.temp[logic.vec] <- "Stimable"
+
+logic.vec <- meta.data.temp %in% c("Unstimable", "Stimable")
+meta.data.temp[!logic.vec] <- "Other"
+
+unique(meta.data.temp)
+
+
+seurat.tcr <- AddMetaData(object = seurat.tcr, 
+                          col.name = "CytoIFN_Stim_potential",
+                          metadata = meta.data.temp)
+
+
+UMAPPlot(seurat.tcr, 
+         group.by = "CytoIFN_Stim_potential", 
+         pt.size = 2,
+         split.by = "condition",
+         cols = c("#BEBEBE33", "Blue", "Red"))
+
+
+# return to working directory 
+setwd(working.dir)
+
+```
+
+
+
+
+
+
+
+
+
+```{r temp}
+
+
+
+
+
+
+
+########################
+# Heatmap functions
+########################
+
+hclust.func <- function(x){
+  hclust(x, method = 'ward.D2')
+}
+
+dist.func <- function(x){
+  dist(x,method = 'binary')
+}
+
+col.palette <- colorRampPalette(brewer.pal(8, "RdYlBu"))(600)
+
+######################################################
+# Plot V/J gene usage as a log2() of cell number
+######################################################
+
+# TRA-V gene usage
+
+x <- table(seurat.exhausted@meta.data$TRAV, seurat.exhausted@meta.data$Stim_potential)
+
+heatmap.2(as.matrix(log2(x+1)), 
+          scale = "column",
+          trace = "none",
+          Colv = TRUE,
+          cexRow = 0.5, 
+          margins = c(8, 5),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = rev(col.palette))     
+
+dev.copy(pdf, "Heatmap_TRA_V_usage.pdf")
+dev.off()
+
+# TRA-J gene usage
+
+x <- table(seurat.exhausted@meta.data$TRAJ, seurat.exhausted@meta.data$Stim_potential)
+
+heatmap.2(as.matrix(log2(x+1)), 
+          scale = "column",
+          trace = "none",
+          Colv = TRUE,
+          cexRow = 0.5, 
+          margins = c(8, 5),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = rev(col.palette))     
+
+dev.copy(pdf, "Heatmap_TRA_J_usage.pdf")
+dev.off()
+
+
+# TRB-V gene usage
+
+x <- table(seurat.exhausted@meta.data$TRBV, seurat.exhausted@meta.data$Stim_potential)
+
+heatmap.2(as.matrix(log2(x+1)), 
+          scale = "column",
+          trace = "none",
+          Colv = TRUE,
+          cexRow = 0.5, 
+          margins = c(8, 5),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = rev(col.palette))     
+
+dev.copy(pdf, "Heatmap_TRB_V_usage.pdf")
+dev.off()
+
+
+
+# TRB-J gene usage
+x <- table(seurat.exhausted@meta.data$TRBJ, seurat.exhausted@meta.data$Stim_potential)
+
+
+heatmap.2(as.matrix(log2(x+1)), 
+          scale = "column",
+          trace = "none",
+          Colv = TRUE,
+          cexRow = 0.5, 
+          margins = c(8, 5),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = rev(col.palette))     
+
+dev.copy(pdf, "Heatmap_TRB_J_usage.pdf")
+dev.off()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # Vis gene expression
 FeaturePlot(seurat.exhausted, 
@@ -3646,37 +4282,6 @@ for(i in seq_along(x)){
 
 
 
-#############################################
-# Append metadata to larger seurat object
-#############################################
-
-# Create metadata for unstimable and stimable clonotypes
-meta.data.temp <- seurat.tcr@meta.data$CTaa
-names(meta.data.temp) <- rownames(seurat.tcr@meta.data)
-logic.vec <- meta.data.temp %in% unstimulatable.clones
-meta.data.temp[logic.vec] <- "Unstimable"
-
-logic.vec <- meta.data.temp %in% stimulatable.clones
-meta.data.temp[logic.vec] <- "Stimable"
-
-logic.vec <- meta.data.temp %in% c("Unstimable", "Stimable")
-meta.data.temp[!logic.vec] <- "Other"
-
-unique(meta.data.temp)
-
-
-seurat.tcr <- AddMetaData(object = seurat.tcr, 
-                          col.name = "Stim_potential",
-                          metadata = meta.data.temp)
-
-
-
-
-UMAPPlot(seurat.tcr, 
-         group.by = "Stim_potential", 
-         pt.size = 2,
-         split.by = "condition",
-         cols = c("#BEBEBE33", "Blue", "Red"))
 
 
 

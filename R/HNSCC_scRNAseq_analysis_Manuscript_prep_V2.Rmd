@@ -40,7 +40,6 @@ Built with R version `{r} getRversion()`
 # CellRanger was used for sequence alignment/QC/counts/TCR calls - performed by Ross (QIMR, Brisbane, Aus)
 # DC was provided the output from CellRanger (counts matrix) and used this as input for analysis within this script
 
-#
 ```
 
 ### Environment
@@ -88,7 +87,8 @@ pkgs <- c("gplots", "fgsea", "biomaRt", "clusterProfiler",
           "SingleCellExperiment", "batchelor", 
           "DelayedArray", "DelayedMatrixStats",
           "limma", "SummarizedExperiment", "SingleR",
-          "celldex", "progeny", "RcisTarget",
+          #"celldex",
+          "progeny", "RcisTarget",
           "doMC", "doRNG", "DT", "visNetwork", "readr", "pheatmap", "tibble")
 
 for(i in 1:length(pkgs)){
@@ -4236,7 +4236,7 @@ write.table(output.df, file="output/tables/Clust_matrix.tsv", quote=FALSE, sep='
 
 ## Misc analysis {.tabset}
 
-### Milo Differential abundance analysis Knn graph 
+### Milo Differential abundance analysis Knn graph // Incomplete
 
 ```{r Differential_abundance_analysis}
 

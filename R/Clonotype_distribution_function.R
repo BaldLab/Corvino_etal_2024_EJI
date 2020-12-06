@@ -1,43 +1,62 @@
 
-Get.distribution <- function(clonotype.table, threshold.rowval = 3){
+Get.distribution <- function(clonotype.table,
+                             query.clusters = NULL,
+                             source.clusters = NULL,
+                             target.clusters = NULL,
+                             rename.source = NULL,
+                             rename.target = NULL,
+                             threshold.rowval = 3){
   
+  #browser()
   # Extract clonotype by cluster info
-  temp <- table(clonotype.table$CTaa, clonotype.table$seurat_clusters)
+  clonotype.overview <- table(clonotype.table$CTaa, clonotype.table$seurat_clusters)
   
   # Format table
-  logic.vec <- colnames(temp) %in% c("Stimulated_exhausted", "Exhausted_1", "Exhausted_2")
-  temp <- temp[ ,logic.vec]
+  logic.vec <- colnames(clonotype.overview) %in% query.clusters
+  clonotype.overview <- clonotype.overview[ ,logic.vec]
   
-  # Sum values in two exhausted clusters together
-  logic.vec <- colnames(temp) %in% c("Exhausted_1", "Exhausted_2")
-  temp[,2] <- rowSums(temp[ ,logic.vec])
-  colnames(temp)[2] <- "Exhausted"
-  temp <- temp[,1:2]
-  colnames(temp)
-  head(temp)
+  # Create output table to store data
+  output.df <- clonotype.overview
+  output.df <- output.df[,1:2]
+  output.df[,] <- 0
+  colnames(output.df) <- c("Source", "Target")
   
-  # Create variable
-  clonotype.counts <- temp
+  # Sum values in two source clusters together
+  logic.vec <- colnames(clonotype.overview) %in% source.clusters
+  output.df[,"Source"] <- rowSums(clonotype.overview[ ,logic.vec])
+ 
+  logic.vec <- colnames(clonotype.overview) %in% target.clusters
+  output.df[,"Target"] <- rowSums(clonotype.overview[ ,logic.vec])
+  
+  
+  
+  if(!is.null(rename.source)){
+    colnames(output.df)[colnames(output.df) == "Source"] <- rename.source
+  }
+  
+  if(!is.null(rename.target)){
+    colnames(output.df)[colnames(output.df) == "Target"] <- rename.target
+  }
   
   # Get rowSums
-  row.values <- rowSums(clonotype.counts)
+  row.values <- rowSums(output.df)
   
   # remove clonotypes with < clone.min requirement in this subsetted dataset 
   print("Summary statistics are:")
   print(summary(row.values))
-  print(paste0("Before filtering clonotypes = ", nrow(clonotype.counts)))
+  print(paste0("Before filtering clonotypes = ", nrow(output.df)))
   
   keep.clonotypes <- names(row.values)[row.values >= threshold.rowval]
   
-  clonotype.counts <- clonotype.counts[rownames(clonotype.counts) %in% keep.clonotypes, ]
+  output.df <- output.df[rownames(output.df) %in% keep.clonotypes, ]
   
-  print(paste0("After filtering by threshold.val clonotypes remaining = ", nrow(clonotype.counts)))
+  print(paste0("After filtering by threshold.val clonotypes remaining = ", nrow(output.df)))
   
   # Get rowSums vec for new clonotypes
-  row.values <- rowSums(clonotype.counts)
+  row.values <- rowSums(output.df)
   
   # Convert rows to percentages 
-  clonotype.freq <- clonotype.counts / row.values
+  clonotype.freq <- output.df / row.values
   clonotype.freq <- clonotype.freq*100
   
   # Order dataset
