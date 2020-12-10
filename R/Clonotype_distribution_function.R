@@ -23,10 +23,30 @@ Get.distribution <- function(clonotype.table,
   
   # Sum values in two source clusters together
   logic.vec <- colnames(clonotype.overview) %in% source.clusters
-  output.df[,"Source"] <- rowSums(clonotype.overview[ ,logic.vec])
+  
+  if(length(source.clusters) > 1){
+    
+    output.df[,"Source"] <- rowSums(clonotype.overview[ ,logic.vec])
+    
+  }else{
+    
+    output.df[,"Source"] <- clonotype.overview[ ,logic.vec]
+    
+  }
  
   logic.vec <- colnames(clonotype.overview) %in% target.clusters
-  output.df[,"Target"] <- rowSums(clonotype.overview[ ,logic.vec])
+  
+  
+  if(length(target.clusters) > 1){
+    
+    output.df[,"Target"] <- rowSums(clonotype.overview[ ,logic.vec])
+    
+  }else{
+    
+    output.df[,"Target"] <- clonotype.overview[ ,logic.vec]
+    
+  }
+  
   
   
   

@@ -2793,179 +2793,6 @@ setwd(working.dir)
 
 ```
 
-## Investigating Stimulated and Stimulated exhausted clusters {.tabset}
-
-### Stimulated_1 cluster // Incomplete
-```{r Stimulated_1_cluster_analysis}
-
-# Purpose
-# Investigate the difference between clonotypes in US that move to Stim_1 and those that do not move to stim_1 after stimulation
-
-unique(seurat.tcr@meta.data$condition_clust)
-
-
-
-UMAPPlot(clonotype.seurat, 
-         group.by = "seurat_clusters",
-         split.by = "condition")
-
-
-
-################################################################################
-# Get clones that move from US_Exhausted_1 or 2 into Stim_Stimulated_Exhausted
-################################################################################
-
-# Restrict analysis to only clonotypes found in US
-clonotype.seurat <- get.clonotypes(seurat.tcr, "condition", "US")
-
-# Now get clonotypes that occur in Stim_Stimulated_Exhausted
-clonotype.seurat <- get.clonotypes(clonotype.seurat, "condition_clust", "Stim_Stimulated_exhausted")
-
-# Vis distribution
-UMAPPlot(clonotype.seurat, 
-         group.by = "seurat_clusters",
-         split.by = "condition")
-
-
-# Most clones occur in either Exhausted_1 or Exhausted_2 
-
-# Filter data by US_Exhausted_1 or US_Exhausted_2
-Idents(clonotype.seurat) <- clonotype.seurat@meta.data$condition_clust
-
-clonotype.seurat <- subset(clonotype.seurat, idents = c("US_Exhausted_1", "US_Exhausted_2"))
-
-# Extract vector of clonotypes that occur in US_Ex1 or 2 and can be found in Stim_stim_ex
-Stimed.clones <- unique(clonotype.seurat@meta.data$CTaa)
-
-length(Stimed.clones) # 79 unique clonotypes 
-
-
-
-############################################################
-# Get all clones in US_Ex1 or 2 clusters
-############################################################
-
-
-# Filter data by US_Exhausted_1 or US_Exhausted_2
-Idents(seurat.tcr) <- seurat.tcr@meta.data$condition_clust
-
-clonotype.seurat <- subset(seurat.tcr, idents = c("US_Exhausted_1", "US_Exhausted_2"))
-
-Unstimed.clones <- unique(clonotype.seurat@meta.data$CTaa)
-
-length(Unstimed.clones) # 235 unique clonotypes 
-
-
-
-
-
-# Assign cells either stimable or non-stim 
-clonotype.seurat@meta.data$Stim_status <- "Non_stimable" 
-
-logic.vec <- clonotype.seurat@meta.data$CTaa %in% Stimed.clones
-clonotype.seurat@meta.data$Stim_status[logic.vec] <- "Stimable"
-
-unique(clonotype.seurat@meta.data$Stim_status)
-
-
-
-
-
-
-# Reset Idents
-Idents(clonotype.seurat) <- clonotype.seurat@meta.data$seurat_clusters
-
-
-UMAPPlot(clonotype.seurat, 
-         group.by = "Stim_status",
-         split.by = "condition")
-
-
-
-
-
-DefaultAssay(clonotype.seurat) <- "RNA"
-
-# Find variable features
-clonotype.seurat <- FindVariableFeatures(clonotype.seurat,
-                                         verbose = TRUE)
-
-# Scale data
-clonotype.seurat <- ScaleData(clonotype.seurat, 
-                             verbose = TRUE)
-
-# Run PCA
-clonotype.seurat <- RunPCA(clonotype.seurat, 
-                          npcs = 30, 
-                          verbose = TRUE)
-
-# Find Neighbors
-clonotype.seurat <- FindNeighbors(clonotype.seurat, 
-                                 reduction = "pca", 
-                                 k.param = 20,
-                                 dims = 1:20)
-
-# Find clusters
-clonotype.seurat <- FindClusters(clonotype.seurat, 
-                                random.seed = 42,
-                                resolution = 0.4) 
-
-
-
-# Run UMAP
-clonotype.seurat <- RunUMAP(clonotype.seurat,
-                           reduction = "pca",
-                           dims = 1:20,
-                           umap.method = "uwot",
-                           n.neighbors = 30, # 5 to 50
-                           min.dist = 0.3, # Sensible values are in the range 0.001 to 0.5
-                           seed.use = 42)
-
-
-# Plot UMAP projection
-UMAPPlot(clonotype.seurat,
-         label = TRUE, 
-         label.size = 6)
-
-
-UMAPPlot(clonotype.seurat,
-         group.by = "Stim_status",
-         label = TRUE, 
-         label.size = 6)
-
-
-
-# No real diff between genetics of responding cytotoxic and non responding 
-# is clone size and diversity a difference? 
-
-
-
-
-# Set assay to RNA
-DefaultAssay(clonotype.seurat) <- "RNA"
-
-# Set Idents 
-Idents(clonotype.seurat) <- clonotype.seurat@meta.data$Stim_status
-
-# Find markers
-Stim.markers <- FindAllMarkers(clonotype.seurat,
-                                      assay = "RNA",
-                                      only.pos = TRUE,
-                                      min.diff.pct = 0.1,
-                                      return.thresh = 0.05)
-Stim.markers %>%
-  filter(p_val_adj < 0.05)
-
-
-clonotype.seurat@meta.data$cloneType
-
-UMAPPlot(clonotype.seurat,
-         group.by = "Stim_status", 
-         split.by = "cloneType", 
-         pt.size = 2)
-
-```
-
 
 ### Export or read in tcr seurat object
 ```{r export_RDS}
@@ -4032,12 +3859,12 @@ unique(meta.data.temp)
 
 
 seurat.tcr <- AddMetaData(object = seurat.tcr, 
-                          col.name = "CytoIFN_Stim_potential",
+                          col.name = "Total_Stim_potential",
                           metadata = meta.data.temp)
 
 
 UMAPPlot(seurat.tcr, 
-         group.by = "CytoIFN_Stim_potential", 
+         group.by = "Total_Stim_potential", 
          pt.size = 2,
          split.by = "condition",
          cols = c("#BEBEBE33", "Blue", "Red"))
@@ -4084,7 +3911,7 @@ col.palette <- colorRampPalette(brewer.pal(8, "RdYlBu"))(600)
 
 # TRA-V gene usage
 
-x <- table(seurat.exhausted@meta.data$TRAV, seurat.exhausted@meta.data$Stim_potential)
+x <- table(seurat.tcr@meta.data$TRAV, seurat.tcr@meta.data$Stim_potential)
 
 heatmap.2(as.matrix(log2(x+1)), 
           scale = "column",
