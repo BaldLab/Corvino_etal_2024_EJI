@@ -3381,10 +3381,14 @@ DimPlot(seurat.exhausted,
 # Perform dif gene expression
 Idents(seurat.exhausted) <- seurat.exhausted@meta.data$Stim_potential
 
+DefaultAssay(seurat.exhausted) <- "integrated"
 
 Stim.potential.markers <- FindMarkers(seurat.exhausted, 
                                       ident.1 = "Stimable", 
-                                      ident.2 = "Unstimable")
+                                      ident.2 = "Unstimable",
+                                      logfc.threshold = 0.25, 
+                                      min.pct = 0.1, 
+                                      test.use = "wilcox")
 
 Stim.potential.markers <- Stim.potential.markers %>%
   dplyr::filter(p_val_adj < 0.05) %>%
@@ -3449,6 +3453,8 @@ UMAPPlot(seurat.tcr.filt,
          split.by = "condition",
          cols = c("#BEBEBE33", "Blue", "Red"))
 
+# Remove un-needed variables
+rm(seurat.exhausted)
 
 # return to working directory 
 setwd(working.dir)
@@ -3597,10 +3603,15 @@ DimPlot(seurat.cytoIFN,
 # Perform dif gene expression
 Idents(seurat.cytoIFN) <- seurat.cytoIFN@meta.data$Stim_potential
 
+DefaultAssay(seurat.cytoIFN) <- "integrated"
 
 Stim.potential.markers <- FindMarkers(seurat.cytoIFN, 
                                       ident.1 = "Stimable", 
-                                      ident.2 = "Unstimable")
+                                      ident.2 = "Unstimable",
+                                      logfc.threshold = 0.25, 
+                                      min.pct = 0.1, 
+                                      test.use = "wilcox")
+
 
 Stim.potential.markers <- Stim.potential.markers %>%
   dplyr::filter(p_val_adj < 0.05) %>%
@@ -3663,6 +3674,8 @@ UMAPPlot(seurat.tcr.filt,
          split.by = "condition",
          cols = c("#BEBEBE33", "Blue", "Red"))
 
+# Remove un-needed variables
+rm(seurat.cytoIFN)
 
 # return to working directory 
 setwd(working.dir)
@@ -3809,10 +3822,14 @@ DimPlot(seurat.cytoIFN,
 # Perform dif gene expression
 Idents(seurat.cytoIFN) <- seurat.cytoIFN@meta.data$Stim_potential
 
+DefaultAssay(seurat.cytoIFN) <- "integrated"
 
 Stim.potential.markers <- FindMarkers(seurat.cytoIFN, 
                                       ident.1 = "Stimable", 
-                                      ident.2 = "Unstimable")
+                                      ident.2 = "Unstimable",
+                                      logfc.threshold = 0.25, 
+                                      min.pct = 0.1, 
+                                      test.use = "wilcox")
 
 Stim.potential.markers <- Stim.potential.markers %>%
   dplyr::filter(p_val_adj < 0.05) %>%
@@ -3876,6 +3893,9 @@ UMAPPlot(seurat.tcr.filt,
          cols = c("#BEBEBE33", "Blue", "Red"))
 
 
+# Remove un-needed variables
+rm(seurat.cytoIFN)
+
 # return to working directory 
 setwd(working.dir)
 
@@ -3885,33 +3905,63 @@ setwd(working.dir)
 ```{r Visualise_Clonotype_movement_DEGs}
 
 
-
-# Create condition plus Stim status variable
-
-
+# Create a variable of stim potential plus condition
 stim.var <- c("Exhausted_Stim_potential", "CytoIFN_Stim_potential", "Total_Stim_potential")
+
 
 for(i in seq_along(stim.var)){
   
+  seurat.tcr.filt@meta.data[[paste0(stim.var[i], "_condition")]] <- paste0(seurat.tcr.filt@meta.data[[stim.var[i]]],
+                                                                           "_",
+                                                                           seurat.tcr.filt@meta.data$condition)
   
-  seurat.tcr.filt@meta.data[paste0(stim.var[i], "_condition")] <- paste0(seurat.tcr.filt@meta.data[stim.var[i]],
-                                                                         "_",
-                                                                         seurat.tcr.filt@meta.data$condition)
   
-  
-  seurat.tcr.filt@meta.data[paste0(stim.var[i], "_condition")]  <- factor(seurat.tcr.filt@meta.data[paste0(stim.var[i], "_condition")] , 
-                                                                          levels = c("Unstimable_US", "Unstimable_Stim",
-                                                                                     "Stimable_US", "Stimable_Stim",
-                                                                                     "Other_US", "Other_Stim"))
-  
+  seurat.tcr.filt@meta.data[[paste0(stim.var[i], "_condition")]]  <- factor(seurat.tcr.filt@meta.data[[paste0(stim.var[i], "_condition")]] , 
+                                                                            levels = c("Unstimable_US", "Unstimable_Stim",
+                                                                                       "Stimable_US", "Stimable_Stim",
+                                                                                       "Other_US", "Other_Stim"))
   
 }
 
 
 
-seurat.tcr.filt@meta.data$Exhausted_Stim_potential_condition <- paste0(seurat.tcr.filt@meta.data$Exhausted_Stim_potential,
-                                                                   "_",
-                                                                   seurat.tcr.filt@meta.data$condition)
+
+DefaultAssay(seurat.tcr.filt) <- "integrated"
+
+
+Idents(seurat.tcr.filt) <- seurat.tcr.filt@meta.data$Exhausted_Stim_potential_condition
+
+temp.seurat <- subset(seurat.tcr.filt, ident = c("Unstimable_US", "Stimable_US",
+                                                 "Unstimable_Stim", "Stimable_Stim"))
+
+
+
+
+
+average.seurat <- AverageExpression(temp.seurat,
+                                    assay = "integrated",
+                                    slot = "data",
+                                    verbose = TRUE,
+                                    return.seurat = TRUE)
+
+
+DEG.df <- read.csv("output_tcr/figures/Exhausted_restimability/DEG_restimability_40_20.csv")
+
+
+goi <- DEG.df %>% 
+  filter(avg_log2FC > 1 | avg_log2FC < -0.75)
+
+
+pattern.var <- c("TRA", "TRB")
+logic.var <- grepl(paste0(pattern.var, collapse = "|"), goi$X)
+goi <- goi$X[!logic.var]
+
+
+
+DoHeatmap(average.seurat, 
+          #group.by = "Exhausted_Stim_potential_condition", 
+          features = goi, 
+          draw.lines = F)
 
 
 
@@ -3920,11 +3970,13 @@ seurat.tcr.filt@meta.data$Exhausted_Stim_potential_condition <- paste0(seurat.tc
 
 
 
+top_n(Stim.potential.markers, -10, myAUC)
 
+DefaultAssay(temp.seurat) <- "integrated"
 
-
-
-
+VlnPlot(temp.seurat, 
+        "SOCS1", 
+        pt.size = 0.3)
 
 
 
@@ -3940,6 +3992,8 @@ seurat.tcr.filt@meta.data$Exhausted_Stim_potential_condition <- paste0(seurat.tc
 DEG.df <- read.csv("output_tcr/figures/Exhausted_restimability/DEG_restimability_40_20.csv")
 
 head(DEG.df)
+tail(DEG.df)
+
 
 #Nebulosa::plot_density(seurat.tcr.filt, feature = "MTRNR2L8", group.by = "Total_Stim_potential")
 
@@ -3949,14 +4003,6 @@ Idents(seurat.tcr.filt) <- seurat.tcr.filt@meta.data$Exhausted_Stim_potential
 
 temp.seurat <- subset(seurat.tcr.filt, ident = c("Unstimable", "Stimable"))
 
-
-# Create condition plus stim status variable 
-temp.seurat@meta.data$Exhausted_Stim_potential_condition <- paste0(temp.seurat@meta.data$Exhausted_Stim_potential,
-                                                                   "_",
-                                                                   temp.seurat@meta.data$condition)
-
-temp.seurat@meta.data$Exhausted_Stim_potential_condition <- factor(temp.seurat@meta.data$Exhausted_Stim_potential_condition, 
-                                                                   levels = c("Unstimable_US", "Unstimable_Stim", "Stimable_US", "Stimable_Stim"))
 
 
 Idents(temp.seurat) <- temp.seurat@meta.data$Exhausted_Stim_potential_condition
@@ -4005,6 +4051,62 @@ FeaturePlot(temp.seurat,
 
 
 
+
+
+
+  # Set idents to condition var
+  Idents(temp.seurat) <- temp.seurat@meta.data$Exhausted_Stim_potential_condition
+  
+  # Get top 10 genes
+  sig.genes <- DEG.df[DEG.df$p_val_adj < 0.05, ]
+  
+  # up-regulated genes
+  genes.to.label.1 <- top_n(sig.genes, 5, avg_log2FC)$X
+  
+  # Down-regulated genes
+  genes.to.label.2 <- top_n(sig.genes, -5, avg_log2FC)$X
+  
+  # Create vector of genes
+  genes.to.label <- unique(c(genes.to.label.1, genes.to.label.2))
+  
+  
+  pattern.var <- c("TRA", "TRB")
+logic.var <- grepl(paste0(pattern.var, collapse = "|"), genes.to.label)
+genes.to.label <- genes.to.label[!logic.var]
+  
+  
+  
+  # Average expression
+  avg.subset.seurat <- log1p(AverageExpression(temp.seurat, verbose = FALSE)$RNA)
+  
+  # Create column with gene id 
+  avg.subset.seurat$gene <- rownames(avg.subset.seurat)
+  
+  
+  
+  
+  genes.to.label <- c("MBP", "GPR171", "GEM", "PGK1", "IL2RA")
+  
+  
+  # Generate plot
+  p1 <- ggplot(avg.subset.seurat, 
+               aes(Unstimable_US, Stimable_US)) + 
+    geom_point() + 
+    ggtitle(paste0("Cluster "))
+  
+  p1 <-  LabelPoints(plot = p1,
+                     points = genes.to.label,
+                     repel = TRUE)
+  
+  print(plot(p1))
+  
+  
+  #MTRNR2L8, ANXA1, JAML
+  # GNLY, FTH1, MTRNR2L12, ACP5, CTSW, RPS4Y1, ZBED2, LTB, ITM2C, KIR2DL4
+
+  
+  
+  
 
 ```
 
