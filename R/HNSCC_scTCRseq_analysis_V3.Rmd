@@ -987,15 +987,15 @@ setwd(working.dir)
 setwd(working.dir)
 
 # Create output directories
-if(!dir.exists("output_tcr/figures/TCRseq/scRepertoire/clusters")){
-  dir.create("output_tcr/figures/TCRseq/scRepertoire/clusters",
+if(!dir.exists("output_tcr/figures/scRepertoire/clusters")){
+  dir.create("output_tcr/figures/scRepertoire/clusters",
              recursive = T)}
 
-if(!dir.exists("output_tcr/figures/TCRseq/scRepertoire/modules")){
-  dir.create("output_tcr/figures/TCRseq/scRepertoire/modules",
+if(!dir.exists("output_tcr/figures/scRepertoire/modules")){
+  dir.create("output_tcr/figures/scRepertoire/modules",
              recursive = T)}
 
-output.dir <- "output_tcr/figures/TCRseq/scRepertoire"
+output.dir <- "output_tcr/figures/scRepertoire"
 setwd(output.dir)
 
 #########################
@@ -1263,6 +1263,8 @@ source("R/getCircles.R")
 ###clonotypesOnly can be used to just count the clonotypes shared between cluster (removes cell numbers from the equation)
 
 # Subset dataset by condition
+meta.tcr <- seurat.tcr.filt@meta.data
+
 US <- subset(meta.tcr, condition == "US")
 
 Stim <- subset(meta.tcr, condition == "Stim")
@@ -1527,7 +1529,7 @@ for(i in seq_along(color_species)){
                grid.col = grid.col,
                col = link.col,
                order = order.val,
-               directional = 1,
+               directional = 0,
                link.overlap = FALSE,
                preAllocateTracks = list(
                  track.height = 0.3,
@@ -1604,7 +1606,7 @@ temp.df$node_col[index.var] <- color_species[j]
                grid.col = grid.col,
                col = link.col,
                order = order.val,
-               directional = 1,
+               directional = 0,
                link.overlap = FALSE,
                preAllocateTracks = list(
                  track.height = 0.3,
@@ -1655,7 +1657,7 @@ chordDiagram(df2,
              annotationTrack = c("grid"),
              grid.col = grid.col,
              order = order.val,
-             directional = 1,
+             directional = 0,
              link.overlap = FALSE,
              preAllocateTracks = list(
                track.height = 0.3,
@@ -1701,12 +1703,12 @@ circos.clear()
 setwd(working.dir)
 
 # Create output directories
-if(!dir.exists("output_tcr/figures/TCRseq/VJ_usage")){
-  dir.create("output_tcr/figures/TCRseq/VJ_usage",
+if(!dir.exists("output_tcr/figures/VJ_usage")){
+  dir.create("output_tcr/figures/VJ_usage",
              recursive = T)}
 
 # set and move to output.dir
-output.dir <- "output_tcr/figures/TCRseq/VJ_usage"
+output.dir <- "output_tcr/figures/VJ_usage"
 setwd(output.dir)
 
 
@@ -1847,12 +1849,12 @@ setwd(working.dir)
 setwd(working.dir)
 
 # Create output directories
-if(!dir.exists("output_tcr/figures/TCRseq/Top_clonotypes_heatmaps")){
-  dir.create("output_tcr/figures/TCRseq/Top_clonotypes_heatmaps",
+if(!dir.exists("output_tcr/figures/Top_clonotypes_heatmaps")){
+  dir.create("output_tcr/figures/Top_clonotypes_heatmaps",
              recursive = T)}
 
 # set and move to output.dir
-output.dir <- "output_tcr/figures/TCRseq/Top_clonotypes_heatmaps"
+output.dir <- "output_tcr/figures/Top_clonotypes_heatmaps"
 setwd(output.dir)
 
 
@@ -2022,11 +2024,11 @@ setwd(working.dir)
 setwd(working.dir)
 
 # Create output directory
-if(!dir.exists("output_tcr/figures/TCRseq/Binned_clonotype_expansion_plots")){
-  dir.create("output_tcr/figures/TCRseq/Binned_clonotype_expansion_plots",
+if(!dir.exists("output_tcr/figures/Binned_clonotype_expansion_plots")){
+  dir.create("output_tcr/figures/Binned_clonotype_expansion_plots",
              recursive = T)}
 
-output.dir <- "output_tcr/figures/TCRseq/Binned_clonotype_expansion_plots"
+output.dir <- "output_tcr/figures/Binned_clonotype_expansion_plots"
 setwd(output.dir)
 
 ###################################
@@ -2171,11 +2173,11 @@ get.clonotypes <- function(input.seurat, identity.column, ident.id){
 setwd(working.dir)
 
 # Create output directories
-if(!dir.exists("output_tcr/figures/TCRseq/Cluster_clonotypes")){
-  dir.create("output_tcr/figures/TCRseq/Cluster_clonotypes",
+if(!dir.exists("output_tcr/figures/Cluster_clonotypes")){
+  dir.create("output_tcr/figures/Cluster_clonotypes",
              recursive = T)}
 
-output.dir <- "output_tcr/figures/TCRseq/Cluster_clonotypes"
+output.dir <- "output_tcr/figures/Cluster_clonotypes"
 setwd(output.dir)
 
 ##########################################################
@@ -2281,11 +2283,11 @@ setwd(working.dir)
 setwd(working.dir)
 
 # Create output directories
-if(!dir.exists("output_tcr/figures/TCRseq/Cluster_condition_clonotypes")){
-  dir.create("output_tcr/figures/TCRseq/Cluster_condition_clonotypes",
+if(!dir.exists("output_tcr/figures/Cluster_condition_clonotypes")){
+  dir.create("output_tcr/figures/Cluster_condition_clonotypes",
              recursive = T)}
 
-output.dir <- "output_tcr/figures/TCRseq/Cluster_condition_clonotypes"
+output.dir <- "output_tcr/figures/Cluster_condition_clonotypes"
 setwd(output.dir)
 
 
@@ -2392,11 +2394,11 @@ setwd(working.dir)
 # Create output directories
 setwd(working.dir)
 
-if(!dir.exists("output_tcr/figures/TCRseq/Cluster_condition__specific_clonotypes")){
-  dir.create("output_tcr/figures/TCRseq/Cluster_condition__specific_clonotypes",
+if(!dir.exists("output_tcr/figures/Cluster_condition_specific_clonotypes")){
+  dir.create("output_tcr/figures/Cluster_condition_specific_clonotypes",
              recursive = T)}
 
-output.dir <- "output_tcr/figures/TCRseq/Cluster_condition__specific_clonotypes"
+output.dir <- "output_tcr/figures/Cluster_condition_specific_clonotypes"
 setwd(output.dir)
 
 
@@ -2515,17 +2517,18 @@ setwd(working.dir)
 
 ```
 
+
 ### Venn overlap of clonotypes
 ```{r clonotypes_overlap_Venn}
 
 # Create output directories
 setwd(working.dir)
 
-if(!dir.exists("output_tcr/figures/TCRseq/Venn_overlap")){
-  dir.create("output_tcr/figures/TCRseq/Venn_overlap",
+if(!dir.exists("output_tcr/figures/Venn_overlap")){
+  dir.create("output_tcr/figures/Venn_overlap",
              recursive = T)}
 
-output.dir <- "output_tcr/figures/TCRseq/Venn_overlap"
+output.dir <- "output_tcr/figures/Venn_overlap"
 setwd(output.dir)
 
 # Load package
@@ -2744,7 +2747,6 @@ rm(clust.clonotypes.seurat,
 ```
 
 ### Plotting top X clonotypes on UMAP projection
-
 ```{r highlight_top_clonotypes}
 
 # set working dir
@@ -2784,7 +2786,7 @@ for(i in seq_len(Top.clonotypes)){
                 pt.size = 2, 
                 split.by = "condition",
                 cols = c("Red", "#BEBEBE33"),
-                group.by = "highlight") + ggtitle(paste0("Top ", i, " ", names(x)[i])) + NoLegend())
+                group.by = "highlight") + ggtitle(paste0("Top ", i, " ", names(Query.clonotypes)[i])) + NoLegend())
   
   dev.copy(pdf, paste0("Top_clone_", i, "_UMAP_distribution.pdf"))
   dev.off()
@@ -2803,8 +2805,11 @@ setwd(working.dir)
 
 if(quick.load){
   seurat.tcr <- readRDS("Exported_RDS_files/seurat_tcr.rds")
+  seurat.tcr.filt <- readRDS("Exported_RDS_files/seurat_tcr_filt.rds")
 }else if(!quick.load){
   saveRDS(seurat.tcr, file = "Exported_RDS_files/seurat_tcr.rds")
+  saveRDS(seurat.tcr.filt, file = "Exported_RDS_files/seurat_tcr_filt.rds")
+  
 }
 
 ```
@@ -2831,10 +2836,10 @@ library("immunarch")
 
 
 # Prepare TCR data
-colnames(seurat.tcr@meta.data)
+colnames(seurat.tcr.filt@meta.data)
 
 # select useful data from seurat object
-TCR.df <- seurat.tcr@meta.data %>%
+TCR.df <- seurat.tcr.filt@meta.data %>%
   dplyr::select(CTaa, TRBV, TRBJ, seurat_clusters, condition, Clone_conditionwise_n) 
 
 # Split CTaa into TRA and TRB chains
@@ -3279,7 +3284,7 @@ Ex.clonotypes <- clonotypes %>%
   dplyr::select(CTaa)
 
 Ex.clonotypes <- unique(Ex.clonotypes$CTaa)
-length(Ex.clonotypes) # 94 clonotypes
+length(Ex.clonotypes) # 93 clonotypes
 
 
 # Within Stimulated condition filter dataset by Ex.clonotypes
@@ -3453,6 +3458,10 @@ UMAPPlot(seurat.tcr.filt,
          split.by = "condition",
          cols = c("#BEBEBE33", "Blue", "Red"))
 
+dev.copy(pdf, "UMAP_exhausted_stim_potential.pdf")
+dev.off()
+
+
 # Remove un-needed variables
 rm(seurat.exhausted)
 
@@ -3460,7 +3469,6 @@ rm(seurat.exhausted)
 setwd(working.dir)
 
 ```
-
 
 ### Evaluating Cytotoxic and Type I IFN clones for the ability to be stimulated
 ```{r Evaluating_Cytotoxic_and_Type_I_IFN_clones_for_stimulation}
@@ -3674,6 +3682,10 @@ UMAPPlot(seurat.tcr.filt,
          split.by = "condition",
          cols = c("#BEBEBE33", "Blue", "Red"))
 
+dev.copy(pdf, "UMAP_CytoIFN_stim_potential.pdf")
+dev.off()
+
+
 # Remove un-needed variables
 rm(seurat.cytoIFN)
 
@@ -3681,7 +3693,6 @@ rm(seurat.cytoIFN)
 setwd(working.dir)
 
 ```
-
 
 ### Any clonotype movement
 ```{r Any_clonotype_movement}
@@ -3892,6 +3903,9 @@ UMAPPlot(seurat.tcr.filt,
          split.by = "condition",
          cols = c("#BEBEBE33", "Blue", "Red"))
 
+dev.copy(pdf, "UMAP_total_stim_potential.pdf")
+dev.off()
+
 
 # Remove un-needed variables
 rm(seurat.cytoIFN)
@@ -3900,6 +3914,11 @@ rm(seurat.cytoIFN)
 setwd(working.dir)
 
 ```
+
+
+## UP TO HERE
+
+
 
 ### Vis DEGs responsible for clonotype movement
 ```{r Visualise_Clonotype_movement_DEGs}
@@ -3925,94 +3944,21 @@ for(i in seq_along(stim.var)){
 
 
 
+DEG.df <- read.csv("output_tcr/figures/Exhausted_restimability/DEG_restimability_40_20.csv")
 
-DefaultAssay(seurat.tcr.filt) <- "integrated"
+
 
 
 Idents(seurat.tcr.filt) <- seurat.tcr.filt@meta.data$Exhausted_Stim_potential_condition
 
+
+DefaultAssay(seurat.tcr.filt) <- "alra"
+
 temp.seurat <- subset(seurat.tcr.filt, ident = c("Unstimable_US", "Stimable_US",
                                                  "Unstimable_Stim", "Stimable_Stim"))
 
-
-
-
-
 average.seurat <- AverageExpression(temp.seurat,
-                                    assay = "integrated",
-                                    slot = "data",
-                                    verbose = TRUE,
-                                    return.seurat = TRUE)
-
-
-DEG.df <- read.csv("output_tcr/figures/Exhausted_restimability/DEG_restimability_40_20.csv")
-
-
-goi <- DEG.df %>% 
-  filter(avg_log2FC > 1 | avg_log2FC < -0.75)
-
-
-pattern.var <- c("TRA", "TRB")
-logic.var <- grepl(paste0(pattern.var, collapse = "|"), goi$X)
-goi <- goi$X[!logic.var]
-
-
-
-DoHeatmap(average.seurat, 
-          #group.by = "Exhausted_Stim_potential_condition", 
-          features = goi, 
-          draw.lines = F)
-
-
-
-
-
-
-
-
-top_n(Stim.potential.markers, -10, myAUC)
-
-DefaultAssay(temp.seurat) <- "integrated"
-
-VlnPlot(temp.seurat, 
-        "SOCS1", 
-        pt.size = 0.3)
-
-
-
-#DEG.df <- read.csv("output_tcr/figures/Clonotype_movement/DEG_restimability_40_20.csv")
-
-
-
-# CREM 
-# NKG7
-
-
-
-DEG.df <- read.csv("output_tcr/figures/Exhausted_restimability/DEG_restimability_40_20.csv")
-
-head(DEG.df)
-tail(DEG.df)
-
-
-#Nebulosa::plot_density(seurat.tcr.filt, feature = "MTRNR2L8", group.by = "Total_Stim_potential")
-
-
-
-Idents(seurat.tcr.filt) <- seurat.tcr.filt@meta.data$Exhausted_Stim_potential
-
-temp.seurat <- subset(seurat.tcr.filt, ident = c("Unstimable", "Stimable"))
-
-
-
-Idents(temp.seurat) <- temp.seurat@meta.data$Exhausted_Stim_potential_condition
-
-#temp.seurat <- subset(temp.seurat, ident = c("Unstimable_US", "Stimable_US"))
-
-temp.seurat.small <- subset(temp.seurat, downsample = 100)
-
-average.seurat <- AverageExpression(temp.seurat,
-                                    assay = "integrated",
+                                    assay = "alra",
                                     slot = "data",
                                     verbose = TRUE,
                                     return.seurat = TRUE)
@@ -4030,17 +3976,46 @@ goi <- goi$X[!logic.var]
 
 
 
-
 DoHeatmap(average.seurat, 
-          #group.by = "Exhausted_Stim_potential_condition", 
-          features = goi, 
-          draw.lines = F)
+          features = c(goi), 
+          draw.lines = FALSE)
 
 
-  
-goi <- goi$X
 
-dim(DEG.df)
+
+temp.seurat.small <- subset(temp.seurat, downsample = 100)
+
+
+temp.seurat.small <- subset(temp.seurat.small, idents = c("Unstimable_US", "Stimable_US"))
+
+DoHeatmap(temp.seurat.small, 
+          features = c(goi), 
+          draw.lines = TRUE)
+
+
+DefaultAssay(temp.seurat) <- "alra"
+
+
+for(i in seq_along(goi)){
+print(VlnPlot(temp.seurat, goi[i]), pt.size = 0.4)
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 FeaturePlot(temp.seurat,
@@ -4053,52 +4028,6 @@ FeaturePlot(temp.seurat,
 
 
 
-
-  # Set idents to condition var
-  Idents(temp.seurat) <- temp.seurat@meta.data$Exhausted_Stim_potential_condition
-  
-  # Get top 10 genes
-  sig.genes <- DEG.df[DEG.df$p_val_adj < 0.05, ]
-  
-  # up-regulated genes
-  genes.to.label.1 <- top_n(sig.genes, 5, avg_log2FC)$X
-  
-  # Down-regulated genes
-  genes.to.label.2 <- top_n(sig.genes, -5, avg_log2FC)$X
-  
-  # Create vector of genes
-  genes.to.label <- unique(c(genes.to.label.1, genes.to.label.2))
-  
-  
-  pattern.var <- c("TRA", "TRB")
-logic.var <- grepl(paste0(pattern.var, collapse = "|"), genes.to.label)
-genes.to.label <- genes.to.label[!logic.var]
-  
-  
-  
-  # Average expression
-  avg.subset.seurat <- log1p(AverageExpression(temp.seurat, verbose = FALSE)$RNA)
-  
-  # Create column with gene id 
-  avg.subset.seurat$gene <- rownames(avg.subset.seurat)
-  
-  
-  
-  
-  genes.to.label <- c("MBP", "GPR171", "GEM", "PGK1", "IL2RA")
-  
-  
-  # Generate plot
-  p1 <- ggplot(avg.subset.seurat, 
-               aes(Unstimable_US, Stimable_US)) + 
-    geom_point() + 
-    ggtitle(paste0("Cluster "))
-  
-  p1 <-  LabelPoints(plot = p1,
-                     points = genes.to.label,
-                     repel = TRUE)
-  
-  print(plot(p1))
   
   
   #MTRNR2L8, ANXA1, JAML
