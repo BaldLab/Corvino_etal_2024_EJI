@@ -309,7 +309,6 @@ rm(contig.list, S1.contig, S2.contig, S3.contig, S4.contig, meta.data, meta.tcr)
 ```
 
 
-
 ### Filter dataset
 ```{r Filter_data}
 
@@ -2800,450 +2799,7 @@ setwd(working.dir)
 ```
 
 
-### Export or read in tcr seurat object
-```{r export_RDS}
 
-if(quick.load){
-  seurat.tcr <- readRDS("Exported_RDS_files/seurat_tcr.rds")
-  seurat.tcr.filt <- readRDS("Exported_RDS_files/seurat_tcr_filt.rds")
-}else if(!quick.load){
-  saveRDS(seurat.tcr, file = "Exported_RDS_files/seurat_tcr.rds")
-  saveRDS(seurat.tcr.filt, file = "Exported_RDS_files/seurat_tcr_filt.rds")
-  
-}
-
-```
-
-
-## VDJdb annotation analysis {.tabset}
-
-### VDJdb annotation setup
-```{r VDJdb_annotation}
-
-# Create directory
-if(!dir.exists("output_tcr/figures/VDJ_annotation")){
-  dir.create("output_tcr/figures/VDJ_annotation",
-             recursive = TRUE)}
-
-
-######################################################################
-# Use concept and read in function from immunarch for processing 
-######################################################################
-
-#install.packages("immunarch")
-library("immunarch")
-
-
-
-# Prepare TCR data
-colnames(seurat.tcr.filt@meta.data)
-
-# select useful data from seurat object
-TCR.df <- seurat.tcr.filt@meta.data %>%
-  dplyr::select(CTaa, TRBV, TRBJ, seurat_clusters, condition, Clone_conditionwise_n) 
-
-# Split CTaa into TRA and TRB chains
-TCR.df$CDR3a <- gsub("_.*", "", TCR.df$CTaa)
-TCR.df$CDR3b <- gsub(".*_", "", TCR.df$CTaa)
-
-# Get vectors of unique clonotypes 
-CTaa.unique <- unique(TCR.df$CTaa)
-
-########################
-# Read in VDJ database 
-########################
-
-vdjdb <- dbLoad("Data/VDJ_database/vdjdb.slim.txt", "vdjdb")
-
-####################
-# Filter database
-####################
-
-colnames(vdjdb)
-
-# HomoSapiens 
-vdjdb <- vdjdb %>% 
-  filter(species == "HomoSapiens")
-
-# Score info:
-# 0 = Low confidence/no information - a critical aspect of sequencing/specificity validation is missing
-# 1	= Moderate confidence - no verification / poor TCR sequence confidence
-# 2	= High confidence - has some specificity verification, good TCR sequence confidence
-# 3	= Very high confidence - has extensive verification or structural data
-
-# Score above 0
-vdjdb <- vdjdb %>% 
-  filter(vdjdb.score > 0)
-
-# Reduce dataset to antigen.species level
-vdjdb <- vdjdb %>% 
-  dplyr::distinct(cdr3, antigen.species, gene)
-
-# Split ref dataset by TCR chain
-vdjdb.alpha <- vdjdb %>% 
-  filter(gene == "TRA")
-
-vdjdb.beta <- vdjdb %>% 
-  filter(gene == "TRB")
-
-# split CDR3 by chain and preserve position/pair order
-CDR3.alpha <-  gsub("_.*", "", CTaa.unique)
-CDR3.beta <-  gsub(".*_", "", CTaa.unique)
-length(CDR3.alpha) == length(CDR3.beta)
-
-# Find overlap between query and ref datasets
-logic.alpha <- CDR3.alpha %in% vdjdb.alpha$cdr3
-logic.beta <- CDR3.beta %in% vdjdb.beta$cdr3
-
-alpha.overlap <- CDR3.alpha[logic.alpha & logic.beta]
-beta.overlap <- CDR3.beta[logic.alpha & logic.beta]
-
-length(alpha.overlap) == length(beta.overlap)
-
-
-
-vdj.overlap.alpha <- vdjdb.alpha %>% 
-  filter(cdr3 %in% alpha.overlap)
-
-vdj.overlap.beta <- vdjdb.beta %>% 
-  filter(cdr3 %in% beta.overlap)
-
-
-# Plot where both chains are found in the dataset
-
-CTaa.vec <- paste0(alpha.overlap, "_", beta.overlap)
-
-for(i in seq_along(CTaa.vec)){
-
-  seurat.tcr <- highlightClonotypes(seurat.tcr, 
-                                    cloneCall= "aa", 
-                                    sequence = CTaa.vec[i])
-  
-  
-  seurat.tcr@meta.data$highlight[is.na(seurat.tcr@meta.data$highlight)] <- "NA"
-  
-  
-  seurat.tcr@meta.data$highlight[seurat.tcr@meta.data$highlight != "NA"] <- CTaa.vec[i]
-  
-  seurat.tcr@meta.data$highlight <- factor(seurat.tcr@meta.data$highlight, levels = c(CTaa.vec[i], "NA"))
-  
-  
-  
-  print(DimPlot(seurat.tcr, 
-                pt.size = 2, 
-                split.by = "condition",
-                cols = c("Red", "#BEBEBE33"),
-                group.by = "highlight") + ggtitle(paste0(CTaa.vec[i])) +
-          NoLegend()
-  )
-  
-  dev.copy(pdf, paste0("output_tcr/figures/VDJ_annotation/UMAP_", CTaa.vec[i], ".pdf"))
-  dev.off()
-}
-
-
-
-# Just beta chain 
-
-beta.overlap <- CDR3.beta[logic.beta]
-
-vdj.overlap.beta <- vdjdb.beta %>% 
-  filter(cdr3 %in% beta.overlap)
-
-
-antigen.vec <- unique(vdj.overlap.beta$antigen.species)
-
-for(i in seq_along(antigen.vec)){
-  
-  antigen.specific.CDR3b <- vdj.overlap.beta %>% 
-    filter(antigen.species == antigen.vec[i]) %>%
-    pull(cdr3)
-  
-  
-  output.temp <- TCR.df %>% 
-    filter(CDR3b %in% antigen.specific.CDR3b)
-  
-  x <- unique(output.temp$CTaa)
-  
-  seurat.tcr <- highlightClonotypes(seurat.tcr, 
-                                    cloneCall= "aa", 
-                                    sequence = x)
-  
-  
-  seurat.tcr@meta.data$highlight[is.na(seurat.tcr@meta.data$highlight)] <- "NA"
-  
-  
-  seurat.tcr@meta.data$highlight[seurat.tcr@meta.data$highlight != "NA"] <- antigen.vec[i]
-  
-  seurat.tcr@meta.data$highlight <- factor(seurat.tcr@meta.data$highlight, levels = c(antigen.vec[i], "NA"))
-  
-  
-  
-  print(DimPlot(seurat.tcr, 
-                pt.size = 2, 
-                split.by = "condition",
-                cols = c("Red", "#BEBEBE33"),
-                group.by = "highlight") + ggtitle(paste0(antigen.vec[i])) + 
-         NoLegend()
-  )
-  
-  dev.copy(pdf, paste0("output_tcr/figures/VDJ_annotation/UMAP_just_betachain_matched_", antigen.vec[i], ".pdf"))
-  dev.off()
-}
-
-
-```
-
-
-## GLIPH analysis {.tabset}
-
-### Export data for analysis
-```{r GLIPH_analysis_export}
-
-# Exporting data required for GLIPH analysis
-colnames(seurat.tcr@meta.data)
-
-# select useful data from seurat object
-GLIPH.df <- seurat.tcr@meta.data %>%
-  dplyr::select(CTaa, TRBV, TRBJ, condition, Clone_conditionwise_n) 
-
-# Split CTaa into TRA and TRB chains
-GLIPH.df$CDR3a <- gsub("_.*", "", GLIPH.df$CTaa)
-GLIPH.df$CDR3b <- gsub(".*_", "", GLIPH.df$CTaa)
-
-colnames(GLIPH.df)
-
-# Format dataframe 
-GLIPH.df$Subject <- GLIPH.df$condition
-head(GLIPH.df)
-
-GLIPH.df <- GLIPH.df %>%
-  dplyr::select(CDR3b, TRBV, TRBJ, CDR3a, Subject, Clone_conditionwise_n) 
-
-
-colnames(GLIPH.df) <- c("CDR3b", "TRBV", "TRBJ", "CDR3a", "Subject:condition", "count")
-
-head(GLIPH.df)
-
-# Write dataframe to file
-write.table(GLIPH.df, "output_tcr/tables/GLIPH_input.txt", row.names = FALSE, quote = FALSE, sep = "\t", col.names = FALSE)
-
-
-rm(GLIPH.df)
-
-# terminal command call 
-# ./irtools.osx -c GLIPH_param_file.cfg 
-
-
-```
-
-### read and format data
-```{r GLIPH_formatting}
-
-
-# Create directory
-if(!dir.exists("output_tcr/figures/GLIPH_analysis")){
-  dir.create("output_tcr/figures/GLIPH_analysis",
-             recursive = TRUE)}
-
-
-
-# read in data
-GLIPH.data <- read.csv("output_tcr/GLIPH_analysis/Condition_wise/Condition_cluster.csv")
-
-motif.table <- read.delim("output_tcr/GLIPH_analysis/Condition_wise/Condition_kmer.txt")
-head(motif.table)
-
-str(GLIPH.data)
-
-# remove un-necessary columns 
-remove.index <- grepl("^HLA", colnames(GLIPH.data))
-
-GLIPH.data <- GLIPH.data[ , !remove.index]
-
-head(GLIPH.data)
-
-
-#######################################################
-# filter GLIPH output for useful information
-#######################################################
-
-# to allow comparison with seurat object. must combine CDR3A and CDR3B chain to create CTaa call 
-GLIPH.data$CTaa <- paste0(GLIPH.data$TcRa, "_", GLIPH.data$TcRb)
-
-
-# Firstly remove single and global
-
-#GLIPH.data.local <- 
- # GLIPH.data %>% 
-#  dplyr::filter(pattern != "single" & pattern != "" & type != "global")
-
-GLIPH.data <- 
-  GLIPH.data %>% 
-  dplyr::filter(pattern != "single" & pattern != "")
-
-
-
-# now have a table of local motif calls 
-
-
-head(GLIPH.data)
-
-x <- GLIPH.data %>% 
-  dplyr::distinct(pattern, Freq)
-
-
-x <- x %>%
-  dplyr::top_n(10, Freq) %>%
-  dplyr::arrange(desc(Freq))
-
-
-
-
-
-x <- GLIPH.data %>% 
-  dplyr::distinct(number_unique_cdr3, pattern)
-
-
-x <- x %>%
-  dplyr::top_n(10, number_unique_cdr3) %>%
-  dplyr::arrange(desc(number_unique_cdr3))
-
-
-
-
-
-
-
-length(unique(x$pattern))
-
-motif.vec <- unique(x$pattern)
-
-for(i in seq_along(motif.vec)){
-temp <- 
-  GLIPH.data %>%
-  dplyr::filter(pattern == paste0(motif.vec[i])) 
-
-
-x <- unique(temp$CTaa)
-
-seurat.tcr <- highlightClonotypes(seurat.tcr, 
-                                    cloneCall= "aa", 
-                                    sequence = x)
-  
-  seurat.tcr@meta.data$highlight[is.na(seurat.tcr@meta.data$highlight)] <- "NA"
-    
-  
-  seurat.tcr@meta.data$highlight[seurat.tcr@meta.data$highlight != "NA"] <- paste0(motif.vec[i])
-
-    seurat.tcr@meta.data$highlight <- factor(seurat.tcr@meta.data$highlight, levels = c(paste0(motif.vec[i]), "NA"))
-    
-    
-    levels(seurat.tcr@meta.data$highlight)
-  
-  print(DimPlot(seurat.tcr, 
-                pt.size = 2, 
-                split.by = "condition",
-                cols = c("Red", "#BEBEBE33"),
-                group.by = "highlight") + ggtitle(paste0(motif.vec[i])) #+ 
-         # NoLegend()
-        )
-  
-}
-
-
-
-CTaa.vec <- unique(GLIPH.data$CTaa)
-motif.vec <- unique(GLIPH.data$pattern)
-
-length(CTaa.vec)
-length(motif.vec)
-
-
-output.df <- matrix(nrow = length(motif.vec),
-                    ncol = length(CTaa.vec))
-
-colnames(output.df) <- CTaa.vec
-rownames(output.df) <- motif.vec
-
-for(i in seq_along(rownames(output.df))){
-
-pattern.id <- gsub("%", "[[:alpha:]]", rownames(output.df)[i])
-
-output.df[i, ] <- grepl(pattern.id, colnames(output.df))
-
-
-
-}
-
-x <- output.df[ ,colSums(output.df) > 1]
-
-
-#x <- output.df
-
-
-x <- x*1
-
-x <- x[rowSums(x) != 0, ]
-
-
-heatmap.2(x, 
-          scale = "none",
-          trace = "none",
-          Colv = TRUE,
-          Rowv = FALSE,
-          cexRow = 0.5, 
-          margins = c(8, 5),
-          labCol = NA,
-          cexCol = 0.8, 
-          srtCol = 90,
-          col = c("Red", "Blue"))   
-
-
-
-?heatmap.2
-
-
-heatmap(x)
-
-temp.vec <- c("CALANDYKLSF_CASSLTGGRDEQYV")
-
-pattern.id <- c("LSF{1}[[:alpha:]]DY")
-pattern.id <- c("QYV[[:alpha:]]")
-
-
-grepl(pattern.id, temp.vec)
-
-
-
-
-sum(x)
-
-
-
-
-```
-
-
-
-
-
-
-### TO DO ###########
-# scclusteval - to determine stability of identified clusters
-# VDJdb epitope prediction for clonotypes
-# group clonotypes by Gliph cluster 
-# Vis/analyse epitope and Gliph cluster data
-# Complex and richness of gliph clusters
-# SENIC analysis of Transcription factor regulon activity in clusters
-# Data-mining for Type I IFN clusters in HNSCC and other cancer datasets
-# Transcription factor analysis - both expression and downstream gene regulation analysis
-
-
-## Work in progress {.tabset}
-
-
-#### WORK IN PROGRESS BELOW // I am here
 
 ## Identifying stimulatable clonotypes {.tabset}
 
@@ -3261,6 +2817,8 @@ if(!dir.exists("output_tcr/figures/Exhausted_restimability")){
 output.dir <- "output_tcr/figures/Exhausted_restimability"
 setwd(output.dir)
 
+# Save output dir as variable for future use
+Exhaust.dir <- output.dir
 
 # Variable info 
 query.clusters <- c("Stimulated_exhausted", "Exhausted_1", "Exhausted_2")
@@ -3484,6 +3042,8 @@ if(!dir.exists("output_tcr/figures/Cytotoxic_TypeI_restimability")){
 output.dir <- "output_tcr/figures/Cytotoxic_TypeI_restimability"
 setwd(output.dir)
 
+# Save output dir as variable for future use
+CytoIFN.dir <- output.dir
 
 
 # Variable info 
@@ -3708,6 +3268,10 @@ if(!dir.exists("output_tcr/figures/Clonotype_movement")){
 output.dir <- "output_tcr/figures/Clonotype_movement"
 setwd(output.dir)
 
+# Save output dir as variable for future use
+TotalMovement.dir <- output.dir
+
+
 # Variable info 
 query.clusters <- c("Stimulated_1", "Cytotoxic", "Type_I_IFN", "Stimulated_exhausted", "Exhausted_1", "Exhausted_2")
 source.clusters <- c("Cytotoxic", "Type_I_IFN", "Exhausted_1", "Exhausted_2")
@@ -3915,11 +3479,6 @@ setwd(working.dir)
 
 ```
 
-
-## UP TO HERE
-
-
-
 ### Vis DEGs responsible for clonotype movement
 ```{r Visualise_Clonotype_movement_DEGs}
 
@@ -3944,113 +3503,98 @@ for(i in seq_along(stim.var)){
 
 
 
-DEG.df <- read.csv("output_tcr/figures/Exhausted_restimability/DEG_restimability_40_20.csv")
 
+path.var <- c(Exhaust.dir, CytoIFN.dir, TotalMovement.dir)
+path.var <- paste0(path.var, "/")
+stim.name.var <- paste0(stim.var, "_condition")
 
-
-
-Idents(seurat.tcr.filt) <- seurat.tcr.filt@meta.data$Exhausted_Stim_potential_condition
-
-
+# Set assay to imputed
 DefaultAssay(seurat.tcr.filt) <- "alra"
 
-temp.seurat <- subset(seurat.tcr.filt, ident = c("Unstimable_US", "Stimable_US",
-                                                 "Unstimable_Stim", "Stimable_Stim"))
+# or some unknown reason, this loop sometimes fails and sometimes works. 
+# I can't reliabily reproduce the problem, and running each element outside the loop works perfectly
+# running small loop over first data input lines also works perfectly every time
+# I CANT WORK OUT WHAT THE HELL IS HAPPENING 
+# Therefore, just run the loop a couple times till it works
 
-average.seurat <- AverageExpression(temp.seurat,
-                                    assay = "alra",
-                                    slot = "data",
-                                    verbose = TRUE,
-                                    return.seurat = TRUE)
+for(i in seq_along(path.var)){
+  
 
+  # Read in DEG data
+  
+  file.name.var <- list.files(path = path.var[i],
+                              pattern = ".csv")
+  
+  print(paste0(file.name.var))
 
+  DEG.df <- read.csv(paste0(path.var[i], file.name.var))
+  
 
-
-goi <- DEG.df %>% 
-  filter(avg_log2FC > 1 | avg_log2FC < -1)
-
-
-pattern.var <- c("TRA", "TRB")
-logic.var <- grepl(paste0(pattern.var, collapse = "|"), goi$X)
-goi <- goi$X[!logic.var]
-
-
-
-DoHeatmap(average.seurat, 
-          features = c(goi), 
-          draw.lines = FALSE)
-
-
-
-
-temp.seurat.small <- subset(temp.seurat, downsample = 100)
-
-
-temp.seurat.small <- subset(temp.seurat.small, idents = c("Unstimable_US", "Stimable_US"))
-
-DoHeatmap(temp.seurat.small, 
-          features = c(goi), 
-          draw.lines = TRUE)
-
-
-DefaultAssay(temp.seurat) <- "alra"
-
-
-for(i in seq_along(goi)){
-print(VlnPlot(temp.seurat, goi[i]), pt.size = 0.4)
+  # Set idents to stim.name.var 
+  Idents(seurat.tcr.filt) <- seurat.tcr.filt@meta.data[[stim.name.var[i]]]
+  
+  
+  # Subset seurat.object by just stim and unstim classified clones/cells
+  temp.seurat <- subset(seurat.tcr.filt, ident = c("Unstimable_US", "Stimable_US",
+                                                   "Unstimable_Stim", "Stimable_Stim"))
+  
+  # Get average gene expression
+  average.seurat <- AverageExpression(temp.seurat,
+                                      assay = "alra",
+                                      slot = "data",
+                                      verbose = TRUE,
+                                      return.seurat = TRUE)
+  
+  
+  # Subset DEG list for top DEGs
+  goi <- DEG.df %>% 
+    filter(avg_log2FC > 1 | avg_log2FC < -1)
+  
+  # Remove TCR genes 
+  pattern.var <- c("TRA", "TRB")
+  logic.var <- grepl(paste0(pattern.var, collapse = "|"), goi$X)
+  goi <- goi$X[!logic.var]
+  
+  
+  # Generate heatmap of top DEGs
+  
+  print(DoHeatmap(average.seurat, 
+                  features = c(goi), 
+                  raster = FALSE,
+                  draw.lines = FALSE))
+  
+  dev.copy(pdf, paste0(path.var[i], "Heatmap_top_DEGs.pdf"))
+  dev.off()
+  
+  
+  
+  
+  # Create VlnPlots for top DEGs
+  Vlnplot.dir <- paste0(path.var[i], "VlnPlots")
+  
+  if(!dir.exists(Vlnplot.dir)){
+    dir.create(Vlnplot.dir)
+  }
+  
+  
+  for(j in seq_along(goi)){
+    
+    print(VlnPlot(temp.seurat, 
+                  goi[j], 
+          pt.size = 0.1))
+    
+    dev.copy(pdf, paste0(Vlnplot.dir, "/Vlnplot_", goi[j], ".pdf"))
+    dev.off()
+  }
+  
+  
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-FeaturePlot(temp.seurat,
-            feature = "MTRNR2L8",
-            cols = c("Gray", "Red"),
-            pt.size = 2,
-            split.by = "Total_Stim_potential")
-
-
-
-
-
-  
-  
-  #MTRNR2L8, ANXA1, JAML
-  # GNLY, FTH1, MTRNR2L12, ACP5, CTSW, RPS4Y1, ZBED2, LTB, ITM2C, KIR2DL4
-
-  
-  
-  
-
 ```
 
-
-
-
-
-
-```{r temp}
-
-
-
-
-
-
+### TCR gene usage categorised by Restim status
+```{r Restim_status_gene_usage}
 
 ########################
 # Heatmap functions
@@ -4066,233 +3610,607 @@ dist.func <- function(x){
 
 col.palette <- colorRampPalette(brewer.pal(8, "RdYlBu"))(600)
 
+
+
+
+
+path.var <- c(Exhaust.dir, CytoIFN.dir, TotalMovement.dir)
+path.var <- paste0(path.var, "/")
+stim.var <- c("Exhausted_Stim_potential", "CytoIFN_Stim_potential", "Total_Stim_potential")
+
+
+for(i in seq_along(path.var)){
+
+# Create output path
+  heatmap.dir <- paste0(path.var[i], "TCR_usage")
+  
+  if(!dir.exists(heatmap.dir)){
+    dir.create(heatmap.dir,
+               recursive = TRUE)
+  }
+  
+
 ######################################################
 # Plot V/J gene usage as a log2() of cell number
 ######################################################
 
 # TRA-V gene usage
 
-x <- table(seurat.tcr.filt@meta.data$TRAV, seurat.tcr.filt@meta.data$Stim_potential)
+x <- table(seurat.tcr.filt@meta.data$TRAV, seurat.tcr.filt@meta.data[[stim.var[i]]])
 
-heatmap.2(as.matrix(log2(x+1)), 
+print(heatmap.2(as.matrix(log2(x+1)), 
           scale = "column",
           trace = "none",
-          Colv = TRUE,
+          Colv = FALSE,
           cexRow = 0.5, 
           margins = c(8, 5),
           cexCol = 0.8, 
           distfun = dist.func,
           hclustfun = hclust.func,
           srtCol = 90,
-          col = rev(col.palette))     
+          col = rev(col.palette)))     
 
-dev.copy(pdf, "Heatmap_TRA_V_usage.pdf")
+dev.copy(pdf, paste0(heatmap.dir, "/", "Heatmap_TRA_V_usage.pdf"))
 dev.off()
 
 # TRA-J gene usage
 
-x <- table(seurat.exhausted@meta.data$TRAJ, seurat.exhausted@meta.data$Stim_potential)
+x <- table(seurat.tcr.filt@meta.data$TRAJ, seurat.tcr.filt@meta.data[[stim.var[i]]])
 
-heatmap.2(as.matrix(log2(x+1)), 
+print(heatmap.2(as.matrix(log2(x+1)), 
           scale = "column",
           trace = "none",
-          Colv = TRUE,
+          Colv = FALSE,
           cexRow = 0.5, 
           margins = c(8, 5),
           cexCol = 0.8, 
           distfun = dist.func,
           hclustfun = hclust.func,
           srtCol = 90,
-          col = rev(col.palette))     
+          col = rev(col.palette)))     
 
-dev.copy(pdf, "Heatmap_TRA_J_usage.pdf")
+dev.copy(pdf, paste0(heatmap.dir, "/", "Heatmap_TRA_J_usage.pdf"))
 dev.off()
 
 
 # TRB-V gene usage
 
-x <- table(seurat.exhausted@meta.data$TRBV, seurat.exhausted@meta.data$Stim_potential)
+x <- table(seurat.tcr.filt@meta.data$TRBV, seurat.tcr.filt@meta.data[[stim.var[i]]])
 
-heatmap.2(as.matrix(log2(x+1)), 
+print(heatmap.2(as.matrix(log2(x+1)), 
           scale = "column",
           trace = "none",
-          Colv = TRUE,
+          Colv = FALSE,
           cexRow = 0.5, 
           margins = c(8, 5),
           cexCol = 0.8, 
           distfun = dist.func,
           hclustfun = hclust.func,
           srtCol = 90,
-          col = rev(col.palette))     
+          col = rev(col.palette)))     
 
-dev.copy(pdf, "Heatmap_TRB_V_usage.pdf")
+dev.copy(pdf, paste0(heatmap.dir, "/", "Heatmap_TRB_V_usage.pdf"))
 dev.off()
 
 
 
 # TRB-J gene usage
-x <- table(seurat.exhausted@meta.data$TRBJ, seurat.exhausted@meta.data$Stim_potential)
+x <- table(seurat.tcr.filt@meta.data$TRBJ, seurat.tcr.filt@meta.data[[stim.var[i]]])
 
 
-heatmap.2(as.matrix(log2(x+1)), 
+print(heatmap.2(as.matrix(log2(x+1)), 
           scale = "column",
           trace = "none",
-          Colv = TRUE,
+          Colv = FALSE,
           cexRow = 0.5, 
           margins = c(8, 5),
           cexCol = 0.8, 
           distfun = dist.func,
           hclustfun = hclust.func,
           srtCol = 90,
-          col = rev(col.palette))     
+          col = rev(col.palette)))     
 
-dev.copy(pdf, "Heatmap_TRB_J_usage.pdf")
+dev.copy(pdf, paste0(heatmap.dir, "/", "Heatmap_TRB_J_usage.pdf"))
 dev.off()
 
+}
 
+```
 
 
 
+### Export or read in tcr seurat object
+```{r export_RDS}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# Vis gene expression
-FeaturePlot(seurat.exhausted, 
-            "CTSW")
-
-
-VlnPlot(seurat.exhausted,
-        group.by = "Stim_potential",
-        "CTSW",
-        assay = "RNA", 
-        pt.size = 1)
-
-
-Nebulosa::plot_density(seurat.exhausted, "CTSW")
-
-
-
-
-
-
-
-
-FeaturePlot(seurat.tcr.filt, 
-            "MTRNR2L8")
-
-FeaturePlot(seurat.tcr.filt, order = T,
-            "CD38", pt.size = 2)
-
-
-VlnPlot(seurat.exhausted, group.by = "seurat_clusters",
-        "IFNG", assay = "alra")
-
-VlnPlot(seurat.tcr.filt, group.by = "seurat_clusters",
-        "TIM3", assay = "alra", pt.size = 0)
-
-
-
-Idents(seurat.tcr.filt) <- seurat.tcr.filt@meta.data$seurat_clusters
-
-
-Stim.potential.markers <- FindMarkers(seurat.tcr.filt, 
-                                      ident.1 = "Stimulated_exhausted", 
-                                      ident.2 = "Exhausted_1")
-
-
-Stim.potential.markers <- Stim.potential.markers %>%
-  dplyr::filter(p_val_adj < 0.05) %>%
-  dplyr::arrange(desc(avg_logFC))
-
-Stim.potential.markers
-
-
-x <- grep("^MTRNR.*", rownames(seurat.tcr.filt), value = T)
-
-x <- rownames(Stim.potential.markers)
-
-
-for(i in seq_along(x)){
+if(quick.load){
+  seurat.tcr <- readRDS("Exported_RDS_files/seurat_tcr.rds")
+  seurat.tcr.filt <- readRDS("Exported_RDS_files/seurat_tcr_filt.rds")
+}else if(!quick.load){
+  saveRDS(seurat.tcr, file = "Exported_RDS_files/seurat_tcr.rds")
+  saveRDS(seurat.tcr.filt, file = "Exported_RDS_files/seurat_tcr_filt.rds")
   
-  print(
-    FeaturePlot(seurat.tcr.filt, 
-                x[i]))
+}
+
+```
+
+
+## VDJdb annotation analysis {.tabset}
+
+### VDJdb annotation setup
+```{r VDJdb_annotation}
+
+# Create directory
+if(!dir.exists("output_tcr/figures/VDJ_annotation")){
+  dir.create("output_tcr/figures/VDJ_annotation",
+             recursive = TRUE)}
+
+
+######################################################################
+# Use concept and read in function from immunarch for processing 
+######################################################################
+
+#install.packages("immunarch")
+library("immunarch")
+
+
+
+# Prepare TCR data
+colnames(seurat.tcr.filt@meta.data)
+
+# select useful data from seurat object
+TCR.df <- seurat.tcr.filt@meta.data %>%
+  dplyr::select(CTaa, TRBV, TRBJ, seurat_clusters, condition, Clone_conditionwise_n) 
+
+# Split CTaa into TRA and TRB chains
+TCR.df$CDR3a <- gsub("_.*", "", TCR.df$CTaa)
+TCR.df$CDR3b <- gsub(".*_", "", TCR.df$CTaa)
+
+# Get vectors of unique clonotypes 
+CTaa.unique <- unique(TCR.df$CTaa)
+
+########################
+# Read in VDJ database 
+########################
+
+vdjdb <- dbLoad("Data/VDJ_database/vdjdb.slim.txt", "vdjdb")
+
+####################
+# Filter database
+####################
+
+colnames(vdjdb)
+
+# HomoSapiens 
+vdjdb <- vdjdb %>% 
+  filter(species == "HomoSapiens")
+
+# Score info:
+# 0 = Low confidence/no information - a critical aspect of sequencing/specificity validation is missing
+# 1	= Moderate confidence - no verification / poor TCR sequence confidence
+# 2	= High confidence - has some specificity verification, good TCR sequence confidence
+# 3	= Very high confidence - has extensive verification or structural data
+
+# Score above 0
+vdjdb <- vdjdb %>% 
+  filter(vdjdb.score > 0)
+
+# Reduce dataset to antigen.species level
+vdjdb <- vdjdb %>% 
+  dplyr::distinct(cdr3, antigen.species, gene)
+
+# Split ref dataset by TCR chain
+vdjdb.alpha <- vdjdb %>% 
+  filter(gene == "TRA")
+
+vdjdb.beta <- vdjdb %>% 
+  filter(gene == "TRB")
+
+# split CDR3 by chain and preserve position/pair order
+CDR3.alpha <-  gsub("_.*", "", CTaa.unique)
+CDR3.beta <-  gsub(".*_", "", CTaa.unique)
+length(CDR3.alpha) == length(CDR3.beta)
+
+# Find overlap between query and ref datasets
+logic.alpha <- CDR3.alpha %in% vdjdb.alpha$cdr3
+logic.beta <- CDR3.beta %in% vdjdb.beta$cdr3
+
+alpha.overlap <- CDR3.alpha[logic.alpha & logic.beta]
+beta.overlap <- CDR3.beta[logic.alpha & logic.beta]
+
+length(alpha.overlap) == length(beta.overlap)
+
+
+
+vdj.overlap.alpha <- vdjdb.alpha %>% 
+  filter(cdr3 %in% alpha.overlap)
+
+vdj.overlap.beta <- vdjdb.beta %>% 
+  filter(cdr3 %in% beta.overlap)
+
+
+# Plot where both chains are found in the dataset
+
+CTaa.vec <- paste0(alpha.overlap, "_", beta.overlap)
+
+for(i in seq_along(CTaa.vec)){
+
+  seurat.tcr <- highlightClonotypes(seurat.tcr, 
+                                    cloneCall= "aa", 
+                                    sequence = CTaa.vec[i])
+  
+  
+  seurat.tcr@meta.data$highlight[is.na(seurat.tcr@meta.data$highlight)] <- "NA"
+  
+  
+  seurat.tcr@meta.data$highlight[seurat.tcr@meta.data$highlight != "NA"] <- CTaa.vec[i]
+  
+  seurat.tcr@meta.data$highlight <- factor(seurat.tcr@meta.data$highlight, levels = c(CTaa.vec[i], "NA"))
+  
+  
+  
+  print(DimPlot(seurat.tcr, 
+                pt.size = 2, 
+                split.by = "condition",
+                cols = c("Red", "#BEBEBE33"),
+                group.by = "highlight") + ggtitle(paste0(CTaa.vec[i])) +
+          NoLegend()
+  )
+  
+  dev.copy(pdf, paste0("output_tcr/figures/VDJ_annotation/UMAP_", CTaa.vec[i], ".pdf"))
+  dev.off()
+}
+
+
+
+# Just beta chain 
+
+beta.overlap <- CDR3.beta[logic.beta]
+
+vdj.overlap.beta <- vdjdb.beta %>% 
+  filter(cdr3 %in% beta.overlap)
+
+
+antigen.vec <- unique(vdj.overlap.beta$antigen.species)
+
+for(i in seq_along(antigen.vec)){
+  
+  antigen.specific.CDR3b <- vdj.overlap.beta %>% 
+    filter(antigen.species == antigen.vec[i]) %>%
+    pull(cdr3)
+  
+  
+  output.temp <- TCR.df %>% 
+    filter(CDR3b %in% antigen.specific.CDR3b)
+  
+  x <- unique(output.temp$CTaa)
+  
+  seurat.tcr <- highlightClonotypes(seurat.tcr, 
+                                    cloneCall= "aa", 
+                                    sequence = x)
+  
+  
+  seurat.tcr@meta.data$highlight[is.na(seurat.tcr@meta.data$highlight)] <- "NA"
+  
+  
+  seurat.tcr@meta.data$highlight[seurat.tcr@meta.data$highlight != "NA"] <- antigen.vec[i]
+  
+  seurat.tcr@meta.data$highlight <- factor(seurat.tcr@meta.data$highlight, levels = c(antigen.vec[i], "NA"))
+  
+  
+  
+  print(DimPlot(seurat.tcr, 
+                pt.size = 2, 
+                split.by = "condition",
+                cols = c("Red", "#BEBEBE33"),
+                group.by = "highlight") + ggtitle(paste0(antigen.vec[i])) + 
+         NoLegend()
+  )
+  
+  dev.copy(pdf, paste0("output_tcr/figures/VDJ_annotation/UMAP_just_betachain_matched_", antigen.vec[i], ".pdf"))
+  dev.off()
+}
+
+
+```
+
+
+## GLIPH analysis {.tabset}
+
+### Export data for analysis
+```{r GLIPH_analysis_export}
+
+# Exporting data required for GLIPH analysis
+colnames(seurat.tcr.filt@meta.data)
+
+# select useful data from seurat object
+GLIPH.df <- seurat.tcr.filt@meta.data %>%
+  dplyr::select(CTaa, TRBV, TRBJ, condition, Clone_conditionwise_n) 
+
+# Split CTaa into TRA and TRB chains
+GLIPH.df$CDR3a <- gsub("_.*", "", GLIPH.df$CTaa)
+GLIPH.df$CDR3b <- gsub(".*_", "", GLIPH.df$CTaa)
+
+colnames(GLIPH.df)
+
+# Format dataframe 
+GLIPH.df$Subject <- GLIPH.df$condition
+head(GLIPH.df)
+
+GLIPH.df <- GLIPH.df %>%
+  dplyr::select(CDR3b, TRBV, TRBJ, CDR3a, Subject, Clone_conditionwise_n) 
+
+
+colnames(GLIPH.df) <- c("CDR3b", "TRBV", "TRBJ", "CDR3a", "Subject:condition", "count")
+
+head(GLIPH.df)
+
+# Write dataframe to file
+write.table(GLIPH.df, "output_tcr/tables/GLIPH_input.txt", row.names = FALSE, quote = FALSE, sep = "\t", col.names = FALSE)
+
+
+rm(GLIPH.df)
+
+# terminal command call 
+# ./irtools.osx -c GLIPH_param_file.cfg 
+
+
+```
+
+### read and format data
+```{r GLIPH_formatting}
+
+
+# Create directory
+if(!dir.exists("output_tcr/figures/GLIPH_analysis")){
+  dir.create("output_tcr/figures/GLIPH_analysis",
+             recursive = TRUE)}
+
+
+
+# read in data
+GLIPH.data <- read.csv("output_tcr/GLIPH_analysis/Condition_wise/Condition_cluster.csv")
+
+motif.table <- read.delim("output_tcr/GLIPH_analysis/Condition_wise/Condition_kmer.txt")
+head(motif.table)
+
+str(GLIPH.data)
+
+# remove un-necessary columns 
+remove.index <- grepl("^HLA", colnames(GLIPH.data))
+
+GLIPH.data <- GLIPH.data[ , !remove.index]
+
+head(GLIPH.data)
+
+
+#######################################################
+# filter GLIPH output for useful information
+#######################################################
+
+# to allow comparison with seurat object. must combine CDR3A and CDR3B chain to create CTaa call 
+GLIPH.data$CTaa <- paste0(GLIPH.data$TcRa, "_", GLIPH.data$TcRb)
+
+
+# Firstly remove single and global
+
+#GLIPH.data.local <- 
+ # GLIPH.data %>% 
+#  dplyr::filter(pattern != "single" & pattern != "" & type != "global")
+
+GLIPH.data <- 
+  GLIPH.data %>% 
+  dplyr::filter(pattern != "single" & pattern != "")
+
+
+
+# now have a table of local motif calls 
+
+
+head(GLIPH.data)
+
+x <- GLIPH.data %>% 
+  dplyr::distinct(pattern, Freq)
+
+
+x <- x %>%
+  dplyr::top_n(10, Freq) %>%
+  dplyr::arrange(desc(Freq))
+
+
+
+
+
+x <- GLIPH.data %>% 
+  dplyr::distinct(number_unique_cdr3, pattern)
+
+
+x <- x %>%
+  dplyr::top_n(10, number_unique_cdr3) %>%
+  dplyr::arrange(desc(number_unique_cdr3))
+
+
+
+
+
+
+
+length(unique(x$pattern))
+
+motif.vec <- unique(x$pattern)
+
+for(i in seq_along(motif.vec)){
+temp <- 
+  GLIPH.data %>%
+  dplyr::filter(pattern == paste0(motif.vec[i])) 
+
+
+x <- unique(temp$CTaa)
+
+seurat.tcr <- highlightClonotypes(seurat.tcr, 
+                                    cloneCall= "aa", 
+                                    sequence = x)
+  
+  seurat.tcr@meta.data$highlight[is.na(seurat.tcr@meta.data$highlight)] <- "NA"
+    
+  
+  seurat.tcr@meta.data$highlight[seurat.tcr@meta.data$highlight != "NA"] <- paste0(motif.vec[i])
+
+    seurat.tcr@meta.data$highlight <- factor(seurat.tcr@meta.data$highlight, levels = c(paste0(motif.vec[i]), "NA"))
+    
+    
+    levels(seurat.tcr@meta.data$highlight)
+  
+  print(DimPlot(seurat.tcr, 
+                pt.size = 2, 
+                split.by = "condition",
+                cols = c("Red", "#BEBEBE33"),
+                group.by = "highlight") + ggtitle(paste0(motif.vec[i])) #+ 
+         # NoLegend()
+        )
   
 }
 
 
-#library("Nebulosa")
-#Nebulosa::plot_density(seurat.tcr.filt, "CD5")
+
+CTaa.vec <- unique(GLIPH.data$CTaa)
+motif.vec <- unique(GLIPH.data$pattern)
+
+length(CTaa.vec)
+length(motif.vec)
+
+
+output.df <- matrix(nrow = length(motif.vec),
+                    ncol = length(CTaa.vec))
+
+colnames(output.df) <- CTaa.vec
+rownames(output.df) <- motif.vec
+
+for(i in seq_along(rownames(output.df))){
+
+pattern.id <- gsub("%", "[[:alpha:]]", rownames(output.df)[i])
+
+output.df[i, ] <- grepl(pattern.id, colnames(output.df))
+
+
+
+}
+
+x <- output.df[ ,colSums(output.df) > 1]
+
+
+#x <- output.df
+
+
+x <- x*1
+
+x <- x[rowSums(x) != 0, ]
+
+
+heatmap.2(x, 
+          scale = "none",
+          trace = "none",
+          Colv = TRUE,
+          Rowv = FALSE,
+          cexRow = 0.5, 
+          margins = c(8, 5),
+          labCol = NA,
+          cexCol = 0.8, 
+          srtCol = 90,
+          col = c("Red", "Blue"))   
+
+
+
+?heatmap.2
+
+
+heatmap(x)
+
+temp.vec <- c("CALANDYKLSF_CASSLTGGRDEQYV")
+
+pattern.id <- c("LSF{1}[[:alpha:]]DY")
+pattern.id <- c("QYV[[:alpha:]]")
+
+
+grepl(pattern.id, temp.vec)
 
 
 
 
+sum(x)
 
 
-
-# return to working directory 
-setwd(working.dir)
-
-# # Visualise Unstimable and Stimable clones
-# seurat.tcr.filt <- highlightClonotypes(seurat.tcr.filt, 
-#                               cloneCall= "aa", 
-#                               sequence = unstimulatable.clones)
-# 
-# seurat.tcr.filt@meta.data$highlight[!is.na(seurat.tcr.filt@meta.data$highlight)] <- "Unstimable"
-# seurat.tcr.filt@meta.data$highlight[is.na(seurat.tcr.filt@meta.data$highlight)] <- "NA"
-# 
-# 
-# print(DimPlot(seurat.tcr.filt, 
-#               pt.size = 2, 
-#               split.by = "condition",
-#               cols = c("#BEBEBE33", "Red"),
-#               group.by = "highlight"))
 
 
 ```
+
+
+## OLGA analysis {.tabset}
+
+### Export data for OLGA analysis
+```{r OLGA_analysis_export}
+
+# Exporting data required for GLIPH analysis
+colnames(seurat.tcr.filt@meta.data)
+
+# select useful data from seurat object
+OLGA.TCRA.df <- seurat.tcr.filt@meta.data %>%
+  dplyr::select(CTgene, CTaa, TRBV, TRBJ, condition, Clone_conditionwise_n) 
+
+
+OLGA.TCRB.df <- seurat.tcr.filt@meta.data %>%
+  dplyr::select(CTgene, CTaa, TRBV, TRBJ, condition, Clone_conditionwise_n) 
+
+
+
+
+
+
+# Split CTaa into TRA and TRB chains
+GLIPH.df$CDR3a <- gsub("_.*", "", GLIPH.df$CTaa)
+GLIPH.df$CDR3b <- gsub(".*_", "", GLIPH.df$CTaa)
+
+colnames(GLIPH.df)
+
+# Format dataframe 
+GLIPH.df$Subject <- GLIPH.df$condition
+head(GLIPH.df)
+
+GLIPH.df <- GLIPH.df %>%
+  dplyr::select(CDR3b, TRBV, TRBJ, CDR3a, Subject, Clone_conditionwise_n) 
+
+
+colnames(GLIPH.df) <- c("CDR3b", "TRBV", "TRBJ", "CDR3a", "Subject:condition", "count")
+
+head(GLIPH.df)
+
+# Write dataframe to file
+write.table(GLIPH.df, "output_tcr/tables/GLIPH_input.txt", row.names = FALSE, quote = FALSE, sep = "\t", col.names = FALSE)
+
+
+rm(GLIPH.df)
+
+# terminal command call 
+# ./irtools.osx -c GLIPH_param_file.cfg 
+
+
+```
+
+
+
+
+### TO DO ###########
+
+
+#### WORK IN PROGRESS BELOW // I am here
+
+
+
+
+
+
+
+
+
 
 
 ```{r re_cluster_Exhausted_subsets}

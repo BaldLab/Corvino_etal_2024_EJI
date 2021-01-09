@@ -345,6 +345,24 @@ colour.points <- function(volcano.data,
 #renv::restore()
 
 
+
+```
+ 
+### Output metadata
+```{r output_metadata}
+#output.df<- seurat.combined@meta.data %>%
+#  dplyr::select(nCount_RNA, nFeature_RNA, group, 
+#                condition, percent.mito, seurat_clusters,
+#                UMAP_1, UMAP_2, PCA_1, PCA_2, condition_clust) 
+
+#output.df$barcode <- rownames(output.df)
+
+#output.df$barcode <- gsub(".*_", "", output.df$barcode)
+
+
+#write.table(output.df, "metadata.txt", quote = FALSE, sep = "\t", row.names = F, col.names = T)
+
+
 ```
 
 ### Reading data
@@ -430,6 +448,20 @@ US.seurat@meta.data$condition <- "US"
 Stim.seurat@meta.data$condition <- "Stim"
 
 
+
+
+
+#total.seurat <- merge(x = US.seurat, 
+#                   y = Stim.seurat,
+#                   merge.data = FALSE, # Should normed data be merged as well or just raw data slot
+#                   project = "merged_seurat")
+
+
+
+
+
+
+
 ```
 
 ### Remove large variables that are no longer needed
@@ -475,6 +507,10 @@ US.seurat[["percent.mito"]] <- PercentageFeatureSet(US.seurat, pattern = "^MT-")
 
 # Stimulated
 Stim.seurat[["percent.mito"]] <- PercentageFeatureSet(Stim.seurat, pattern = "^MT-")
+
+# total
+total.seurat[["percent.mito"]] <- PercentageFeatureSet(total.seurat, pattern = "^MT-")
+
 
 ##################################
 # Plot mitochondria percentage
@@ -583,6 +619,16 @@ Stim.seurat.filt # 15,618 genes across 6,042 cells
 # 1125 cells were deleted
 
 
+# total
+total.seurat.filt <- subset(total.seurat,
+                            subset = nFeature_RNA > 200 & nFeature_RNA < 2500 & percent.mito < 10)
+
+# Post-filtering metrics
+
+total.seurat # 16,295 genes across 13,751 cells
+total.seurat.filt # 16,295 genes across 11,827 cells
+
+
 ##########################################
 # Visualise QC metrics after filtering
 ##########################################
@@ -683,12 +729,43 @@ Stim.seurat.filt <- ScaleData(
   verbose = TRUE
 )
 
+#################
+# total
+#################
+
+# Normalise
+total.seurat.filt <- NormalizeData(
+  object = total.seurat.filt,
+  assay = "RNA",
+  normalization.method = "LogNormalize",
+  scale.factor = 10000,
+  verbose = TRUE
+)
+
+# Find variable genes
+total.seurat.filt <- FindVariableFeatures(
+  object = total.seurat.filt,
+  verbose = TRUE
+)
+
+# Scale data
+total.seurat.filt <- ScaleData(
+  object = total.seurat.filt,
+  assay = "RNA",
+  vars.to.regress = c("nCount_RNA", "percent.mito"),
+  model.use = "linear",
+  do.scale = TRUE,
+  do.center = TRUE,
+  verbose = TRUE
+)
+
+
 
 ###############################
 # Remove unneeded variables
 ###############################
 
-rm(US.seurat, Stim.seurat)
+rm(US.seurat, Stim.seurat, total.seurat)
 
 
 ```
