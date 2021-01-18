@@ -58,6 +58,7 @@ gc() # Free memory
 start.time <- Sys.time()
 quick.load <- TRUE
 long.compute <- FALSE
+do.plot <- FALSE
 
 ###################
 # Install packages
@@ -183,6 +184,12 @@ if(quick.load){
   seurat.tcr <- readRDS("Exported_RDS_files/seurat_tcr.rds")
   DefaultAssay(seurat.tcr) <- "integrated"
   
+  
+  seurat.tcr.filt <- readRDS("Exported_RDS_files/seurat_tcr_filt.rds")
+  DefaultAssay(seurat.tcr.filt) <- "integrated"
+  
+  
+  
 }
 
 
@@ -211,7 +218,10 @@ if(quick.load){
 ### Format data with scRepertoire
 ```{r Format_data_with_scRep}
 
-# Ensure set to working dir
+
+if(long.compute){
+
+  # Ensure set to working dir
 setwd(working.dir)
 
 #################################
@@ -306,11 +316,16 @@ seurat.tcr@meta.data$cloneType <- factor(seurat.tcr@meta.data$cloneType,
 # remove unneeded objects
 rm(contig.list, S1.contig, S2.contig, S3.contig, S4.contig, meta.data, meta.tcr)
 
+
+}
 ```
 
 
 ### Filter dataset
 ```{r Filter_data}
+
+
+if(long.compute){
 
 ####################################
 # Global filtering of TCR dataset
@@ -393,12 +408,15 @@ rm(initial.n,
    keep.clonotypes, 
    clust.var)
 
-
+}
 ```
 
 
 ### Subsetting metadata to designate TRAV/J/C and TRBV/J/C genes
 ```{r Subset_CTaa_by_GeneID}
+
+
+if(long.compute){
 
 # Split the CTgene string at "." 
 temp.list <- str_split(seurat.tcr.filt@meta.data$CTgene, "\\.")
@@ -423,10 +441,13 @@ seurat.tcr.filt@meta.data$TRBC <- sapply(temp.list, "[[", 6)
 rm(temp.list, 
    temp.list.2)
 
+}
 ```
 
 ### Count clonotype frequencies and normalise
 ```{r Count_and_normalise_clonotype_frequencies}
+
+if(long.compute){
 
 ####################################################################################
 # Need to count clonotype occurrence per condition and then normalise this value 
@@ -555,12 +576,13 @@ seurat.tcr.filt@meta.data$Clone_Clust_conditionwise_scaled <- scales::rescale(se
 
 rm(meta.data.temp)
 
-
+}
 ```
 
 ### Clonotype Overlap
 ```{r Clonotype_Overlap}
 
+if(long.compute){
 
 Idents(seurat.tcr.filt) <- seurat.tcr.filt@meta.data$seurat_clusters
 
@@ -610,6 +632,8 @@ rm(shared.clonotypes,
    unique.Stim, 
    US.clonotypes, 
    Stim.clonotypes)
+
+}
 ```
 
 
@@ -618,6 +642,8 @@ rm(shared.clonotypes,
 
 ### Expression of TCR genes
 ```{r TCR_gene_expression}
+
+if(do.plot){
 
 # Set wd
 setwd(working.dir)
@@ -795,10 +821,15 @@ rm(Avg.seurat)
 # return to working directory
 setwd(working.dir)
 
+
+}
 ```
 
 ### Expression of TCR genes // IMPUTED
 ```{r TCR_gene_expression_imputed}
+
+if(do.plot){
+
 # Set wd
 setwd(working.dir)
 
@@ -974,6 +1005,8 @@ rm(Avg.seurat)
 # return to working directory
 setwd(working.dir)
 
+}
+
 ```
 
 
@@ -981,6 +1014,8 @@ setwd(working.dir)
 
 ### Analysis with scRepertoire
 ```{r scRepertoire_analysis}
+
+if(long.compute){
 
 # Ensure dir back in working
 setwd(working.dir)
@@ -1236,6 +1271,8 @@ rm(US.seurat.tcr, tcr.clusters.US, Stim.seurat.tcr, tcr.clusters.Stim, tcr.modul
 
 # reset to working dir
 setwd(working.dir)
+
+}
 ```
 
 
@@ -1243,6 +1280,9 @@ setwd(working.dir)
 
 ### Set up data for chord diagrams 
 ```{r setup_chord}
+
+
+if(long.compute){
 
 #Here is a little more inuitive for me, seperate the Stim and US cells, create a matrix that counts the shared clonotype by clusters, correct for overcounting and visuaize both conditions using Chord Diagrams. 
 
@@ -1305,10 +1345,14 @@ grid.cols <- c(Naive_like_1_CM = "#E41A1C",
                TRM = "#E7298A",
                Proliferative = "#E78AC3")
 
+
+}
 ```
 
 ## Plotting Chord Diagrams
 ```{r chord_plots}
+
+if(do.plot){
 
 # Create output directory
 dir.create("output_tcr/figures/ChordVisualizations")
@@ -1385,11 +1429,13 @@ dev.off()
 
 circos.clear()
 
-
+}
 ```
 
 ## Plotting Integrated Chord Diagram
 ```{r integrated_chord}
+
+if(do.plot){
 
 #2020/09/01 Still needs adjustment for very small groups to get secondary track - as of now, the code will segregate the clusters between #conditions, but errors at the **for(species in unique(combined$from))** loop
 
@@ -1687,7 +1733,7 @@ dev.off()
 circos.clear()
 
 
-
+}
 
 ```
 
@@ -1697,6 +1743,8 @@ circos.clear()
 ### Heatmaps VJ gene usage
 **Note: Just would add the packages for heatmap.2 (gplots) and your color pallete (RColorBrewer)
 ```{r V_J_usage_heatmaps}
+
+if(do.plot){
 
 # Move to working dir
 setwd(working.dir)
@@ -1836,13 +1884,15 @@ dev.off()
 setwd(working.dir)
 
 
-
+}
 
 ```
 
 ### Heatmap of top clonotypes
 **Note: This is a very cool way of looking at overlapping clonotypes and it seems consistent from all iterations that Stimulate_1/Cytotoxic/Type_1_interferon are related and more to the point you mentioned Exhusted_1 vs Stimulated_Exhuasted has a greater overlap than Exhusated_2 vs Stimulated_Exhuasted. However it is interesting that the major clonotype in Exhuasted_2 is seen in Stimulated_exhuasted, Exhuasted_1 and proliferative?**
 ```{r Heatmap_top_clonotypes}
+
+if(do.plot){
 
 # Move to working dir
 setwd(working.dir)
@@ -2012,12 +2062,17 @@ for(i in seq_along(colnames(clonotype.data))){
 
 # Reset working dir
 setwd(working.dir)
+
+}
 ```
 
 
 ### Clonotype frequency on UMAP
 **Note: To me this also is interesting that you have 2 distinct clusters in the stimulation - one comprised of expanded clonotypes (presumably from the ehuasted clusters) and one of non-expanded clonotypes**
 ```{r Clonotype_freq}
+
+
+if(do.plot){
 
 # Ensure dir back in working
 setwd(working.dir)
@@ -2125,6 +2180,8 @@ Idents(seurat.tcr.filt) <- seurat.tcr.filt@meta.data$seurat_clusters
 
 # Ensure dir back in working
 setwd(working.dir)
+
+}
 ```
 
 ## TCR analysis - cluster-specific clonotypes {.tabset}
@@ -2132,6 +2189,7 @@ setwd(working.dir)
 
 ### Get clonotypes function
 ```{r Get_clonotypes_function}
+
 
 get.clonotypes <- function(input.seurat, identity.column, ident.id){
   
@@ -2167,6 +2225,8 @@ get.clonotypes <- function(input.seurat, identity.column, ident.id){
 
 ## Reduce dataset to clonotypes per cluster
 ```{r Cluster_clonotypes}
+
+if(do.plot){
 
 # set working dir
 setwd(working.dir)
@@ -2271,12 +2331,15 @@ rm(clust.clonotypes.seurat)
 # set working dir
 setwd(working.dir)
 
+}
 ```
 
 
 ## Reduce dataset to clonotypes per cluster per condition
 
 ```{r Cluster_condition_clonotypes}
+
+if(do.plot){
 
 # set working dir
 setwd(working.dir)
@@ -2385,10 +2448,13 @@ dev.off()
 # set working dir
 setwd(working.dir)
 
+}
 ```
 
 ### Cluster-condition-specific clonotypes
 ```{r Cluster_condition_specific_clonotypes}
+
+if(do.plot){
 
 # Create output directories
 setwd(working.dir)
@@ -2512,13 +2578,15 @@ for(i in 1:length(Cluster.vect)){
 setwd(working.dir)
 
 
-
+}
 
 ```
 
 
 ### Venn overlap of clonotypes
 ```{r clonotypes_overlap_Venn}
+
+if(do.plot){
 
 # Create output directories
 setwd(working.dir)
@@ -2742,11 +2810,14 @@ rm(clust.clonotypes.seurat,
    Stim.clonotypes, 
    clonotype.list)
 
+}
 
 ```
 
 ### Plotting top X clonotypes on UMAP projection
 ```{r highlight_top_clonotypes}
+
+if(do.plot){
 
 # set working dir
 setwd(working.dir)
@@ -2796,6 +2867,7 @@ for(i in seq_len(Top.clonotypes)){
 # set working dir
 setwd(working.dir)
 
+}
 ```
 
 
@@ -2805,6 +2877,8 @@ setwd(working.dir)
 
 ### Evaluating Exhausted clones for the ability to be stimulated
 ```{r Evaluating_exhausted_clones_for_stimulation}
+
+if(long.compute){
 
 # set working dir
 setwd(working.dir)
@@ -3026,10 +3100,13 @@ rm(seurat.exhausted)
 # return to working directory 
 setwd(working.dir)
 
+}
 ```
 
 ### Evaluating Cytotoxic and Type I IFN clones for the ability to be stimulated
 ```{r Evaluating_Cytotoxic_and_Type_I_IFN_clones_for_stimulation}
+
+if(long.compute){
 
 # set working dir
 setwd(working.dir)
@@ -3252,10 +3329,13 @@ rm(seurat.cytoIFN)
 # return to working directory 
 setwd(working.dir)
 
+}
 ```
 
 ### Any clonotype movement
 ```{r Any_clonotype_movement}
+
+if(long.compute){
 
 # set working dir
 setwd(working.dir)
@@ -3477,11 +3557,13 @@ rm(seurat.cytoIFN)
 # return to working directory 
 setwd(working.dir)
 
+}
 ```
 
 ### Vis DEGs responsible for clonotype movement
 ```{r Visualise_Clonotype_movement_DEGs}
 
+if(do.plot){
 
 # Create a variable of stim potential plus condition
 stim.var <- c("Exhausted_Stim_potential", "CytoIFN_Stim_potential", "Total_Stim_potential")
@@ -3590,11 +3672,22 @@ for(i in seq_along(path.var)){
   
 }
 
+}
+
+
+
+
+
+
+
+
 
 ```
 
 ### TCR gene usage categorised by Restim status
 ```{r Restim_status_gene_usage}
+
+if(do.plot){
 
 ########################
 # Heatmap functions
@@ -3715,6 +3808,8 @@ dev.off()
 
 }
 
+
+}
 ```
 
 
@@ -3738,6 +3833,9 @@ if(quick.load){
 
 ### VDJdb annotation setup
 ```{r VDJdb_annotation}
+
+if(long.compute){
+
 
 # Create directory
 if(!dir.exists("output_tcr/figures/VDJ_annotation")){
@@ -3910,7 +4008,7 @@ for(i in seq_along(antigen.vec)){
   dev.off()
 }
 
-
+}
 ```
 
 
@@ -3918,6 +4016,8 @@ for(i in seq_along(antigen.vec)){
 
 ### Export data for analysis
 ```{r GLIPH_analysis_export}
+
+if(long.compute){
 
 # Exporting data required for GLIPH analysis
 colnames(seurat.tcr.filt@meta.data)
@@ -3953,12 +4053,14 @@ rm(GLIPH.df)
 # terminal command call 
 # ./irtools.osx -c GLIPH_param_file.cfg 
 
+}
 
 ```
 
 ### read and format data
 ```{r GLIPH_formatting}
 
+if(do.plot){
 
 # Create directory
 if(!dir.exists("output_tcr/figures/GLIPH_analysis")){
@@ -4139,7 +4241,7 @@ grepl(pattern.id, temp.vec)
 sum(x)
 
 
-
+}
 
 ```
 
@@ -4148,6 +4250,9 @@ sum(x)
 
 ### Export data for OLGA analysis
 ```{r OLGA_analysis_export}
+
+
+if(long.compute){
 
 # Exporting data required for GLIPH analysis
 colnames(seurat.tcr.filt@meta.data)
@@ -4164,359 +4269,48 @@ OLGA.TCRB.df <- seurat.tcr.filt@meta.data %>%
 
 
 
-
-# Split CTaa into TRA and TRB chains
-GLIPH.df$CDR3a <- gsub("_.*", "", GLIPH.df$CTaa)
-GLIPH.df$CDR3b <- gsub(".*_", "", GLIPH.df$CTaa)
-
-colnames(GLIPH.df)
-
-# Format dataframe 
-GLIPH.df$Subject <- GLIPH.df$condition
-head(GLIPH.df)
-
-GLIPH.df <- GLIPH.df %>%
-  dplyr::select(CDR3b, TRBV, TRBJ, CDR3a, Subject, Clone_conditionwise_n) 
-
-
-colnames(GLIPH.df) <- c("CDR3b", "TRBV", "TRBJ", "CDR3a", "Subject:condition", "count")
-
-head(GLIPH.df)
-
-# Write dataframe to file
-write.table(GLIPH.df, "output_tcr/tables/GLIPH_input.txt", row.names = FALSE, quote = FALSE, sep = "\t", col.names = FALSE)
-
-
-rm(GLIPH.df)
-
-# terminal command call 
-# ./irtools.osx -c GLIPH_param_file.cfg 
-
+}
 
 ```
 
 
 
 
-### TO DO ###########
 
 
-#### WORK IN PROGRESS BELOW // I am here
+### Test area
+```{r test_area}
 
 
+  # Set idents to stim.name.var
+  Idents(seurat.tcr.filt) <- seurat.tcr.filt@meta.data[["Exhausted_Stim_potential_condition"]]
 
 
+  # Subset seurat.object by just stim and unstim classified clones/cells
+  temp.seurat <- subset(seurat.tcr.filt, ident = c("Unstimable_US", "Stimable_US",
+                                                   "Unstimable_Stim", "Stimable_Stim"))
 
 
+  x <- list(c("TOX", "PDCD1"))
+  temp.seurat <- AddModuleScore(temp.seurat,
+                 features = x,
+                 ctrl = 50,
+                 name = "Exhausted")
 
+  temp.seurat@meta.data
 
+VlnPlot(temp.seurat,
+                  "Exhausted1",
+          pt.size = 0.1)
 
 
-
-```{r re_cluster_Exhausted_subsets}
-
-
-keep.cells <- seurat.tcr.filt@meta.data %>%
-  dplyr::filter(condition == "US" & seurat_clusters %in% c("Exhausted_1", "Exhausted_2") & Clonotype_overlap == "Shared") %>%
-  rownames_to_column() %>%
-  dplyr::pull(rowname)
-
-
-Exhausted.seurat <- subset(seurat.tcr.filt, cells = keep.cells)
-
-# Save original cluster IDs
-Exhausted.seurat@meta.data$RNA_clusters <- Exhausted.seurat@meta.data$seurat_clusters
-
-
-
-
-
-Idents(Exhausted.seurat) <- Exhausted.seurat@meta.data$Stim_potential
-DefaultAssay(Exhausted.seurat) <- "integrated"
-
-
-# Find variable genes
-Exhausted.seurat <- FindVariableFeatures(Exhausted.seurat, 
-                                         verbose = TRUE)
-
-# Scale data
-Exhausted.seurat <- ScaleData(Exhausted.seurat, 
-                              verbose = TRUE)
-
-# Run PCA
-Exhausted.seurat <- RunPCA(Exhausted.seurat, 
-                           npcs = 30, 
-                           verbose = TRUE)
-
-# Find Neighbors
-Exhausted.seurat <- FindNeighbors(Exhausted.seurat, 
-                                  reduction = "pca", 
-                                  k.param = 20,
-                                  dims = 1:20)
-
-# Find clusters
-Exhausted.seurat <- FindClusters(Exhausted.seurat, 
-                                 random.seed = 42,
-                                 resolution = 0.4) 
-
-
-# Run UMAP
-Exhausted.seurat <- RunUMAP(object = Exhausted.seurat,
-                            reduction = "pca",
-                            dims = 1:20,
-                            umap.method = "uwot",
-                            n.neighbors = 30, # 5 to 50
-                            min.dist = 0.3, # Sensible values are in the range 0.001 to 0.5
-                            seed.use = 42)
-
-UMAPPlot(Exhausted.seurat, 
-         group.by = "RNA_clusters")
-
-
-UMAPPlot(Exhausted.seurat, 
-         group.by = "group")
-
-
-UMAPPlot(Exhausted.seurat, 
-         group.by = "seurat_clusters")
-
-
-UMAPPlot(Exhausted.seurat, 
-         group.by = "Stim_potential", pt.size = 2)
-
-
-
-
-
-
-
-
-
-x <- seurat.tcr.filt@meta.data %>%
-  dplyr::filter(Stim_potential == "Unstimable") %>%
-  pull(CTaa)
-
-length(unique(x)) # 37 clonotypes nostimable & 114 clonotypes restimable
-nrow(x) # 223 cells non-stimable & 220 cells restimable 
-
-# Originally 10 clonotypes stimable from 252 cells 
-# originally 10 clonotypes unstimable from 156 cells 
-
-
-
-
-
-
-# Get clonotypes found in Exhausted US subsets that are shared with Stim
-Unstim.clonotypes <- Exhausted.seurat@meta.data %>%
-  dplyr::filter(seurat_clusters == 1 | seurat_clusters == 2) %>%
-  pull(CTaa)
-
-Unstim.clonotypes <- unique(Unstim.clonotypes)
-length(Unstim.clonotypes) # 37 clonotypes
-
-Stimable.clonotypes <- Exhausted.seurat@meta.data %>%
-  dplyr::filter(seurat_clusters == 0) %>%
-  pull(CTaa)
-
-Stimable.clonotypes <- unique(Stimable.clonotypes)
-length(Stimable.clonotypes) # 114 clonotypes
-
-
-# Within Stimulated condition filter dataset by Unstim.clonotypes
-Query.clonotypes.US <- seurat.tcr.filt@meta.data %>%
-  dplyr::filter(Clonotype_overlap == "Shared" & condition == "Stim") %>%
-  dplyr::filter(seurat_clusters %in% c("Stimulated_exhausted", "Exhausted_1", "Exhausted_2")) %>%
-  dplyr::filter(CTaa %in% Unstim.clonotypes) %>%
-  dplyr::select(seurat_clusters, CTaa)
-
-length(Query.clonotypes.US$CTaa) 
-length(unique(Query.clonotypes.US$CTaa))
-
-
-
-Query.clonotypes.stim <- seurat.tcr.filt@meta.data %>%
-  dplyr::filter(Clonotype_overlap == "Shared" & condition == "Stim") %>%
-  dplyr::filter(seurat_clusters %in% c("Stimulated_exhausted", "Exhausted_1", "Exhausted_2")) %>%
-  dplyr::filter(CTaa %in% Stimable.clonotypes) %>%
-  dplyr::select(seurat_clusters, CTaa)
-
-length(Query.clonotypes.stim$CTaa) 
-length(unique(Query.clonotypes.stim$CTaa))
-
-
-
-# Extract clonotype by cluster info
-temp <- table(Query.clonotypes.stim$CTaa, Query.clonotypes.stim$seurat_clusters)
-
-# Format table
-logic.vec <- colnames(temp) %in% c("Stimulated_exhausted", "Exhausted_1", "Exhausted_2")
-temp <- temp[ ,logic.vec]
-
-# Sum values in two exhausted clusters together
-logic.vec <- colnames(temp) %in% c("Exhausted_1", "Exhausted_2")
-temp[,2] <- rowSums(temp[ ,logic.vec])
-colnames(temp)[2] <- "Exhausted"
-temp <- temp[,1:2]
-colnames(temp)
-head(temp)
-
-# Create variable
-clonotype.counts <- temp
-
-# Get rowSums
-row.values <- rowSums(clonotype.counts)
-
-# remove clonotypes with < clone.min requirement in this subsetted dataset 
-summary(row.values) # median = 5
-dim(clonotype.counts) # 89 clonotypes
-
-keep.clonotypes <- names(row.values)[row.values >= 5]
-
-clonotype.counts <- clonotype.counts[rownames(clonotype.counts) %in% keep.clonotypes, ]
-
-dim(clonotype.counts) # 49 clonotypes remaining 
-
-# Get rowSums vec for new clonotypes
-row.values <- rowSums(clonotype.counts)
-
-# Convert rows to percentages 
-clonotype.freq <- clonotype.counts / row.values
-clonotype.freq <- clonotype.freq*100
-
-# Order dataset
-clonotype.freq <- clonotype.freq[order(clonotype.freq[,1], decreasing = T), ]
-
-
-# Plot clonotype.freq
-temp <- t(clonotype.freq)
-barplot(temp[,], beside = T, las = 2, legend = T)
-
-dev.copy(pdf, "Barplot_clonotype_freq_distribution.pdf")
-dev.off()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# Highlight clusters in larger seurat object 
-clust.0.clonotypes <- Exhausted.seurat@meta.data %>%
-  dplyr::filter(seurat_clusters == 1 | seurat_clusters == 2) %>%
-  pull(CTaa)
-
-
-clust.0.clonotypes <- Exhausted.seurat@meta.data %>%
-  dplyr::filter(seurat_clusters == 0) %>%
-  pull(CTaa)
-
-
-clust.0.clonotypes <- unique(clust.0.clonotypes)
-
-
-
-Clonotype.ids <- seurat.tcr.filt@meta.data %>%
-  dplyr::filter(CTaa %in% clust.0.clonotypes) %>%
-  rownames_to_column() %>%
-  pull(rowname)
-
-
-
-cell.ids <- rep("Other", nrow(seurat.tcr.filt@meta.data))
-names(cell.ids) <- rownames(seurat.tcr.filt@meta.data)
-
-logic.vec <- names(cell.ids) %in% Clonotype.ids
-
-cell.ids[logic.vec] <- "Cluster_0"
-
-
-seurat.tcr.filt <- AddMetaData(object = seurat.tcr.filt, 
-                          col.name = "Reclustering",
-                          metadata = cell.ids)
-
-
-UMAPPlot(seurat.tcr.filt, 
-         group.by = "Reclustering", 
-         split.by = "condition")
-
-
-
-
-
+VlnPlot(temp.seurat,
+                  "TOX",
+          pt.size = 0.1)
 
 
 
 ```
-
-
-
 
 ## Script info {.tabset}
 

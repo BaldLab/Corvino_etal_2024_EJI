@@ -46,6 +46,9 @@ cat("\014")     #Clean Console
 gc() # Free memory
 
 start.time <- Sys.time()
+quick.load <- TRUE
+CD8.only <- TRUE # Should Cillo dataset be subsetted to only use cells designated as CD8
+
 
 ###################
 # Install packages
@@ -89,121 +92,129 @@ setwd("..")
 if(!dir.exists("Exported_RDS_files")){dir.create("Exported_RDS_files", recursive = T)}
 
 # Read in functions
-source("~/Documents/Work/Sciebo/Scripts/scRNAseq_Functions.R")
+source("~/Documents/Work/10_Scripts/scRNAseq_Functions.R")
+
+
+
+
+# Load already read and integrated dataset .rds file
+
+if(quick.load){
+  Bald.Cillo.seurat <- readRDS("Exported_RDS_files/Bald.Cillo.seurat.rds")
+}
+
+
 
 ```
 
 ### Reading in data
 ```{r reading_data}
 
-############################################################
-# Data comes from Cillo et al., 2020 Immunity
-# GSE139324
-############################################################
 
-###################################
-# Read and formatt TIL samples 
-###################################
+if(!quick.load){
+  
+  ############################################################
+  # Data comes from Cillo et al., 2020 Immunity
+  # GSE139324
+  ############################################################
+  
+  ###################################
+  # Read and formatt TIL samples 
+  ###################################
+  
+  # Load files
+  named.vect <- list.dirs("Data/Cillo_et_al_data/HNSCC_TILS/")
+  named.vect <- named.vect[-1]
+  names(named.vect) <- gsub("HNSCC_TILS/", "", named.vect)
+  
+  HNSCC.TILs <- Read10X(data.dir = named.vect)
+  
+  # 26 TIL samples from HNSCC patients
+  
+  
+  # Format barcode IDs to allow matching with cillo metadata
+  colnames(HNSCC.TILs)
+  colnames(HNSCC.TILs) <- gsub("Data/Cillo_et_al_data//", "", colnames(HNSCC.TILs))
+  colnames(HNSCC.TILs) <- gsub("-1$", "", colnames(HNSCC.TILs))
+  colnames(HNSCC.TILs)
+  
+  
+  # Read in metadata provided by Anthony Cillo 
+  meta.data <- read.delim("Data/Cillo_et_al_data/Archive_older_potentially_incorrect_metadata/Cillo_HNSCC_cell_annotations_with_FItSNE.tsv")
+  #meta.data <- read.delim("Data/Cillo_et_al_data/Cillo_HNSCC_cell_cluster_annotations.21.01.12.tsv")
+  
+  #x <- sample(nrow(meta.data), 10000, replace = TRUE)
+  #temp <- meta.data[x, ]
+  
+  
+  
+  # something is happening with column annotations. cell barcodes becomes TILp after filtering. 
+  
+  ### Cillo has messed up the barcode for TIL samples
+  
+  
+  head(meta.data)
+  
+  sort(unique(meta.data$overall_clusterID))
+  levels(as.factor(meta.data$patient_id))
+  levels(as.factor(meta.data$sample_origin))
+  
+  # Filter metadata for TIL annotations 
+  meta.data %>% 
+    dplyr::filter(sample_origin == "TIL") -> TIL.metadata
+  
+  # format metadata
+  sum(duplicated(TIL.metadata$cell_barcode))
+  
+  # Need to append PT.ID to make barcode unique 
+  head(TIL.metadata)
+  
+  as.factor(TIL.metadata$sample) # 26 levels 
+  
+  TIL.metadata$Pt_ID <- gsub("HNSCC_", "Pt", TIL.metadata$sample)
+  
+  TIL.metadata$Pt_ID <- gsub("_.*", "", TIL.metadata$Pt_ID)
+  
+  head(TIL.metadata)
+  as.factor(TIL.metadata$Pt_ID)
+  
+  # Attach Pt_ID to barcode_ID to make it unique 
+  TIL.metadata$barcode <- paste0(TIL.metadata$Pt_ID, "_", TIL.metadata$cell_barcode)
+  
+  sum(duplicated(TIL.metadata$barcode))
+  
+  rownames(TIL.metadata) <- TIL.metadata$barcode
+  
+  
+  
+  # Initialize the Seurat object with the raw (non-normalized data).  Keep all
+  # genes expressed in >= 3 cells. Keep all cells with at
+  # least 200 detected genes
+  seurat.Cillo.TIL <- CreateSeuratObject(counts = HNSCC.TILs,
+                                         meta.data = TIL.metadata,
+                                         min.cells = 3,
+                                         min.features = 200)
+  
+  
+  seurat.Cillo.TIL 
+  # 23,389 genes 60,923 cells
+  
+  seurat.Cillo.TIL@meta.data
+  
+}
 
-# Load files
-named.vect <- list.dirs("Data/Cillo_et_al_data/HNSCC_TILS/")
-named.vect <- named.vect[-1]
-names(named.vect) <- gsub("HNSCC_TILS/", "", named.vect)
-
-HNSCC.TILs <- Read10X(data.dir = named.vect)
-
-# 26 TIL samples from HNSCC patients
-
-
-# Format barcode IDs to allow matching with cillo metadata
-colnames(HNSCC.TILs)
-colnames(HNSCC.TILs) <- gsub("Data/Cillo_et_al_data//", "", colnames(HNSCC.TILs))
-colnames(HNSCC.TILs) <- gsub("-1$", "", colnames(HNSCC.TILs))
-colnames(HNSCC.TILs)
-
-
-# Read in metadata provided by Anthony Cillo 
-meta.data.df <- read.delim("Data/Cillo_et_al_data/Cillo_HNSCC_cell_annotations_with_FItSNE.tsv")
-
-head(meta.data.df)
-sort(unique(meta.data.df$clusterID))
-as.factor(meta.data.df$sample)
-as.factor(meta.data.df$sample_origin)
-
-# Filter metadata for TIL annotations 
-meta.data.df %>% 
-  dplyr::filter(sample_origin == "TIL") -> TIL.metadata
-
-# format metadata
-sum(duplicated(TIL.metadata$cell_barcode))
-
-# Need to append PT.ID to make barcode unique 
-head(TIL.metadata)
-as.factor(TIL.metadata$sample) # 26 levels 
-
-TIL.metadata$Pt_ID <- gsub("HNSCC_", "Pt", TIL.metadata$sample)
-
-TIL.metadata$Pt_ID <- gsub("_.*", "", TIL.metadata$Pt_ID)
-
-head(TIL.metadata)
-as.factor(TIL.metadata$Pt_ID)
-
-# Attach Pt_ID to barcode_ID to make it unique 
-TIL.metadata$barcode <- paste0(TIL.metadata$Pt_ID, "_", TIL.metadata$cell_barcode)
-
-sum(duplicated(TIL.metadata$barcode))
-
-rownames(TIL.metadata) <- TIL.metadata$barcode
-
-
-
-# Initialize the Seurat object with the raw (non-normalized data).  Keep all
-# genes expressed in >= 3 cells. Keep all cells with at
-# least 200 detected genes
-seurat.object <- CreateSeuratObject(
-  counts = HNSCC.TILs,
-  meta.data = TIL.metadata,
-  min.cells = 3,
-  min.features = 200
-)
-
-
-seurat.object 
-# 23,389 genes 60,923 cells
-
-seurat.object@meta.data
-
-
-
-
-###################################
-# Read and format HNSCC PBMC samples 
-###################################
-
-named.vect <- list.dirs("Data/Cillo_et_al_data/HNSCC_PBMC/")
-named.vect <- named.vect[-1]
-names(named.vect) <- gsub("HNSCC_PBMC/", "", named.vect)
-
-HNSCC.PBMC <- Read10X(data.dir = named.vect)
-
-# Format barcode IDs to allow matching with cillo metadata
-colnames(HNSCC.PBMC)
-colnames(HNSCC.PBMC) <- gsub("Data/Cillo_et_al_data//", "", colnames(HNSCC.PBMC))
-colnames(HNSCC.PBMC) <- gsub("-1$", "", colnames(HNSCC.PBMC))
-colnames(HNSCC.PBMC)
-
-sort(unique(meta.data.df$clusterID))
-
-
-temp <- 
-  meta.data.df %>%
-  filter(cell_type == "cd8.cells") %>%
-  group_by(clusterID) %>%
-  summarise(total = n())
-
-sum(temp$total)
-
-
+if(CD8.only){
+  
+  unique(seurat.Cillo.TIL@meta.data$cell_type)
+  
+  sum(is.na(seurat.Cillo.TIL@meta.data$cell_type)) # 5,013 cells have no cell type origin 
+  
+  
+  Idents(seurat.Cillo.TIL) <- seurat.Cillo.TIL@meta.data$cell_type
+  seurat.Cillo.TIL <- subset(seurat.Cillo.TIL, idents = "cd8.cells")
+  
+  seurat.Cillo.TIL # 18,779 cells and 23,389 genes
+}
 
 ```
 
@@ -212,108 +223,226 @@ sum(temp$total)
 ### QC & Normalisation
 ```{r QC_and_normalisation}
 
-# QC metrics commonly used
-# The number of unique genes detected in each cell.
-# Low-quality cells or empty droplets will often have very few genes
-# Cell doublets or multiplets may exhibit an aberrantly high gene count
+if(!quick.load){
+  
+  #  Get percentage Mitochondria gene expression
+  seurat.Cillo.TIL[["percent.mito"]] <- PercentageFeatureSet(seurat.Cillo.TIL, pattern = "^MT-")
+  
+  
+  
+  ##################################
+  # Plot mitochondria percentage
+  ##################################
+  
+  # nFeature & nCount & Mito 
+  VlnPlot(object = seurat.Cillo.TIL, features = c("nFeature_RNA", "nCount_RNA", "percent.mito"))
+  
+  # Mito 
+  VlnPlot(seurat.Cillo.TIL, features = "percent.mito", y.max = 20)
+  
+  
+  ########################################
+  # Count vs Mito & Count vs Feature
+  ########################################
+  
+  plot1 <- FeatureScatter(seurat.Cillo.TIL, feature1 = "nCount_RNA", feature2 = "percent.mito")
+  plot2 <- FeatureScatter(seurat.Cillo.TIL, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+  CombinePlots(plots = list(plot1, plot2))
+  
+  
+  ############################
+  # Structure and metadata 
+  ############################
+  
+  head(seurat.Cillo.TIL@meta.data)
+  str(seurat.Cillo.TIL@meta.data)
+  
+  ###################
+  #  Filter cells
+  ###################
+  
+  # Seurat recommends removing cells with <200 or >2,500 genes or >10% mito genes
+  
+  Cillo.TIL.filt <- subset(seurat.Cillo.TIL,
+                           subset = nFeature_RNA > 200 & nFeature_RNA < 2500 & percent.mito < 10)
+  
+  # Post-filtering metrics
+  
+  seurat.Cillo.TIL # 23,389 features across 60,923 samples
+  Cillo.TIL.filt # 23,389 features across 55,272 samples
+  
+  # Therefore
+  60923 - 55272
+  # 5,651 cells were deleted
+  
+  ##########################################
+  # Visualise QC metrics after filtering
+  ##########################################
+  
+  # Before Filtering
+  VlnPlot(object = seurat.Cillo.TIL, features = c("nFeature_RNA", "nCount_RNA", "percent.mito"), pt.size = 0)
+  
+  # After filtering
+  VlnPlot(object = Cillo.TIL.filt, features = c("nFeature_RNA", "nCount_RNA", "percent.mito"), pt.size = 0)
+  
+  ################################################
+  # Normalise, scale & find variable genes 
+  ################################################
+  
+  # Normalise
+  Cillo.TIL.filt <- NormalizeData(object = Cillo.TIL.filt,
+                                  assay = "RNA",
+                                  normalization.method = "LogNormalize",
+                                  scale.factor = 10000,
+                                  verbose = TRUE)
+  
+  # Find variable genes
+  Cillo.TIL.filt <- FindVariableFeatures(object = Cillo.TIL.filt,
+                                         verbose = TRUE)
+  
+  # Scale data
+  Cillo.TIL.filt <- ScaleData(object = Cillo.TIL.filt,
+                              assay = "RNA",
+                              vars.to.regress = c("nCount_RNA", "percent.mito"),
+                              model.use = "linear",
+                              do.scale = TRUE,
+                              do.center = TRUE,
+                              verbose = TRUE)
+  
+  
+  rm(HNSCC.TILs, seurat.Cillo.TIL)
+  
+}
+```
 
-# Similarly, the total number of molecules detected within a cell (correlates strongly with unique genes)
-
-# The percentage of reads that map to the mitochondrial genome
-# Low-quality / dying cells often exhibit extensive mitochondrial contamination
-
-
-################################################
-#  Get percentage Mitochondria gene expression
-################################################
-
-seurat.object[["percent.mito"]] <- PercentageFeatureSet(seurat.object, pattern = "^MT-")
 
 
 
-##################################
-# Plot mitochondria percentage
-##################################
+### Integrate data
 
-# nFeature & nCount & Mito 
-VlnPlot(object = seurat.object, features = c("nFeature_RNA", "nCount_RNA", "percent.mito"))
+```{r Integrate_Bald_and_Cillo_Datasets}
 
-# Mito 
-VlnPlot(seurat.object, features = "percent.mito", y.max = 20)
+if(!quick.load){
+  
+  # Load BALD dataset
+  HNSCC.Bald <- readRDS("Exported_RDS_files/seurat_combined.rds")
+  
+  
+  # rename metadata columns to match accross datasets 
+  colnames(HNSCC.Bald@meta.data)
+  colnames(Cillo.TIL.filt@meta.data)
+  
+  
+  head(HNSCC.Bald@meta.data)
+  head(Cillo.TIL.filt@meta.data)
+  
+  # Original ident column 
+  HNSCC.Bald@meta.data$orig.ident <- "Bald"
+  Cillo.TIL.filt@meta.data$orig.ident <- "Cillo"
+  
+  # Create metadata for dataset origin 
+  HNSCC.Bald@meta.data$dataset <- "Bald"
+  Cillo.TIL.filt@meta.data$dataset <- "Cillo"
+  
+  
+  # Condition and sample origin
+  colnames(HNSCC.Bald@meta.data)[grepl("^condition$", colnames(HNSCC.Bald@meta.data))] <- "condition_origin"
+  colnames(Cillo.TIL.filt@meta.data)[grepl("^sample_origin$", colnames(Cillo.TIL.filt@meta.data))] <- "condition_origin"
+  
+  # Pt_ID and group
+  colnames(HNSCC.Bald@meta.data)[grepl("^group$", colnames(HNSCC.Bald@meta.data))] <- "sample_ID"
+  colnames(Cillo.TIL.filt@meta.data)[grepl("^Pt_ID$", colnames(Cillo.TIL.filt@meta.data))] <- "sample_ID"
+  
+  
+  # Cluster ID
+  colnames(HNSCC.Bald@meta.data)[grepl("^seurat_clusters$", colnames(HNSCC.Bald@meta.data))] <- "clusterID"
+  colnames(Cillo.TIL.filt@meta.data)[grepl("^clusterID$", colnames(Cillo.TIL.filt@meta.data))] <- "clusterID"
+  
+  
+  
+  #########################################
+  # remove unnecessary metadata columns 
+  #########################################
+  
+  # Cillo
+  colnames(Cillo.TIL.filt@meta.data)
+  
+  pattern.vec <- c("cell_barcode", "barcode", "percent.mito")
+  keep.cols <- !grepl(paste0(pattern.vec, collapse = "|"), colnames(Cillo.TIL.filt@meta.data))
+  
+  Cillo.TIL.filt@meta.data <- Cillo.TIL.filt@meta.data[ ,keep.cols]
+  
+  colnames(Cillo.TIL.filt@meta.data)
+  
+  # Bald
+  colnames(HNSCC.Bald@meta.data)
+  
+  pattern.vec <- c("integrated_snn_res.0.4", "seurat_clusters_old", "seurat_clusters_new", "percent.mito", "condition_clust")
+  keep.cols <- !grepl(paste0(pattern.vec, collapse = "|"), colnames(HNSCC.Bald@meta.data))
+  
+  HNSCC.Bald@meta.data <- HNSCC.Bald@meta.data[ ,keep.cols]
+  colnames(HNSCC.Bald@meta.data)
+  
+  
+  
 
-
-########################################
-# Count vs Mito & Count vs Feature
-########################################
-
-plot1 <- FeatureScatter(seurat.object, feature1 = "nCount_RNA", feature2 = "percent.mito")
-plot2 <- FeatureScatter(seurat.object, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
-CombinePlots(plots = list(plot1, plot2))
-
-
-############################
-# Structure and metadata 
-############################
-
-head(seurat.object@meta.data)
-str(seurat.object@meta.data)
-
-###################
-#  Filter cells
-###################
-
-# Seurat recommends removing cells with <200 or >2,500 genes or >10% mito genes
-
-seurat.object.filt <- subset(seurat.object,
-                             subset = nFeature_RNA > 200 & nFeature_RNA < 2500 & percent.mito < 10)
-
-# Post-filtering metrics
-
-seurat.object # 23,389 features across 60,923 samples
-seurat.object.filt # 23,389 features across 55,272 samples
-
-# Therefore
-60923 - 55272
-# 5,651 cells were deleted
-
-##########################################
-# Visualise QC metrics after filtering
-##########################################
-
-# Before Filtering
-VlnPlot(object = seurat.object, features = c("nFeature_RNA", "nCount_RNA", "percent.mito"), pt.size = 0)
-
-# After filtering
-VlnPlot(object = seurat.object.filt, features = c("nFeature_RNA", "nCount_RNA", "percent.mito"), pt.size = 0)
-
-################################################
-# Normalise, scale & find variable genes 
-################################################
-
-# Normalise
-seurat.object.filt <- NormalizeData(object = seurat.object.filt,
-                                    assay = "RNA",
-                                    normalization.method = "LogNormalize",
-                                    scale.factor = 10000,
-                                    verbose = TRUE)
-
-# Find variable genes
-seurat.object.filt <- FindVariableFeatures(object = seurat.object.filt,
+  # Set activate assay to RNA
+  DefaultAssay(HNSCC.Bald) <- "RNA"
+  DefaultAssay(Cillo.TIL.filt) <- "RNA"
+  
+  
+  
+  # Create list of seurat objects
+  seurat.list <- list(Bald = HNSCC.Bald,
+                      Cilo = Cillo.TIL.filt)
+  
+  # Find Integration Anchors
+  immune.anchors <- FindIntegrationAnchors(object.list = seurat.list, 
+                                           anchor.features = 2000, 
+                                           scale = TRUE, 
+                                           normalization.method = "LogNormalize", 
+                                           reduction = "cca", 
+                                           l2.norm = TRUE,
+                                           dims = 1:30,
+                                           k.anchor = 5,
+                                           k.filter = 200,
+                                           k.score = 30,
+                                           max.features = 200,
+                                           nn.method = "rann",
+                                           eps = 0,
                                            verbose = TRUE)
+  
+  # Integrate dataset
+  Bald.Cillo.seurat <- IntegrateData(anchorset = immune.anchors,
+                                     new.assay.name = "integrated",
+                                     normalization.method = "LogNormalize",
+                                     dims = 1:30,
+                                     k.weight = 100,
+                                     sd.weight = 1,
+                                     verbose = TRUE)
+  
+  
+  # Basic overview of data
+  Bald.Cillo.seurat # 29,245 cells and 29,957 genes
+  
+  HNSCC.Bald # 11,658 cells and 20,295 genes
+  Cillo.TIL.filt # 55,272 cells and 23,389 genes
+  
+  # 11658 + 55272
+  
+  
+  # Remove unnecessary data
+  rm(HNSCC.Bald, 
+     Cillo.TIL.filt,
+     immune.anchors, 
+     seurat.list)
+  
+}
 
-# Scale data
-seurat.object.filt <- ScaleData(object = seurat.object.filt,
-                                assay = "RNA",
-                                vars.to.regress = c("nCount_RNA", "percent.mito"),
-                                model.use = "linear",
-                                do.scale = TRUE,
-                                do.center = TRUE,
-                                verbose = TRUE)
-
-
-rm(seurat.object, HNSCC.TILs, HNSCC.PBMC)
 
 ```
+
+
 
 
 ## Dim reduction {.tabset}
@@ -321,46 +450,171 @@ rm(seurat.object, HNSCC.TILs, HNSCC.PBMC)
 ### Dim reduction
 ```{r Dimreduction}
 
+DefaultAssay(Bald.Cillo.seurat) <- "integrated"
+
+# Scale data
+Bald.Cillo.seurat <- ScaleData(object = Bald.Cillo.seurat,
+                               assay = "integrated",
+                               model.use = "linear",
+                               do.scale = TRUE,
+                               do.center = TRUE,
+                               verbose = TRUE)
 
 # Run PCA
-seurat.object.filt <- RunPCA(seurat.object.filt, 
-                             npcs = 30, 
-                             verbose = TRUE)
+Bald.Cillo.seurat <- RunPCA(Bald.Cillo.seurat, 
+                            npcs = 30, 
+                            verbose = TRUE)
 
 
 # Run tSNE
-seurat.object.filt <- RunTSNE(object = seurat.object.filt,
-                              reduction = "pca",
-                              dims = 1:20,
-                              seed.use = 42)
+Bald.Cillo.seurat <- RunTSNE(object = Bald.Cillo.seurat,
+                             reduction = "pca",
+                             dims = 1:20,
+                             seed.use = 42)
 
 
 # Run UMAP
 # Based on optimisation - n.neighbors = 50 & min.dist = 0.8
-seurat.object.filt <- RunUMAP(object = seurat.object.filt,
-                              reduction = "pca",
-                              dims = 1:20,
-                              umap.method = "uwot",
-                              n.neighbors = 50,
-                              min.dist = 0.8,
-                              seed.use = 42)
+Bald.Cillo.seurat <- RunUMAP(object = Bald.Cillo.seurat,
+                             reduction = "pca",
+                             dims = 1:20,
+                             umap.method = "uwot",
+                             n.neighbors = 50,
+                             min.dist = 0.8,
+                             seed.use = 42)
+
 
 ```
- 
- 
+
+
 ### Export seurat object
 ```{r export_seurat}
 
-saveRDS(seurat.object.filt, "Exported_RDS_files/Cillo_et_al_seurat_object_filt.rds")
+# Save files 
+saveRDS(Bald.Cillo.seurat, file = "Exported_RDS_files/Bald.Cillo.seurat.rds")
 
 ```
 
- 
- 
- 
- 
- 
- 
 
- 
- 
+
+```{r remedy001}
+
+#Bald.Cillo.seurat@meta.data$orig.ident[Bald.Cillo.seurat@meta.data$orig.ident != "SeuratProject"] <- "Cillo"
+#Bald.Cillo.seurat@meta.data$orig.ident[Bald.Cillo.seurat@meta.data$orig.ident == "SeuratProject"] <- "Bald"
+
+Bald.Cillo.seurat@meta.data$dataset <- Bald.Cillo.seurat@meta.data$orig.ident
+
+na.val <- is.na(Bald.Cillo.seurat@meta.data$cell_type)
+Bald.Cillo.seurat@meta.data$cell_type[na.val] <- "Bald"
+
+Idents(Bald.Cillo.seurat) <- Bald.Cillo.seurat@meta.data$cell_type
+
+temp.seurat <- subset(Bald.Cillo.seurat, idents = c("cd8.cells", "Bald"))
+
+
+DefaultAssay(temp.seurat) <- "integrated"
+
+# Scale data
+temp.seurat <- ScaleData(object = temp.seurat,
+                         assay = "integrated",
+                         model.use = "linear",
+                         do.scale = TRUE,
+                         do.center = TRUE,
+                         verbose = TRUE)
+
+# Run PCA
+temp.seurat <- RunPCA(temp.seurat, 
+                      npcs = 30, 
+                      verbose = TRUE)
+
+
+# Run tSNE
+temp.seurat <- RunTSNE(object = temp.seurat,
+                       reduction = "pca",
+                       dims = 1:20,
+                       seed.use = 42)
+
+
+# Run UMAP
+# Based on optimisation - n.neighbors = 50 & min.dist = 0.8
+temp.seurat <- RunUMAP(object = temp.seurat,
+                       reduction = "pca",
+                       dims = 1:20,
+                       umap.method = "uwot",
+                       n.neighbors = 50,
+                       min.dist = 0.8,
+                       seed.use = 42)
+
+
+UMAPPlot(object = Bald.Cillo.seurat,
+         label = T, 
+         order = T, 
+         cols = col.vec,
+         pt.size = 1,
+         group.by = "clusterID") + ggtitle("UMAP vis by Condition") 
+
+
+TSNEPlot(object = Bald.Cillo.seurat,
+         label = T, 
+         order = T, 
+         pt.size = 1,
+         cols = col.vec,
+         group.by = "clusterID") + ggtitle("UMAP vis by Condition") 
+
+col.vec <- levels(as.factor(Bald.Cillo.seurat@meta.data$clusterID))
+x <- grepl("[[:alpha:]]", col.vec)
+
+library("RColorBrewer")
+
+col.vec[!x] <- "Grey"
+col.vec[x] <- c(brewer.pal(7, "Set1"), brewer.pal(7, "Set2"))
+
+sum(x)/2
+
+
+
+col.vec <- levels(as.factor(Bald.Cillo.seurat@meta.data$clusterID))
+col.vec[x] <- "Grey"
+col.vec[!x] <- c(brewer.pal(8, "Set1"), brewer.pal(6, "Set2"),  brewer.pal(6, "Set3"))
+
+
+display.brewer.all()
+
+
+head(Bald.Cillo.seurat@meta.data)
+
+#dev.copy(pdf, "output/figures/UMAP_no_clusts_removed/UMAP_condition.pdf")
+#dev.off()
+
+
+
+
+
+
+
+for(i in seq_along(col.vec)){
+  
+  col.vec <- levels(as.factor(Bald.Cillo.seurat@meta.data$clusterID))
+col.vec <- rep("Grey", length(col.vec))
+
+  col.vec[i] <- "Red"
+  
+  print(UMAPPlot(object = Bald.Cillo.seurat,
+         label = T, 
+         order = T, 
+         cols = col.vec,
+         pt.size = 1,
+         group.by = "clusterID"))
+  
+  
+  
+}
+
+```
+
+
+
+
+
+
+
