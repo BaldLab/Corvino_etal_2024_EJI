@@ -267,7 +267,9 @@ save.data.frame.function <- function(df, path, title){
     write.table(x, 
                 paste0(path, title, ".txt"),
                 sep = "\t",
-                quote = FALSE)
+                quote = FALSE, 
+                row.names = TRUE, 
+                col.names = NA)
   }
   
 
@@ -4208,7 +4210,7 @@ Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
 # get a broad list of DEG markers 
 Cluster.markers <- FindAllMarkers(seurat.combined,
                                   assay = "RNA",
-                                  only.pos = FALSE,
+                                  only.pos = TRUE,
                                   min.diff.pct = 0.1,
                                   logfc.threshold = 0,
                                   return.thresh = 0.01)
