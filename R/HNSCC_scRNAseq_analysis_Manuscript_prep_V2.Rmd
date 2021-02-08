@@ -3339,12 +3339,169 @@ average.seurat <- AverageExpression(seurat.combined,
 # Total 
 TypeI.markers %>% 
   dplyr::filter(p_val_adj < 0.05) %>%
-  nrow() # 255 genes 
+  nrow() # 343 genes 
 
 # Up-regulated only 
 TypeI.markers %>% 
-  dplyr::filter(p_val_adj < 0.05 & avg_logFC > 0) %>%
-  nrow() # 105 genes 
+  dplyr::filter(p_val_adj < 0.05 & avg_log2FC > 0) %>%
+  nrow() # 126 genes 
+
+# Down-regulated only 
+TypeI.markers %>% 
+  dplyr::filter(p_val_adj < 0.05 & avg_log2FC < 0) %>%
+  nrow() # 217 genes 
+
+
+
+
+
+
+
+
+# Iterate over generating a gene signature of various sizes
+
+n.val <- c(10, 20, 30, 40, 50, 60, 70, 80, 90, 100)
+n.val <- c(1:15)
+
+output.table <- matrix(nrow = length(n.val), ncol = 2)
+colnames(output.table) <- c("nval", "AUCval")
+output.table[,"nval"] <- n.val
+
+
+
+for(i in seq_along(n.val)){
+
+
+  # Generate signature using the top x genes in Type I cluster
+  IFN.sig <- 
+    TypeI.markers %>% 
+    dplyr::filter(p_val_adj < 0.05) %>%
+    dplyr::top_n(n.val[i], avg_log2FC) %>%
+    rownames()
+  
+  
+# Plot heatmap of gene expression within signature
+DoHeatmap(average.seurat,
+          features = IFN.sig, 
+          draw.lines = FALSE) + ggtitle(paste0("Signature using ", n.val[i])) + NoLegend()
+
+
+
+# Create and calculate module score using gene signature 
+seurat.combined <- AddModuleScore(seurat.combined, 
+                                  features = list(IFN.sig), 
+                                  assay = "integrated", 
+                                  name = "IFNsig",
+                                  ctrl = 80,
+                                  seed = 42)
+
+
+# Visualise gene signature module score on defined clusters
+VlnPlot(seurat.combined, "IFNsig1",
+        pt.size = 0, 
+        assay = "integrated", 
+        slot = "data",
+        cols = clust.cols)
+
+
+temp <- seurat.combined@meta.data %>%
+  summarize(mean = mean(IFNsig1), 
+            n = n(), 
+            median = median(IFNsig1),
+            qs = quantile(IFNsig1, c(0.75)))
+
+threshold.val <- temp$qs
+
+
+temp <- seurat.combined@meta.data %>%
+  dplyr::mutate(classification = case_when(IFNsig1 <= threshold.val ~ "Other", 
+                                          IFNsig1 > threshold.val ~ "IFN_clust"))
+
+
+
+
+temp <- temp %>%
+  mutate(response_var = case_when(seurat_clusters == "Type_I_IFN" ~ 1,
+                                  TRUE ~ 0), 
+         prediction_var = case_when(classification == "IFN_clust" ~ 1, 
+                                    TRUE ~ 0))
+
+
+
+roc_obj <- roc(response = temp$response_var,
+               predictor = temp$prediction_var, 
+               ci = TRUE, 
+               ci.alpha = 0.9,
+               stratified = FALSE,
+               plot = TRUE, 
+               auc.polygon = TRUE, 
+               max.auc.polygon = TRUE, 
+               grid = TRUE, 
+               print.auc = TRUE, 
+               show.thres = TRUE)
+
+
+
+print(paste0("for a signature of nval = ", n.val[i], " AUC = ", roc_obj$auc))
+print(threshold.val)
+
+
+output.table[i,"AUCval"] <- roc_obj$auc
+
+
+}
+
+
+output.table
+
+
+
+# AUC hits limit at 14 genes. but top 10 genes is AUC = 0.9
+# therefore use top 10 upregulated genes as signature and 75% signature threshold 
+
+  IFN.sig <- 
+    TypeI.markers %>% 
+    dplyr::filter(p_val_adj < 0.05) %>%
+    dplyr::top_n(10, avg_log2FC) %>%
+    rownames()
+
+write.csv(IFN.sig, "output/tables/TypeI_IFN_sig.csv")
+
+
+
+
+
+##
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 # Iterate over generating a gene signature of various sizes
@@ -3357,7 +3514,7 @@ for(i in seq_along(n.val)){
   IFN.sig <- 
     TypeI.markers %>% 
     dplyr::filter(p_val_adj < 0.05) %>%
-    dplyr::top_n(n.val[i], avg_logFC) %>%
+    dplyr::top_n(n.val[i], avg_log2FC) %>%
     rownames()
   
   
@@ -3454,115 +3611,114 @@ write.csv(Top.UP.genes, "output/tables/TypeI_IFN_sig.csv")
 
 
 
+# IFN signature 
+IFN.sig <- read.csv("output/tables/TypeI_IFN_sig.csv")
+IFN.sig <- IFN.sig$x
+
+
+# Read in validation dataset
+Cillo_et_al <- readRDS("Exported_RDS_files/Cillo_TIL_CD8_only_filt.rds")
+
+
+Idents(Cillo_et_al) <- Cillo_et_al@meta.data$cd8_cells_clusterID
 
 
 
-Cillo_et_al <- readRDS("Exported_RDS_files/Cillo_et_al_seurat_object_filt.rds")
+
+head(Cillo_et_al@meta.data)
+
+sort(unique(Cillo_et_al@meta.data$cd8_cells_clusterID))
+
+# cd8_cells_clusterID = 2 is IFN sig cluster in cillo dataset
 
 
-Idents(Cillo_et_al) <- Cillo_et_al@meta.data$cell_type
+VlnPlot(Cillo_et_al, 
+        feature = "IFNsig1",
+        group.by = "cd8_cells_clusterID",
+        pt.size = 0)
 
-Cillo_et_al <- subset(Cillo_et_al, ident = "cd8.cells")
 
 
-Cillo_et_al <- AddModuleScore(Cillo_et_al, 
+
+
+IFN.sig.function <- function(input.seurat, 
+                             IFN.sig,
+                             validation.cluster = NULL, 
+                             validation.cluster.column = NULL){
+
+  
+  
+  # Add module score
+  input.seurat <- AddModuleScore(input.seurat, 
                               features = list(IFN.sig), 
                               name = "IFNsig",
                               ctrl = 80,
                               seed = 42)
+  
+  # Calculate 75% quantile for threshold
+  stats.vals <- input.seurat@meta.data %>%
+    summarize(mean = mean(IFNsig1), 
+              n = n(), 
+              median = median(IFNsig1),
+              qs = quantile(IFNsig1, c(0.75)))
+  
+  
+threshold.val <- stats.vals$qs
 
 
-sort(unique(Cillo_et_al@meta.data$clusterID))
-
-
-
-x <- Cillo_et_al@meta.data %>%
-  filter(clusterID == 1)
-
-unique(x$cell_type)
-
-
-
-
-
-
-VlnPlot(Cillo_et_al, 
-        feature = "IFNsig1",
-        group.by = "cell_type",
-        pt.size = 0)
-
-
-VlnPlot(Cillo_et_al, 
-        feature = "MKI67",
-        group.by = "clusterID",
-        pt.size = 0.1)
-
-
-VlnPlot(Cillo_et_al, 
-        feature = "ISG15",
-        group.by = "cell_type",
-        pt.size = 0.2)
+input.seurat <- input.seurat@meta.data %>%
+  dplyr::mutate(classification = case_when(IFNsig1 <= threshold.val ~ "Other", 
+                                          IFNsig1 > threshold.val ~ "Predicted_IFN_clust"))
 
 
 
+if(!is.null(validation.cluster)){
 
+    output.temp <- input.seurat %>%
+    mutate(response_var = case_when(get(validation.cluster.column) == get("validation.cluster") ~ 1,
+                                    TRUE ~ 0), 
+           prediction_var = case_when(classification == "Predicted_IFN_clust" ~ 1, 
+                                      TRUE ~ 0))
+  
 
-VlnPlot(Cillo_et_al, 
-        feature = "IFNsig1",
-        group.by = "clusterID",
-        pt.size = 0)
+roc_obj <- roc(response = output.temp$response_var,
+               predictor = output.temp$prediction_var, 
+               ci = TRUE, 
+               ci.alpha = 0.9,
+               stratified = FALSE,
+               plot = TRUE, 
+               auc.polygon = TRUE, 
+               max.auc.polygon = TRUE, 
+               grid = TRUE, 
+               print.auc = TRUE, 
+               show.thres = TRUE)
 
 
 
 
-
-FeaturePlot(Cillo_et_al, "IFNsig1")
-
-UMAPPlot(Cillo_et_al, "IFNsig1")
-
-# Set assay to RNA
-DefaultAssay(Cillo_et_al) <- "RNA"
-
-# Set Idents 
-Idents(Cillo_et_al) <- Cillo_et_al@meta.data$clusterID
-
-################
-# Positive only
-################
-
-# Find markers
-Cluster.markers.pos <- FindAllMarkers(Cillo_et_al,
-                                      assay = "RNA",
-                                      only.pos = TRUE,
-                                      min.diff.pct = 0.1,
-                                      return.thresh = 0.05)
-
-
-
-Cluster.markers.pos %>%
-  dplyr::filter()
+}
 
 
 
 
 
 
-Idents(Cillo_et_al) <- Cillo_et_al@meta.data$sample
+}
 
 
-Cillo_et_al.small <- subset(Cillo_et_al, downsample = 100)
-
-# Get average expression
-average.cillo <- AverageExpression(Cillo_et_al.small,
-                                    assay = "RNA",
-                                    slot = "data",
-                                    verbose = TRUE,
-                                    return.seurat = TRUE)
 
 
-DoHeatmap(average.cillo,
-          features = Top.UP.genes, 
-          draw.lines = FALSE)
+
+
+IFN.sig.function(Cillo_et_al, 
+                 IFN.sig, 
+                 validation.cluster = "2", 
+                 validation.cluster.column = "cd8_cells_clusterID")
+
+
+
+
+
 
 ```
 

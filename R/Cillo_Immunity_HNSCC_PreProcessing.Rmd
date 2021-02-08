@@ -140,24 +140,21 @@ if(!quick.load){
   
   
   # Read in metadata provided by Anthony Cillo 
-  meta.data <- read.delim("Data/Cillo_et_al_data/Archive_older_potentially_incorrect_metadata/Cillo_HNSCC_cell_annotations_with_FItSNE.tsv")
-  #meta.data <- read.delim("Data/Cillo_et_al_data/Cillo_HNSCC_cell_cluster_annotations.21.01.12.tsv")
+  meta.data <- read.delim("Data/Cillo_et_al_data/Cillo_HNSCC_cell_cluster_annotations.21.01.15.tsv")
   
-  #x <- sample(nrow(meta.data), 10000, replace = TRUE)
-  #temp <- meta.data[x, ]
+  
+  head(meta.data)
+  sort(unique(meta.data$overall_clusterID))
+  unique(meta.data$patient_id)
+  unique(meta.data$overall_clusterID)
+  unique(meta.data$cell_type)
+  unique(meta.data$sample_origin)
+  unique(meta.data$cd8_cells_clusterID)
   
   
   
   # something is happening with column annotations. cell barcodes becomes TILp after filtering. 
-  
-  ### Cillo has messed up the barcode for TIL samples
-  
-  
-  head(meta.data)
-  
-  sort(unique(meta.data$overall_clusterID))
-  levels(as.factor(meta.data$patient_id))
-  levels(as.factor(meta.data$sample_origin))
+
   
   # Filter metadata for TIL annotations 
   meta.data %>% 
@@ -169,11 +166,9 @@ if(!quick.load){
   # Need to append PT.ID to make barcode unique 
   head(TIL.metadata)
   
-  as.factor(TIL.metadata$sample) # 26 levels 
+  as.factor(TIL.metadata$patient_id) # 26 levels 
   
-  TIL.metadata$Pt_ID <- gsub("HNSCC_", "Pt", TIL.metadata$sample)
-  
-  TIL.metadata$Pt_ID <- gsub("_.*", "", TIL.metadata$Pt_ID)
+  TIL.metadata$Pt_ID <- gsub("HNSCC_", "Pt", TIL.metadata$patient_id)
   
   head(TIL.metadata)
   as.factor(TIL.metadata$Pt_ID)
@@ -207,14 +202,24 @@ if(CD8.only){
   
   unique(seurat.Cillo.TIL@meta.data$cell_type)
   
-  sum(is.na(seurat.Cillo.TIL@meta.data$cell_type)) # 5,013 cells have no cell type origin 
+  sum(is.na(seurat.Cillo.TIL@meta.data$cell_type)) # 5,329 cells have no cell type origin 
   
   
   Idents(seurat.Cillo.TIL) <- seurat.Cillo.TIL@meta.data$cell_type
-  seurat.Cillo.TIL <- subset(seurat.Cillo.TIL, idents = "cd8.cells")
   
-  seurat.Cillo.TIL # 18,779 cells and 23,389 genes
-}
+  seurat.Cillo.TIL <- subset(seurat.Cillo.TIL, 
+                             idents = "cd8.cells")
+  
+  seurat.Cillo.TIL # 18,737 cells and 23,389 genes
+
+  # Remove cells that do not have a CD8.cluster ID
+  na.logic <- is.na(seurat.Cillo.TIL@meta.data$cd8_cells_clusterID)
+keep.cells <- rownames(seurat.Cillo.TIL@meta.data[!na.logic, ])
+  
+    seurat.Cillo.TIL <- subset(seurat.Cillo.TIL, 
+                               cells = keep.cells)
+
+  }
 
 ```
 
@@ -309,6 +314,12 @@ if(!quick.load){
                               do.center = TRUE,
                               verbose = TRUE)
   
+  # Write dataset to fil
+  if(CD8.only){
+    saveRDS(Cillo.TIL.filt, file = "Exported_RDS_files/Cillo_TIL_CD8_only_filt.rds")
+  }else{
+    saveRDS(Cillo.TIL.filt, file = "Exported_RDS_files/Cillo_TIL_filt.rds")
+  }
   
   rm(HNSCC.TILs, seurat.Cillo.TIL)
   
@@ -356,8 +367,7 @@ if(!quick.load){
   
   # Cluster ID
   colnames(HNSCC.Bald@meta.data)[grepl("^seurat_clusters$", colnames(HNSCC.Bald@meta.data))] <- "clusterID"
-  colnames(Cillo.TIL.filt@meta.data)[grepl("^clusterID$", colnames(Cillo.TIL.filt@meta.data))] <- "clusterID"
-  
+  colnames(Cillo.TIL.filt@meta.data)[grepl("^cd8_cells_clusterID$", colnames(Cillo.TIL.filt@meta.data))] <- "clusterID"
   
   
   #########################################
@@ -423,12 +433,12 @@ if(!quick.load){
   
   
   # Basic overview of data
-  Bald.Cillo.seurat # 29,245 cells and 29,957 genes
+  Bald.Cillo.seurat # 29,244 cells and 29,957 genes
   
   HNSCC.Bald # 11,658 cells and 20,295 genes
-  Cillo.TIL.filt # 55,272 cells and 23,389 genes
+  Cillo.TIL.filt # 17,586 cells and 23,389 genes
   
-  # 11658 + 55272
+  # 11658 + 17586
   
   
   # Remove unnecessary data
@@ -486,7 +496,47 @@ Bald.Cillo.seurat <- RunUMAP(object = Bald.Cillo.seurat,
 
 ```
 
+```{r filtering}
 
+head(Bald.Cillo.seurat@meta.data)
+unique(Bald.Cillo.seurat@meta.data$sample_ID)
+unique(Bald.Cillo.seurat@meta.data$condition_origin)
+
+
+# Make explicit dataset metadata column
+Bald.Cillo.seurat@meta.data$dataset <- Bald.Cillo.seurat@meta.data$orig.ident
+
+
+# Remove un-needed metadata columns 
+pattern.vec <- c("UMAP_1", "UMAP_2", "PCA_1", "PCA_2", "patient_id")
+remove.index <- grepl(paste0(pattern.vec, collapse = "|"), colnames(Bald.Cillo.seurat@meta.data))
+
+Bald.Cillo.seurat@meta.data[ , remove.index] <- NULL
+
+
+
+# Combine Cillo CD8 annotation with Bald dataset clusterID annotation
+na.logic <- is.na(Bald.Cillo.seurat@meta.data$clusterID)
+Bald.Cillo.seurat@meta.data$clusterID[na.logic] <- Bald.Cillo.seurat@meta.data$cd8_cells_clusterID[na.logic]
+
+# Not all cells in Cillo dataset have a CD8.cluster annotation
+# Remove cells from Cillo that do not have a CD8.cluster annotation 
+# Should be 1,518 cells. Must meet both requirements Cillo dataset and have no CD8.cluster annotation 
+
+dataset.logic <- Bald.Cillo.seurat@meta.data$dataset == "Cillo"
+na.logic <- is.na(Bald.Cillo.seurat@meta.data$cd8_cells_clusterID)
+
+cells.keep <- rownames(Bald.Cillo.seurat@meta.data[!c(dataset.logic & na.logic), ])
+
+# Remove cells from seurat object
+Idents(Bald.Cillo.seurat) <- Bald.Cillo.seurat@meta.data$orig.ident
+
+Bald.Cillo.seurat <- subset(Bald.Cillo.seurat, 
+                      cells = cells.keep)
+
+
+```
+ 
 ### Export seurat object
 ```{r export_seurat}
 
@@ -497,25 +547,76 @@ saveRDS(Bald.Cillo.seurat, file = "Exported_RDS_files/Bald.Cillo.seurat.rds")
 
 
 
-```{r remedy001}
-
-#Bald.Cillo.seurat@meta.data$orig.ident[Bald.Cillo.seurat@meta.data$orig.ident != "SeuratProject"] <- "Cillo"
-#Bald.Cillo.seurat@meta.data$orig.ident[Bald.Cillo.seurat@meta.data$orig.ident == "SeuratProject"] <- "Bald"
-
-Bald.Cillo.seurat@meta.data$dataset <- Bald.Cillo.seurat@meta.data$orig.ident
-
-na.val <- is.na(Bald.Cillo.seurat@meta.data$cell_type)
-Bald.Cillo.seurat@meta.data$cell_type[na.val] <- "Bald"
-
-Idents(Bald.Cillo.seurat) <- Bald.Cillo.seurat@meta.data$cell_type
-
-temp.seurat <- subset(Bald.Cillo.seurat, idents = c("cd8.cells", "Bald"))
+# WORK IN PROGRESS BELOW
 
 
-DefaultAssay(temp.seurat) <- "integrated"
+## Vis Bald vs Cillo Overlap {.tabset}
+
+### Bald vs Cillo dataset overlaps
+
+```{r visualisation_work_in_progress}
+
+
+
+
+
+UMAPPlot(object = Bald.Cillo.seurat,
+         label = T, 
+         order = T, 
+         pt.size = 1,
+         group.by = "clusterID")
+
+
+TSNEPlot(object = Bald.Cillo.seurat,
+         label = T, 
+         order = T, 
+         pt.size = 1,
+         group.by = "clusterID")
+
+
+col.vec <- levels(as.factor(Bald.Cillo.seurat@meta.data$clusterID))
+
+x <- grepl("^2$", col.vec)
+y <- grepl("Type_I_IFN", col.vec)
+
+col.vec <- rep("Gray", length(col.vec))
+col.vec[x] <- "Red"
+col.vec[y] <- "Blue"
+
+
+UMAPPlot(object = Bald.Cillo.seurat,
+         label = T, 
+         order = T, 
+         pt.size = 1,
+         cols = col.vec,
+         group.by = "clusterID")
+
+
+
+
+
+
+
+
+
+
+
+
+display.brewer.all()
+
+
+
+
+
+
+
+
+
+DefaultAssay(Bald.Cillo.seurat) <- "integrated"
+
 
 # Scale data
-temp.seurat <- ScaleData(object = temp.seurat,
+Bald.Cillo.seurat <- ScaleData(object = Bald.Cillo.seurat,
                          assay = "integrated",
                          model.use = "linear",
                          do.scale = TRUE,
@@ -523,74 +624,105 @@ temp.seurat <- ScaleData(object = temp.seurat,
                          verbose = TRUE)
 
 # Run PCA
-temp.seurat <- RunPCA(temp.seurat, 
-                      npcs = 30, 
+Bald.Cillo.seurat <- RunPCA(Bald.Cillo.seurat, 
+                      npcs = 50, 
                       verbose = TRUE)
 
 
+
+
+
+
+
 # Run tSNE
-temp.seurat <- RunTSNE(object = temp.seurat,
-                       reduction = "pca",
-                       dims = 1:20,
-                       seed.use = 42)
+Bald.Cillo.seurat <- RunTSNE(object = Bald.Cillo.seurat,
+                             reduction = "pca",
+                             dims = 1:50,
+                             seed.use = 42)
 
 
-# Run UMAP
-# Based on optimisation - n.neighbors = 50 & min.dist = 0.8
-temp.seurat <- RunUMAP(object = temp.seurat,
-                       reduction = "pca",
-                       dims = 1:20,
-                       umap.method = "uwot",
-                       n.neighbors = 50,
-                       min.dist = 0.8,
-                       seed.use = 42)
 
 
-UMAPPlot(object = Bald.Cillo.seurat,
-         label = T, 
-         order = T, 
-         cols = col.vec,
-         pt.size = 1,
-         group.by = "clusterID") + ggtitle("UMAP vis by Condition") 
 
 
 TSNEPlot(object = Bald.Cillo.seurat,
          label = T, 
          order = T, 
          pt.size = 1,
+         #cols = col.vec,
+         group.by = "clusterID")
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Run UMAP
+# Based on optimisation - n.neighbors = 50 & min.dist = 0.8
+Bald.Cillo.seurat <- RunUMAP(Bald.Cillo.seurat,
+                       reduction = "pca",
+                       dims = 1:50,
+                       umap.method = "uwot",
+                       n.neighbors = 20,
+                       min.dist = 0.8,
+                       seed.use = 42)
+
+
+
+
+
+col.vec <- levels(as.factor(Bald.Cillo.seurat@meta.data$clusterID))
+
+x <- grepl("^2$", col.vec)
+y <- grepl("Type_I_IFN", col.vec)
+
+col.vec <- rep("Gray", length(col.vec))
+col.vec[x] <- "Red"
+col.vec[y] <- "Blue"
+
+
+UMAPPlot(object = Bald.Cillo.seurat,
+         label = T, 
+         order = T, 
+         pt.size = 1,
          cols = col.vec,
-         group.by = "clusterID") + ggtitle("UMAP vis by Condition") 
-
-col.vec <- levels(as.factor(Bald.Cillo.seurat@meta.data$clusterID))
-x <- grepl("[[:alpha:]]", col.vec)
-
-library("RColorBrewer")
-
-col.vec[!x] <- "Grey"
-col.vec[x] <- c(brewer.pal(7, "Set1"), brewer.pal(7, "Set2"))
-
-sum(x)/2
-
-
-
-col.vec <- levels(as.factor(Bald.Cillo.seurat@meta.data$clusterID))
-col.vec[x] <- "Grey"
-col.vec[!x] <- c(brewer.pal(8, "Set1"), brewer.pal(6, "Set2"),  brewer.pal(6, "Set3"))
-
-
-display.brewer.all()
-
-
-head(Bald.Cillo.seurat@meta.data)
-
-#dev.copy(pdf, "output/figures/UMAP_no_clusts_removed/UMAP_condition.pdf")
-#dev.off()
+         group.by = "clusterID")
 
 
 
 
 
 
+
+
+PCAPlot(object = Bald.Cillo.seurat,
+        dims = c(4, 5),
+         label = T, 
+         order = T, 
+         pt.size = 1,
+         cols = col.vec,
+         group.by = "clusterID")
+
+
+
+
+#
+
+
+#
+
+
+#
+
+
+  col.vec <- levels(as.factor(Bald.Cillo.seurat@meta.data$clusterID))
 
 for(i in seq_along(col.vec)){
   
@@ -609,6 +741,129 @@ col.vec <- rep("Grey", length(col.vec))
   
   
 }
+
+# cluster 8 looks like gamma delta g9d2
+# cluser 7 = naive? 
+  # cluster 6 = cytotoxic 
+  # cluster 4 = exhausted
+  # cluster 1 = proliferative 
+  # cluster 2 = ifn
+
+  # Cillo dataset reports 
+  # CD8 TILS most frequent in cluster 1-4 and PBMC and tonsil 5-8
+  # Although at least 50% of the cluster is TIL derived in clusters 1-7
+  
+  # cluster 1 = cycling 
+  # cluster 2 = IFN
+  # cluster 3 & 4 = exhaustion 
+  # cluster 5 = quiescent and low effector function 
+  # cluster 6 = naive or memory 
+  # cluster 7 = early activation 
+  # cluster 8 = effector function 
+  
+  
+  
+  
+
+# Set Idents 
+Idents(Bald.Cillo.seurat) <- Bald.Cillo.seurat@meta.data$clusterID
+
+################
+# Positive only
+################
+
+# Find markers
+Cluster.markers.pos <- FindAllMarkers(Bald.Cillo.seurat,
+                                      assay = "RNA",
+                                      only.pos = TRUE,
+                                      min.diff.pct = 0.1,
+                                      return.thresh = 0.05)
+
+
+
+
+
+
+# Downsample 
+temp.seurat <- subset(Bald.Cillo.seurat, downsample = 300)
+
+
+# Get average expression
+average.seurat <- AverageExpression(Bald.Cillo.seurat,
+                                    assay = "integrated",
+                                    slot = "data",
+                                    verbose = TRUE,
+                                    return.seurat = TRUE)
+
+
+
+
+
+
+# Get top cluster markers
+sig.genes <- Cluster.markers.pos[Cluster.markers.pos$p_val_adj < 0.05, ]
+
+clusts <- unique(sig.genes$cluster)
+output.vect <- NA
+top.n <- 20
+
+for(i in 1:length(clusts)){
+  
+  temp.gene <- sig.genes[sig.genes$cluster == paste0(clusts[i]), ]
+  temp.top <- dplyr::top_n(temp.gene, top.n, avg_log2FC)$gene
+  
+  output.vect <- c(output.vect, temp.top)
+  output.vect <- unique(output.vect)
+}
+
+
+
+
+
+
+
+DoHeatmap(average.seurat, 
+          features = output.vect, 
+          size = 4, 
+          angle = 90, 
+          draw.lines = FALSE,
+          raster = FALSE) + 
+  NoLegend()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+grep("TRD", rownames(Bald.Cillo.seurat), value = T)
+
+VlnPlot(Bald.Cillo.seurat, 
+       # assay = "RNA",
+        "MKI67", 
+        group.by = "clusterID", 
+       pt.size = 0)
+
+
+
+dataset.vals <- table(Bald.Cillo.seurat@meta.data$dataset)
+
+cluster.vals <- table(Bald.Cillo.seurat@meta.data$clusterID)
+
+(cluster.vals/dataset.vals[1])* 100
+(cluster.vals/dataset.vals[2])* 100
+
+
 
 ```
 
