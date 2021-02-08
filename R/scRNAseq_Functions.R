@@ -68,5 +68,77 @@ UMAP.optimise <- function(input.seurat,
 
 
 
+# Export function
+save.data.frame.function <- function(df, path, title){
+  
+  x <- as.data.frame(as.matrix(df))
+  
+  write.table(x, 
+              paste0(path, title, ".txt"),
+              sep = "\t",
+              quote = FALSE, 
+              row.names = TRUE, 
+              col.names = NA)
+}
+
+
+
+
+
+#################
+# Volcano Plots
+#################
+
+# edited enhancedvolcano() function to have the default variables for aesthetics I want
+
+clean.data <- function(input.data, group.id){
+  
+  output.data <- input.data %>%
+    dplyr::filter(cluster == paste0(group.id))
+  
+  rownames(output.data) <- output.data$gene
+  
+  output.data <- output.data %>%
+    dplyr::select(avg_logFC, p_val_adj)
+  
+  colnames(output.data) <- c("logFC", "FDR")
+  return(output.data)
+  
+}
+
+
+
+colour.points <- function(volcano.data, 
+                          increase.col = "Red",
+                          decreased.col = "Blue",
+                          FDR.cutoff = 0.05,
+                          logFC.cutoff = 0.25){
+  
+  # set the base colour
+  keyvals <- rep('grey50', nrow(volcano.data))
+  
+  # set the base name/label as 'NS'
+  names(keyvals) <- rep('NS', nrow(volcano.data))
+  
+  # modify keyvals for vars meeting FDR and LogFC threshold
+  
+  # Increased
+  keyvals[which(volcano.data$logFC > logFC.cutoff & volcano.data$FDR < FDR.cutoff)] <- increase.col
+  names(keyvals)[which(volcano.data$logFC > logFC.cutoff & volcano.data$FDR < FDR.cutoff)] <- 'Increased'
+  
+  # Decreased
+  keyvals[which(volcano.data$logFC < -logFC.cutoff & volcano.data$FDR < FDR.cutoff)] <- decreased.col
+  names(keyvals)[which(volcano.data$logFC < -logFC.cutoff & volcano.data$FDR < FDR.cutoff)] <- 'Decreased'
+  
+  return(keyvals)
+  
+}
+
+
+
+
+
+
+
 
 

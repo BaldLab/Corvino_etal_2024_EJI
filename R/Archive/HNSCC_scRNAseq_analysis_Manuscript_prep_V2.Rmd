@@ -58,198 +58,26 @@ rm(list = ls()) #Clean workspace
 cat("\014")     #Clean Console
 gc() # Free memory
 
-# pipeline variables
-start.time <- Sys.time()
-quick.load <- TRUE
-long.compute <- TRUE
-
-###################
-# Install packages
-###################
-
-pkgs <- c("remedy", "dplyr", "rstudioapi",
-          "cowplot", "ggplot2", "grid", "gridExtra",
-          "styler", "stringr", "inlmisc", "RColorBrewer",
-          "readxl", "devtools", "tidyverse", "hdf5r", "scales",
-          "useful", "renv", "pROC")
-
-for(i in 1:length(pkgs)){
-  if(!require(pkgs[i], character.only = T)){
-    install.packages(pkgs[i])
-    require(pkgs[i], character.only = T)
-  }else{
-    require(pkgs[i], character.only = T)
-  }
-}
-
-pkgs <- c("gplots", "fgsea", "biomaRt", "clusterProfiler", 
-          "GSEABase", "org.Hs.eg.db", "pcaMethods",
-          "SingleCellExperiment", "batchelor", 
-          "DelayedArray", "DelayedMatrixStats",
-          "limma", "SummarizedExperiment", "SingleR",
-          #"celldex",
-          "progeny", "RcisTarget",
-          "doMC", "doRNG", "DT", "visNetwork", "readr", "pheatmap", "tibble")
-
-for(i in 1:length(pkgs)){
-  if(!require(pkgs[i], character.only = T)){
-    BiocManager::install(pkgs[i])
-    require(pkgs[i], character.only = T)
-  }else{
-    require(pkgs[i], character.only = T)
-  }
-}
-
-#####################
-# Github packages
-#####################
-
-# library("devtools")
-
-# usethis::browse_github_pat()
-# usethis::edit_r_environ()
-# GITHUB_PAT = "d8207153aef7b295cdf66eb1e1b2a2ed38b0ca18"
-# R_MAX_VSIZE = 30Gb
-
-
-# Scillus 
-#devtools::install_github("xmc811/Scillus", ref = "development")
-library("Scillus")
-
-# Nebulosa for density plotting
-#devtools::install_github("powellgenomicslab/Nebulosa")
-library("Nebulosa")
-
-# Volcano
-#devtools::install_github('kevinblighe/EnhancedVolcano')
-library("EnhancedVolcano")
-
-# Clustifyr
-#devtools::install_github("rnabioco/clustifyr")
-library("clustifyr")
-
-# ComplexHeatmap
-#install_github("jokergoo/ComplexHeatmap")
-library("ComplexHeatmap")
-
-# scPred and requirements
-#devtools::install_github("immunogenomics/harmony")
-#devtools::install_github("powellgenomicslab/scPred")
-library("scPred")
-library("magrittr")
-library("doParallel")
-
-# Cytotrace
-# Download source file from - https://cytotrace.stanford.edu/
-#devtools::install_local("PATH/TO/DIRECTORY/CytoTRACE_0.3.3.tar.gz")
-library("CytoTRACE")
-
-# circlize
-#devtools::install_github("jokergoo/circlize")
-library("circlize")
-
-
-######################
-# Cell-cell interaction
-######################
-
-# celltalker
-#devtools::install_github("arc85/celltalker")
-library("celltalker")
-
-# iTalk
-#devtools::install_github("Coolgenome/iTALK", build_vignettes = TRUE)
-library("iTALK")
-
-# singleCellHaystack
-#remotes::install_github("alexisvdb/singleCellHaystack")
-library("singleCellHaystack")
-
-
-######################
-# Seurat
-######################
-
-#devtools::install_github('satijalab/seurat-data')
-#devtools::install_github('satijalab/seurat-wrappers')
-library("SeuratWrappers")
-
-
-######################
-# Trajectory analysis
-######################
-
-# Trajectory analysis packages are loaded when required
-
-# Velocity 
-#devtools::install_github("velocyto-team/velocyto.R")
-
-# Dyno
-#devtools::install_github("dynverse/dyno")
-
-# Monocle
-#devtools::install_github('cole-trapnell-lab/leidenbase')
-#devtools::install_github('cole-trapnell-lab/monocle3')
-
-#.rs.restartR()
-
-
-####################
-# Colour scheme
-####################
-
-Condition.cols <- c("turquoise", "red")
-
-clust.cols <- c("#E41A1C", # Naive_like_1_CM
-                "#A6761D", # Naive_like_2_SC
-                "#8DA0CB", # Naive_like_3
-                "#666666", # Cytotoxic
-                "#A6D854", # Type_I_IFN
-                "#984EA3", # Stimulated_1
-                "#1B9E77", # Stimulated_exhausted
-                "#D95F02", # Exhausted_1
-                "#7570B3", # Exhausted_2
-                "#E7298A", # TRM
-                "#E6AB02", # gd_T_g9d2
-                "#8DD3C7", # gd_T_non_g9d2
-                "#FF7F00", # MAIT 
-                "#E78AC3") # Proliferative
-
-clust.names <- c("Naive_like_1_CM",
-                 "Naive_like_2_SC",
-                 "Naive_like_3",
-                 "Cytotoxic",
-                 "Type_I_IFN",
-                 "Stimulated_1",
-                 "Stimulated_exhausted",
-                 "Exhausted_1",
-                 "Exhausted_2",
-                 "TRM",
-                 "gd_T_g9d2",
-                 "gd_T_non_g9d2",
-                 "MAIT",
-                 "Proliferative")
 
 # Set working directory to source file location
 setwd(dirname(getActiveDocumentContext()$path))
-working.dir <- getwd()
-
-# since moving script from local to github - I want to adjust work dir to be main github dir - therefore 
 setwd("..")
 
-# create output directories
-if(!dir.exists("Exported_RDS_files")){dir.create("Exported_RDS_files", recursive = T)}
-if(!dir.exists("output")){dir.create("output", recursive = T)}
-if(!dir.exists("output/figures")){dir.create("output/figures", recursive = T)}
-if(!dir.exists("output/tables")){dir.create("output/tables", recursive = T)}
-if(!dir.exists("output/QC")){dir.create("output/QC", recursive = T)}
+
+source("R/Setup.R")
+source("R/Colour_scheme.R")
+knitr::knit("R/test.Rmd")
+
+
+# pipeline variables
+quick.load <- TRUE
+long.compute <- TRUE
 
 
 # load saved seurat object with cluster annotations and imputation performed
 if(quick.load){
   seurat.combined <- readRDS("Exported_RDS_files/seurat_combined.rds")
 }
-
 
 ```
 
@@ -328,8 +156,6 @@ colour.points <- function(volcano.data,
 }
 
 
-
-
 ```
 
 
@@ -345,8 +171,6 @@ colour.points <- function(volcano.data,
 
 # use to restore environment 
 #renv::restore()
-
-
 
 ```
  
@@ -3610,7 +3434,6 @@ write.csv(Top.UP.genes, "output/tables/TypeI_IFN_sig.csv")
 ```{r Type_I_signature_validation_Cillo_dataset}
 
 
-
 # IFN signature 
 IFN.sig <- read.csv("output/tables/TypeI_IFN_sig.csv")
 IFN.sig <- IFN.sig$x
@@ -3621,24 +3444,6 @@ Cillo_et_al <- readRDS("Exported_RDS_files/Cillo_TIL_CD8_only_filt.rds")
 
 
 Idents(Cillo_et_al) <- Cillo_et_al@meta.data$cd8_cells_clusterID
-
-
-
-
-head(Cillo_et_al@meta.data)
-
-sort(unique(Cillo_et_al@meta.data$cd8_cells_clusterID))
-
-# cd8_cells_clusterID = 2 is IFN sig cluster in cillo dataset
-
-
-VlnPlot(Cillo_et_al, 
-        feature = "IFNsig1",
-        group.by = "cd8_cells_clusterID",
-        pt.size = 0)
-
-
-
 
 
 IFN.sig.function <- function(input.seurat, 
@@ -3699,7 +3504,7 @@ roc_obj <- roc(response = output.temp$response_var,
 }
 
 
-
+return(input.seurat)
 
 
 
@@ -3708,7 +3513,7 @@ roc_obj <- roc(response = output.temp$response_var,
 
 
 
-
+# cd8_cells_clusterID = 2 is IFN sig cluster in cillo dataset
 
 IFN.sig.function(Cillo_et_al, 
                  IFN.sig, 
@@ -3720,7 +3525,93 @@ IFN.sig.function(Cillo_et_al,
 
 
 
+VlnPlot(Cillo_et_al, 
+        feature = "IFNsig1",
+        group.by = "cd8_cells_clusterID",
+        pt.size = 0)
+
+
+rm(Cillo_et_al)
+
 ```
+
+
+
+```{r Sade_Feldman_IFN_signature}
+
+
+
+# IFN signature 
+IFN.sig <- read.csv("output/tables/TypeI_IFN_sig.csv")
+IFN.sig <- IFN.sig$x
+
+
+# Read in dataset
+#Sade_Feldman <- readRDS("Exported_RDS_files/Sade_Feldman_CD8_only.rds")
+
+Sade_Feldman <- readRDS("Exported_RDS_files/Sade_Feldman_all_cells.rds")
+
+head(Sade_Feldman@meta.data)
+
+Idents(Sade_Feldman) <- Sade_Feldman@meta.data$cluster_named
+
+
+
+
+
+x <- IFN.sig.function(Sade_Feldman, 
+                 IFN.sig)
+
+head(x)
+
+
+Sade_Feldman <- AddMetaData(Sade_Feldman, 
+                            metadata = x$classification, 
+                            col.name = "classification")
+
+
+Sade_Feldman <- AddMetaData(Sade_Feldman, 
+                            metadata = x$IFNsig1, 
+                            col.name = "IFNsig1")
+
+
+Sade_Feldman@meta.data
+
+
+VlnPlot(Sade_Feldman, 
+        feature = "IFNsig1",
+        group.by = "cluster_named",
+        pt.size = 0)
+
+UMAPPlot(Sade_Feldman, 
+         group.by = "classification", 
+         pt.size = 1)
+
+TSNEPlot(Sade_Feldman, 
+         group.by = "classification", 
+         pt.size = 1)
+
+
+TSNEPlot(Sade_Feldman, 
+         group.by = "cluster_named", 
+         pt.size = 1)
+
+
+#rm(Sade_Feldman_CD8)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
