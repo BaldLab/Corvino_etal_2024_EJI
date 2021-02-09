@@ -45,17 +45,11 @@ library("rstudioapi")
 setwd(dirname(getActiveDocumentContext()$path))
 setwd("..")
 
-# Load packages and create output directories
+# Load packages
 source("R/Load_packages.R", local = knitr::knit_global())
+
+# Create output directories & load custom functions & colour scheme
 source("R/Setup.R", local = knitr::knit_global())
-
-# Establish colour scheme
-source("R/Colour_scheme_variable.R", local = knitr::knit_global())
-
-# Load custom functions
-source("R/scRNAseq_function.R", local = knitr::knit_global())
-source("R/annotate_seurat_heatmap_function.R", local = knitr::knit_global())
-source("R/Enhanced_volcano_custom_defaults_function.R", local = knitr::knit_global())
 
 
 # pipeline variables

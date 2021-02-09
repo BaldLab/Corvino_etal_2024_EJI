@@ -33,3 +33,5 @@ clust.names <- c("Naive_like_1_CM",
                  "gd_T_non_g9d2",
                  "MAIT",
                  "Proliferative")
+
+names(clust.cols) <- clust.names

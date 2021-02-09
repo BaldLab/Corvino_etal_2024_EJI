@@ -7,11 +7,11 @@ gc() # Free memory
 # Install packages
 ###################
 
-pkgs <- c("remedy", "dplyr", "rstudioapi",
-          "cowplot", "ggplot2", "grid", "gridExtra",
+pkgs <- c("remedy", "dplyr", "Seurat", "rstudioapi",
+          "cowplot", "gplots", "ggplot2", "grid", "gridExtra",
           "styler", "stringr", "inlmisc", "RColorBrewer",
           "readxl", "devtools", "tidyverse", "hdf5r", "scales",
-          "useful", "renv", "pROC")
+          "useful", "renv", "pROC", "ggfittext", "ggalluvial", "RVenn")
 
 for(i in 1:length(pkgs)){
   if(!require(pkgs[i], character.only = T)){
@@ -30,6 +30,7 @@ pkgs <- c("gplots", "fgsea", "biomaRt", "clusterProfiler",
           #"celldex",
           "progeny", "RcisTarget",
           "doMC", "doRNG", "DT", "visNetwork", "readr", "pheatmap", "tibble")
+
 
 for(i in 1:length(pkgs)){
   if(!require(pkgs[i], character.only = T)){
@@ -139,7 +140,24 @@ library("SeuratWrappers")
 #devtools::install_github('cole-trapnell-lab/leidenbase')
 #devtools::install_github('cole-trapnell-lab/monocle3')
 
-#.rs.restartR()
+#####################
+# TCRseq analysis 
+#####################
+
+#devtools::install_github("ncborcherding/scRepertoire")
+library(scRepertoire)
+
+
+
+
+# Archive of tested packages
+#devtools::install_github("immunomind/immunarch")
+
+
+
+
+
+
 
 
 
