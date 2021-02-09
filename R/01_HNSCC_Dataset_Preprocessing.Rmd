@@ -1,5 +1,5 @@
 ---
-title: "HNSCC_initialise_dataset"
+title: "HNSCC_Dataset_Preprocessing"
 author: "Dillon Corvino"
 date: "03/02/2020"
 output:
@@ -58,26 +58,30 @@ rm(list = ls()) #Clean workspace
 cat("\014")     #Clean Console
 gc() # Free memory
 
+
+# Establish working directory
 library("rstudioapi")
 
 # Set working directory to source file location
-#setwd(dirname(getActiveDocumentContext()$path))
+setwd(dirname(getActiveDocumentContext()$path))
 setwd("..")
+
+# Load packages and create output directories
+source("R/Load_packages.R", local = knitr::knit_global())
+source("R/Setup.R", local = knitr::knit_global())
+
+# Establish colour scheme
+source("R/Colour_scheme_variable.R", local = knitr::knit_global())
+
+# Load custom functions
+source("R/scRNAseq_function.R", local = knitr::knit_global())
+source("R/annotate_seurat_heatmap_function.R", local = knitr::knit_global())
+source("R/Enhanced_volcano_custom_defaults_function.R", local = knitr::knit_global())
 
 
 # pipeline variables
 quick.load <- FALSE
 long.compute <- TRUE
-
-source("R/Load_packages.R")
-source("R/Setup.R")
-source("R/Colour_scheme.R")
-
-# Custom functions
-source("R/scRNAseq_Functions.R")
-source("R/annotate_seurat_heatmap.R")
-source("R/Enhanced_volcano_custom_defaults.R")
-
 
 ```
 
@@ -1413,5 +1417,204 @@ if(long.compute){
 
 ```
 
+
+
+## Visualise distribution of cells across clusters/condition/modules {.tabset}
+
+### Plot distribution of cells per each cluster
+
+```{r Distribution_cells_per_cluster}
+
+# Create output directory
+if(!dir.exists("output/figures/Clust_and_Module_distribution")){
+  dir.create("output/figures/Clust_and_Module_distribution", 
+             recursive = T)
+}
+
+################################
+# Plot cluster wise distribution
+################################
+default.mar <- par()$mar
+
+par(mar = c(10.1, 5.1, 4.1, 2.1))
+
+
+# Number of cells 
+x <- table(seurat.combined@meta.data$seurat_clusters)
+
+barplot(t(x), 
+        main = "Number of cells per clust",
+        ylab = "Number of cells",
+        cex.names = 1,
+        las = 2,
+        ylim = c(0, 2500),
+        legend = TRUE, 
+        beside = TRUE)
+
+
+dev.copy(pdf, "output/figures/Clust_and_Module_distribution/Number_cells_per_clust.pdf")
+dev.off()
+
+# Frequency 
+x <- prop.table(table(seurat.combined@meta.data$seurat_clusters)) * 100
+
+barplot(t(x), 
+        main = "Freq of cells per clust",
+        ylab = "% of total",
+        cex.names = 1, 
+        las = 2,
+        ylim = c(0, 20),
+        legend = TRUE, 
+        beside = TRUE)
+
+dev.copy(pdf, "output/figures/Clust_and_Module_distribution/Freq_cells_per_clust.pdf")
+dev.off()
+
+
+
+###################################################
+# Plot Freq per cluster per condition 
+###################################################
+
+# Be aware, US and Stim have diff total number of cells and therefore should be represented as a % normalised to total condition cell #
+
+condition.cell.n <- table(seurat.combined@meta.data$condition)
+US.cell.n <- condition.cell.n[1]
+Stim.cell.n <- condition.cell.n[2]
+
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+Cluster.cell.n <- table(Idents(seurat.combined), seurat.combined@meta.data$condition)
+
+Cluster.cell.n[,1] <- Cluster.cell.n[,1]/US.cell.n*100
+Cluster.cell.n[,2] <- Cluster.cell.n[,2]/Stim.cell.n*100
+
+colSums(Cluster.cell.n) # sanity check, both should = 100%
+
+barplot(t(Cluster.cell.n),
+        main = "% of cells per cluster per condition",
+        ylab = "% of cells",
+        col = Condition.cols,
+        cex.names = 1, 
+        las = 2,
+        ylim = c(0, 30), 
+        beside = TRUE, 
+        legend = TRUE)
+
+dev.copy(pdf, "output/figures/Clust_and_Module_distribution/Percent_cells_per_cluster_per_condition.pdf")
+dev.off()
+
+
+# reset margin to default 
+par(mar = c(default.mar))
+
+
+#########################################
+# Plot Module wise distribution
+#########################################
+
+# Plot total cell # per module 
+
+Module.cell.n <- table(seurat.combined@meta.data$Module)
+
+barplot(Module.cell.n, 
+        main = "# of cells per Module", 
+        xlab = "Module", 
+        ylab = "# of cells",
+        cex.names = 0.8, 
+        ylim = c(0, 5000))
+
+dev.copy(pdf, "output/figures/Clust_and_Module_distribution/Number_cells_per_Module.pdf")
+dev.off()
+
+
+# Plot freq of total per module
+Module.freq <- prop.table(table(seurat.combined@meta.data$Module))*100
+
+barplot(Module.freq,
+        main = "% of cells per Module",
+        xlab = "Module",
+        ylab = "% of cells",
+        cex.names = 0.8, 
+        ylim = c(0, 40))
+
+dev.copy(pdf, "output/figures/Clust_and_Module_distribution/Percent_cells_per_Module.pdf")
+dev.off()
+
+
+###################################################
+# Plot Freq per module per condition 
+###################################################
+
+# Be aware, US and Stim have diff total number of cells and therefore should be represented as a % normalised to total condition cell #
+
+condition.cell.n <- table(seurat.combined@meta.data$condition)
+US.cell.n <- condition.cell.n[1]
+Stim.cell.n <- condition.cell.n[2]
+
+Idents(seurat.combined) <- seurat.combined@meta.data$Module
+Module.cell.n <- table(Idents(seurat.combined), seurat.combined@meta.data$condition)
+
+Module.cell.n[,1] <- Module.cell.n[,1]/US.cell.n*100
+Module.cell.n[,2] <- Module.cell.n[,2]/Stim.cell.n*100
+
+colSums(Module.cell.n) # sanity check, both should = 100%
+
+
+barplot(t(Module.cell.n),
+        main = "% of cells per Module per condition",
+        xlab = "Module",
+        ylab = "% of cells",
+        col = Condition.cols,
+        cex.names = 0.8, 
+        ylim = c(0, 50), 
+        beside = TRUE, 
+        legend = TRUE)
+
+dev.copy(pdf, "output/figures/Clust_and_Module_distribution/Percent_cells_per_Module_per_condition.pdf")
+dev.off()
+
+
+
+```
+
+
+## Analysis optimisation code {.tabset}
+
+### Optimise UMAP
+
+```{r Optimise_UMAP_vis, eval = FALSE}
+
+
+if(long.compute){
+  
+  # determine best min distance & neighbour val for UMAP
+  
+  # Set assay 
+  DefaultAssay(seurat.combined) <- "integrated"
+  
+  # Set Idents
+  Idents(seurat.combined) <- seurat.combined@meta.data$Module
+  
+  UMAP.optimise(seurat.combined)
+}
+
+# Default of n.neighbor = 30 and min.dist = 0.3 work well
+
+```
+
+### Altering the cluster calling resolution
+
+```{r Differing_clust_resolution, eval = FALSE, echo = FALSE}
+
+if(long.compute){
+  
+  # Set assay 
+  DefaultAssay(seurat.combined) <- "RNA"
+  
+  clust.res.optimise(seurat.combined)
+  
+}
+
+```
 
 

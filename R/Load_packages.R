@@ -89,6 +89,14 @@ library("CytoTRACE")
 library("circlize")
 
 
+# Augur analysis
+#devtools::install_github("neurorestore/Augur")
+# Dependencies 
+#install.packages("glmnet")
+#BiocManager::install("sparseMatrixStats")
+library("Augur")
+
+
 ######################
 # Cell-cell interaction
 ######################
@@ -132,4 +140,25 @@ library("SeuratWrappers")
 #devtools::install_github('cole-trapnell-lab/monocle3')
 
 #.rs.restartR()
+
+
+
+
+#####################
+# Reproducibility
+#####################
+
+# Only run once to initialise 
+#renv::init()
+
+# Run snapshot to update renv.lock file 
+renv::snapshot()
+
+# use to restore environment 
+#renv::restore()
+
+
+
+
+
 
