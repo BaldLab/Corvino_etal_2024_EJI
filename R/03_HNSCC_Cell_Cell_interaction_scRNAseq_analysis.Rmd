@@ -23,13 +23,17 @@ Built with R version `{r} getRversion()`
 
 ### Environment
 
-```{r Environment_setup, message = FALSE}
+```{r setup, message = FALSE}
 knitr::opts_chunk$set(
   echo = TRUE,
   message = FALSE,
   warning = FALSE,  
   eval = TRUE, 
   tidy = TRUE
+)
+
+knitr::opts_knit$set(
+  root.dir = "../"
 )
 
 # Environment Set up
@@ -42,7 +46,7 @@ gc() # Free memory
 library("rstudioapi")
 
 # Set working directory to source file location
-setwd(dirname(getActiveDocumentContext()$path))
+#setwd(dirname(getActiveDocumentContext()$path))
 setwd("..")
 
 # Load packages
@@ -201,7 +205,7 @@ unnest(reshaped.matrices,
 names(pull(unnest(reshaped.matrices, cols = "samples"))[[1]])
 
 # small bug in create_lig_rec_tib function, required small modification 
-source("R/Modified_Celltalker_function.R")
+# found in Modified_Celltalker_function.R
 
 consistent.lig.recs <- create_lig_rec_tib.mod(exp.tib = reshaped.matrices,
                                               clusters = defined.clusters,

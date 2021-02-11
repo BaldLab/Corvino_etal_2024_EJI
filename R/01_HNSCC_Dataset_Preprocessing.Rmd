@@ -44,13 +44,17 @@ Built with R version `{r} getRversion()`
 
 ### Environment
 
-```{r Environment_setup, message = FALSE}
+```{r setup, message = FALSE}
 knitr::opts_chunk$set(
   echo = TRUE,
   message = FALSE,
   warning = FALSE,  
   eval = TRUE, 
   tidy = TRUE
+)
+
+knitr::opts_knit$set(
+  root.dir = "../"
 )
 
 # Environment Set up
@@ -63,7 +67,7 @@ gc() # Free memory
 library("rstudioapi")
 
 # Set working directory to source file location
-setwd(dirname(getActiveDocumentContext()$path))
+#setwd(dirname(getActiveDocumentContext()$path))
 setwd("..")
 
 # Load packages
@@ -161,21 +165,6 @@ head(Stim.seurat@meta.data)
 US.seurat@meta.data$condition <- "US"
 Stim.seurat@meta.data$condition <- "Stim"
 
-
-
-
-
-#total.seurat <- merge(x = US.seurat, 
-#                   y = Stim.seurat,
-#                   merge.data = FALSE, # Should normed data be merged as well or just raw data slot
-#                   project = "merged_seurat")
-
-
-
-
-
-
-
 ```
 
 ### Remove large variables that are no longer needed
@@ -221,9 +210,6 @@ US.seurat[["percent.mito"]] <- PercentageFeatureSet(US.seurat, pattern = "^MT-")
 
 # Stimulated
 Stim.seurat[["percent.mito"]] <- PercentageFeatureSet(Stim.seurat, pattern = "^MT-")
-
-# total
-total.seurat[["percent.mito"]] <- PercentageFeatureSet(total.seurat, pattern = "^MT-")
 
 
 ##################################
@@ -333,16 +319,6 @@ Stim.seurat.filt # 15,618 genes across 6,042 cells
 # 1125 cells were deleted
 
 
-# total
-total.seurat.filt <- subset(total.seurat,
-                            subset = nFeature_RNA > 200 & nFeature_RNA < 2500 & percent.mito < 10)
-
-# Post-filtering metrics
-
-total.seurat # 16,295 genes across 13,751 cells
-total.seurat.filt # 16,295 genes across 11,827 cells
-
-
 ##########################################
 # Visualise QC metrics after filtering
 ##########################################
@@ -443,43 +419,12 @@ Stim.seurat.filt <- ScaleData(
   verbose = TRUE
 )
 
-#################
-# total
-#################
-
-# Normalise
-total.seurat.filt <- NormalizeData(
-  object = total.seurat.filt,
-  assay = "RNA",
-  normalization.method = "LogNormalize",
-  scale.factor = 10000,
-  verbose = TRUE
-)
-
-# Find variable genes
-total.seurat.filt <- FindVariableFeatures(
-  object = total.seurat.filt,
-  verbose = TRUE
-)
-
-# Scale data
-total.seurat.filt <- ScaleData(
-  object = total.seurat.filt,
-  assay = "RNA",
-  vars.to.regress = c("nCount_RNA", "percent.mito"),
-  model.use = "linear",
-  do.scale = TRUE,
-  do.center = TRUE,
-  verbose = TRUE
-)
-
-
 
 ###############################
 # Remove unneeded variables
 ###############################
 
-rm(US.seurat, Stim.seurat, total.seurat)
+rm(US.seurat, Stim.seurat)
 
 
 ```
@@ -554,6 +499,9 @@ rm(immune.anchors, seurat.list)
 
 ```{r Cluster_data}
 
+# Set seed for reproducibility
+set.seed(42)
+
 DefaultAssay(seurat.combined) <- "integrated"
 
 # Scale data
@@ -575,6 +523,7 @@ seurat.combined <- FindNeighbors(seurat.combined,
 seurat.combined <- FindClusters(seurat.combined, 
                                 random.seed = 42,
                                 resolution = 0.4) # 0.4 is cluster resolution decided upon
+
 
 
 ```
@@ -644,7 +593,10 @@ dev.off()
 
 ```{r Justify_clusts_to_remove}
 
-# Based on resolution of 0.4 for cluster identification 
+# With set seed at 42 there are only 15 clusters total with no cluster 15 (originally described as a myeloid population)
+# this cluster is now merged with cluster 13. 
+# Therefore based on resolution of 0.4 for cluster identification 
+
 # Cluster #15 and 13 are to be removed 
 # 15 = Myeloid population 
 # 13 = ?? 
@@ -704,12 +656,12 @@ Clust.13.Markers <- FindMarkers(seurat.combined,
 
 
 # Find markers for clust 15
-Clust.15.Markers <- FindMarkers(seurat.combined,
-                                assay = "RNA",
-                                ident.1 = "15",
-                                only.pos = TRUE,
-                                min.diff.pct = 0.1,
-                                return.thresh = 0.05)
+#Clust.15.Markers <- FindMarkers(seurat.combined,
+ #                               assay = "RNA",
+ #                               ident.1 = "15",
+  #                              only.pos = TRUE,
+ #                               min.diff.pct = 0.1,
+ #                               return.thresh = 0.05)
 
 ###################
 # Heatmap vis
@@ -722,9 +674,8 @@ Clust.15.Markers <- FindMarkers(seurat.combined,
 sig.genes <- Clust.13.Markers[Clust.13.Markers$p_val_adj < 0.1, ]
 
 
-
 # Heatmap of Clust 15 markers
-sig.genes <- Clust.15.Markers[Clust.15.Markers$p_val_adj < 0.1, ]
+#sig.genes <- Clust.15.Markers[Clust.15.Markers$p_val_adj < 0.1, ]
 
 
 
@@ -789,7 +740,7 @@ if(!dir.exists("output/figures/Cell_type_annotation/SingleR")){
 ##################################
 # Info: Human, Microarray, 713 samples, 37 main labels, 157 fine lables, Non-specific focus
 
-HumanPrimaryCellAtlasData.data <- celldex::HumanPrimaryCellAtlasData()
+HumanPrimaryCellAtlasData.data <- HumanPrimaryCellAtlasData()
 
 
 # First calcualte cell ID using all available labels
@@ -811,7 +762,7 @@ dev.off()
 ##########################
 # Info: Human, RNAseq, 259 samples, 24 main labels, 43 fine lables, Non-specific focus
 
-BlueprintEncodeData.data <- celldex::BlueprintEncodeData()
+BlueprintEncodeData.data <- BlueprintEncodeData()
 
 
 # First calcualte cell ID using all available labels
@@ -833,7 +784,7 @@ dev.off()
 ##########################################
 # Info: Human, Microarray, 211 samples, 17 main labels, 38 fine lables, Hematopoietic & Immune focus
 
-NovershternHematopoieticData.data <- celldex::NovershternHematopoieticData()
+NovershternHematopoieticData.data <- NovershternHematopoieticData()
 
 
 # First calcualte cell ID using all available labels
@@ -856,7 +807,7 @@ dev.off()
 #####################
 # Info: Mouse, Microarray, 830 samples, 20 main labels, 253 fine lables, Hematopoietic & Immune focus
 
-ImmGen.data <- celldex::ImmGenData()
+ImmGen.data <- ImmGenData()
 
 # Convert GeneID to match human
 ImmGen.data.counts <- ImmGen.data@assays@data$logcounts
@@ -889,7 +840,7 @@ dev.off()
 # Use MonacoImmuneData
 #########################
 # Info: Human, RNAseq, 114 samples, 11 main labels, 29 fine lables, Immune cell focus
-Immune.data <- celldex::MonacoImmuneData()
+Immune.data <- MonacoImmuneData()
 
 
 # First calcualte cell ID using all available labels
@@ -1011,7 +962,7 @@ if(!dir.exists("output/figures/UMAP")){
 }
 
 
-Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters_new
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
 
 # Plot UMAP projection
 UMAPPlot(object = seurat.combined,
@@ -1341,7 +1292,7 @@ if(long.compute){
 
 ### Imputation calculation
 
-```{r seurat_imputation}
+```{r seurat_imputation, eval = FALSE}
 
 
 ######################
@@ -1385,7 +1336,7 @@ Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
 
 ### Export seurat object with imputation
 
-```{r export_RDS}
+```{r export_RDS, eval=FALSE}
 if(!quick.load){
   saveRDS(seurat.combined, file = "Exported_RDS_files/seurat_combined.rds")
 }
@@ -1412,15 +1363,15 @@ if(long.compute){
 
 
 
-## Visualise distribution of cells across clusters/condition/modules {.tabset}
+## Visualise distribution of cells across clusters/condition{.tabset}
 
 ### Plot distribution of cells per each cluster
 
 ```{r Distribution_cells_per_cluster}
 
 # Create output directory
-if(!dir.exists("output/figures/Clust_and_Module_distribution")){
-  dir.create("output/figures/Clust_and_Module_distribution", 
+if(!dir.exists("output/figures/Clust_distribution")){
+  dir.create("output/figures/Clust_distribution", 
              recursive = T)
 }
 
@@ -1445,7 +1396,7 @@ barplot(t(x),
         beside = TRUE)
 
 
-dev.copy(pdf, "output/figures/Clust_and_Module_distribution/Number_cells_per_clust.pdf")
+dev.copy(pdf, "output/figures/Clust_distribution/Number_cells_per_clust.pdf")
 dev.off()
 
 # Frequency 
@@ -1460,7 +1411,7 @@ barplot(t(x),
         legend = TRUE, 
         beside = TRUE)
 
-dev.copy(pdf, "output/figures/Clust_and_Module_distribution/Freq_cells_per_clust.pdf")
+dev.copy(pdf, "output/figures/Clust_distribution/Freq_cells_per_clust.pdf")
 dev.off()
 
 
@@ -1493,79 +1444,12 @@ barplot(t(Cluster.cell.n),
         beside = TRUE, 
         legend = TRUE)
 
-dev.copy(pdf, "output/figures/Clust_and_Module_distribution/Percent_cells_per_cluster_per_condition.pdf")
+dev.copy(pdf, "output/figures/Clust_distribution/Percent_cells_per_cluster_per_condition.pdf")
 dev.off()
 
 
 # reset margin to default 
 par(mar = c(default.mar))
-
-
-#########################################
-# Plot Module wise distribution
-#########################################
-
-# Plot total cell # per module 
-
-Module.cell.n <- table(seurat.combined@meta.data$Module)
-
-barplot(Module.cell.n, 
-        main = "# of cells per Module", 
-        xlab = "Module", 
-        ylab = "# of cells",
-        cex.names = 0.8, 
-        ylim = c(0, 5000))
-
-dev.copy(pdf, "output/figures/Clust_and_Module_distribution/Number_cells_per_Module.pdf")
-dev.off()
-
-
-# Plot freq of total per module
-Module.freq <- prop.table(table(seurat.combined@meta.data$Module))*100
-
-barplot(Module.freq,
-        main = "% of cells per Module",
-        xlab = "Module",
-        ylab = "% of cells",
-        cex.names = 0.8, 
-        ylim = c(0, 40))
-
-dev.copy(pdf, "output/figures/Clust_and_Module_distribution/Percent_cells_per_Module.pdf")
-dev.off()
-
-
-###################################################
-# Plot Freq per module per condition 
-###################################################
-
-# Be aware, US and Stim have diff total number of cells and therefore should be represented as a % normalised to total condition cell #
-
-condition.cell.n <- table(seurat.combined@meta.data$condition)
-US.cell.n <- condition.cell.n[1]
-Stim.cell.n <- condition.cell.n[2]
-
-Idents(seurat.combined) <- seurat.combined@meta.data$Module
-Module.cell.n <- table(Idents(seurat.combined), seurat.combined@meta.data$condition)
-
-Module.cell.n[,1] <- Module.cell.n[,1]/US.cell.n*100
-Module.cell.n[,2] <- Module.cell.n[,2]/Stim.cell.n*100
-
-colSums(Module.cell.n) # sanity check, both should = 100%
-
-
-barplot(t(Module.cell.n),
-        main = "% of cells per Module per condition",
-        xlab = "Module",
-        ylab = "% of cells",
-        col = Condition.cols,
-        cex.names = 0.8, 
-        ylim = c(0, 50), 
-        beside = TRUE, 
-        legend = TRUE)
-
-dev.copy(pdf, "output/figures/Clust_and_Module_distribution/Percent_cells_per_Module_per_condition.pdf")
-dev.off()
-
 
 
 ```

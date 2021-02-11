@@ -23,13 +23,17 @@ Built with R version `r getRversion()`
 ## Setup {.tabset}
 
 ### Environment
-```{r Environment_setup, message = FALSE}
+```{r setup, message = FALSE}
 knitr::opts_chunk$set(
   echo = TRUE,
   message = FALSE,
   warning = FALSE,  
   eval = TRUE, 
   tidy = TRUE
+)
+
+knitr::opts_knit$set(
+  root.dir = "../"
 )
 
 # Environment Set up
@@ -42,7 +46,7 @@ gc() # Free memory
 library("rstudioapi")
 
 # Set working directory to source file location
-setwd(dirname(getActiveDocumentContext()$path))
+#setwd(dirname(getActiveDocumentContext()$path))
 setwd("..")
 
 # Load packages
@@ -85,6 +89,11 @@ if(quick.load){
 
 ### Proportion parameter to get getGircles(), will divide by total size of none-NA clonotypes
 ###clonotypesOnly can be used to just count the clonotypes shared between cluster (removes cell numbers from the equation)
+
+
+# Set up variables 
+remove.self.ribbons <- TRUE
+
 
 # Subset dataset by condition
 meta.tcr <- seurat.tcr.filt@meta.data

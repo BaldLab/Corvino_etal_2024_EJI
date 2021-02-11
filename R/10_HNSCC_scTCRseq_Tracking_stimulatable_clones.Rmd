@@ -24,13 +24,17 @@ Built with R version `r getRversion()`
 ## Setup {.tabset}
 
 ### Environment
-```{r Environment_setup, message = FALSE}
+```{r setup, message = FALSE}
 knitr::opts_chunk$set(
   echo = TRUE,
   message = FALSE,
   warning = FALSE,  
   eval = TRUE, 
   tidy = TRUE
+)
+
+knitr::opts_knit$set(
+  root.dir = "../"
 )
 
 # Environment Set up
@@ -43,7 +47,7 @@ gc() # Free memory
 library("rstudioapi")
 
 # Set working directory to source file location
-setwd(dirname(getActiveDocumentContext()$path))
+#setwd(dirname(getActiveDocumentContext()$path))
 setwd("..")
 
 # Load packages
@@ -129,8 +133,7 @@ length(Query.clonotypes$CTaa)
 length(unique(Query.clonotypes$CTaa)) # 89 clonotypes // diff in number is due to some clonotypes which have a single cell occuring in US Exhausted cluster but not present in stimulated condition exhausted cluster or Sim_exh clusters.
 
 
-# To clean up analysis - generated an external function 
-source(paste0(working.dir, "/R/Clonotype_distribution_function.R"))
+# To clean up analysis - generated an external function called Clonotype_distribution_function.R
 
 clonotype.freq <- Get.distribution(Query.clonotypes, 
                                    query.clusters = query.clusters,
@@ -358,7 +361,6 @@ length(unique(Query.clonotypes$CTaa)) # 97 clonotypes
 
 
 # To clean up analysis - generated an external function 
-source(paste0(working.dir, "/R/Clonotype_distribution_function.R"))
 
 clonotype.freq <- Get.distribution(Query.clonotypes, 
                                    query.clusters = query.clusters,

@@ -281,10 +281,10 @@
     },
     "KernSmooth": {
       "Package": "KernSmooth",
-      "Version": "2.23-17",
+      "Version": "2.23-18",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "bbff70c8c0357b5b88238c83f680fcd3"
+      "Hash": "9e703ad8bf0e99f3691f05da32dfe68b"
     },
     "Lmoments": {
       "Package": "Lmoments",
@@ -421,13 +421,6 @@
       "Repository": "CRAN",
       "Hash": "11af2a900964b790c6d775e0c9e8025f"
     },
-    "RVenn": {
-      "Package": "RVenn",
-      "Version": "1.1.0",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "3bc5935f458c21d89834f83299c819f1"
-    },
     "Rcpp": {
       "Package": "Rcpp",
       "Version": "1.0.6",
@@ -444,10 +437,10 @@
     },
     "RcppArmadillo": {
       "Package": "RcppArmadillo",
-      "Version": "0.10.1.2.2",
+      "Version": "0.10.2.1.0",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "c66578fcae4cd6f42bddffee8a67f19b"
+      "Hash": "a2de53472129933a29975e7cfa3ffe28"
     },
     "RcppEigen": {
       "Package": "RcppEigen",
@@ -897,10 +890,10 @@
     },
     "class": {
       "Package": "class",
-      "Version": "7.3-17",
+      "Version": "7.3-18",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "9267f5dab59a4ef44229858a142bded1"
+      "Hash": "15ef288688a6919417ade6251deea2b3"
     },
     "cli": {
       "Package": "cli",
@@ -950,10 +943,10 @@
     },
     "codetools": {
       "Package": "codetools",
-      "Version": "0.2-16",
+      "Version": "0.2-18",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "89cf4b8207269ccf82fbeb6473fd662b"
+      "Hash": "019388fc48e48b3da0d3a76ff94608a8"
     },
     "colorRamps": {
       "Package": "colorRamps",
@@ -3083,10 +3076,10 @@
     },
     "spatstat.data": {
       "Package": "spatstat.data",
-      "Version": "1.7-0",
+      "Version": "2.0-0",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "9f4d949b77a7f40299c7969fbf39ea1c"
+      "Hash": "582315d096bd9187bda3bb4dc64cefa8"
     },
     "spatstat.utils": {
       "Package": "spatstat.utils",
@@ -3125,10 +3118,10 @@
     },
     "survival": {
       "Package": "survival",
-      "Version": "3.2-3",
+      "Version": "3.2-7",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "3cc6154c577a82f06250254db30a4bfb"
+      "Hash": "39c4ac6d22dad33db0ee37b40810ea12"
     },
     "sva": {
       "Package": "sva",
@@ -3145,10 +3138,10 @@
     },
     "systemfonts": {
       "Package": "systemfonts",
-      "Version": "1.0.0",
+      "Version": "1.0.1",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "e7c955aea294f44eee62fde18795da6f"
+      "Hash": "6e899d7c097698d50ec87b1d8e65f246"
     },
     "tcR": {
       "Package": "tcR",
@@ -3180,10 +3173,10 @@
     },
     "textshaping": {
       "Package": "textshaping",
-      "Version": "0.2.1",
+      "Version": "0.3.0",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "a34d4aa94ca91a52710b1c0c36bcded6"
+      "Hash": "08517f55a30f309465c722ebd83f7e10"
     },
     "tibble": {
       "Package": "tibble",
@@ -3250,10 +3243,10 @@
     },
     "usethis": {
       "Package": "usethis",
-      "Version": "2.0.0",
+      "Version": "2.0.1",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "133099afbac51dc52948b89b387a9734"
+      "Hash": "360e904f9e623286e1a0c6ca0a98c5f6"
     },
     "utf8": {
       "Package": "utf8",
@@ -3334,10 +3327,10 @@
     },
     "xfun": {
       "Package": "xfun",
-      "Version": "0.20",
+      "Version": "0.21",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "d7222684dc02327871e3b1da0aba7089"
+      "Hash": "f3ddcca198959a42e8cb6b06c30d4f1e"
     },
     "xml2": {
       "Package": "xml2",

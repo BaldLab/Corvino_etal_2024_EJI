@@ -23,13 +23,17 @@ Built with R version `{r} getRversion()`
 
 ### Environment
 
-```{r Environment_setup, message = FALSE}
+```{r setup, message = FALSE}
 knitr::opts_chunk$set(
   echo = TRUE,
   message = FALSE,
   warning = FALSE,  
   eval = TRUE, 
   tidy = TRUE
+)
+
+knitr::opts_knit$set(
+  root.dir = "../"
 )
 
 # Environment Set up
@@ -42,7 +46,7 @@ gc() # Free memory
 library("rstudioapi")
 
 # Set working directory to source file location
-setwd(dirname(getActiveDocumentContext()$path))
+#setwd(dirname(getActiveDocumentContext()$path))
 setwd("..")
 
 # Load packages
@@ -54,7 +58,7 @@ source("R/Setup.R", local = knitr::knit_global())
 
 # pipeline variables
 quick.load <- TRUE
-long.compute <- FALSE
+long.compute <- TRUE
 
 # load saved seurat object with cluster annotations and imputation performed
 if(quick.load){
@@ -137,7 +141,7 @@ for(i in 1:length(Cluster.vect)){
   
   input.df <- sig.markers[sig.markers$cluster == Cluster.vect[i], ]
   
-  assign(paste0("Cluster_", Cluster.vect[i]), top_n(input.df, 40,  avg_logFC))
+  assign(paste0("Cluster_", Cluster.vect[i]), top_n(input.df, 40,  avg_log2FC))
   
   
   x <- eval(parse(text = paste0("Cluster_", Cluster.vect[i])))
@@ -204,7 +208,7 @@ for(i in 1:length(clust.var)){
   
   sig.markers <- DEG.var[DEG.var$p_val_adj < 0.05, ]
   
-  assign(paste0("Condition_Cluster_DEGs_", clust.var[i]), top_n(sig.markers, 40,  avg_logFC))
+  assign(paste0("Condition_Cluster_DEGs_", clust.var[i]), top_n(sig.markers, 40,  avg_log2FC))
   
   x <- eval(parse(text = paste0("Condition_Cluster_DEGs_", clust.var[i])))
   write.csv(x, paste0("output/tables/DEG_Clusters_btn_conditions/Top_40_markers_for_Stim_vs_US_cluster_", clust.var[i], ".csv"))
@@ -226,20 +230,19 @@ for(i in 1:length(clust.var)){
   sig.genes <- DEG.var[DEG.var$p_val_adj < 0.05, ]
   
   # up-regulated genes
-  genes.to.label.1 <- top_n(sig.genes, 10, avg_logFC)$gene
+  genes.to.label.1 <- top_n(sig.genes, 10, avg_log2FC)$gene
   
   # Down-regulated genes
-  genes.to.label.2 <- top_n(sig.genes, -10, avg_logFC)$gene
+  genes.to.label.2 <- top_n(sig.genes, -10, avg_log2FC)$gene
   
   # Create vector of genes
   genes.to.label <- unique(c(genes.to.label.1, genes.to.label.2))
   
   # Average expression
   avg.subset.seurat <- log1p(AverageExpression(subset.seurat, verbose = FALSE)$RNA)
+  avg.subset.seurat <- as.data.frame(avg.subset.seurat)
   
-  # Create column with gene id 
-  avg.subset.seurat$gene <- rownames(avg.subset.seurat)
-  
+
   # Generate plot
   p1 <- ggplot(avg.subset.seurat, 
                aes(US, Stim)) + 
@@ -309,9 +312,8 @@ for(i in 1:length(clust.var)){
   
   # Average expression
   avg.subset.seurat <- log1p(AverageExpression(subset.seurat, verbose = FALSE)$RNA)
-  
-  # Create column with gene id 
-  avg.subset.seurat$gene <- rownames(avg.subset.seurat)
+   avg.subset.seurat <- as.data.frame(avg.subset.seurat)
+
   
   # Generate plot
   p1 <- ggplot(avg.subset.seurat, 
@@ -395,7 +397,7 @@ for(i in seq_along(goi)){
 
 if(long.compute){
   
-  source("R/SingleCellHaystack.R", local = knitr::knit_global())
+  source("R/Analysis/SingleCellHaystack_analysis.R", local = knitr::knit_global())
 
   
 }
@@ -457,7 +459,7 @@ write.csv(DEG.markers, "output/tables/DEG_Stim_stim1_vs_Stim_Stim_exhausted.csv"
 
 # Format data
 volcano.data <- DEG.markers %>%
-  dplyr::select(avg_logFC, p_val_adj)
+  dplyr::select(avg_log2FC, p_val_adj)
 
 colnames(volcano.data) <- c("logFC", "FDR")
 
@@ -498,7 +500,7 @@ seurat.combined.small <- subset(seurat.combined, downsample = 300)
 
 # All genes significantly different
 goi <- DEG.markers %>%
-  arrange(desc(avg_logFC))
+  arrange(desc(avg_log2FC))
 
 
 DoHeatmap(seurat.combined.small, 
@@ -510,8 +512,8 @@ dev.off()
 
 # All genes > or < 1 fold change 
 goi <- DEG.markers %>%
-  dplyr::filter(avg_logFC > 1 | avg_logFC < -1) %>%
-  arrange(desc(avg_logFC))
+  dplyr::filter(avg_log2FC > 1 | avg_log2FC < -1) %>%
+  arrange(desc(avg_log2FC))
 
 
 DoHeatmap(seurat.combined.small, 
@@ -563,7 +565,7 @@ temp.seurat.small <- subset(temp.seurat, downsample = 300)
 
 goi <- DEG.markers %>%
   group_by(cluster) %>%
-  top_n(50, avg_logFC) %>%
+  top_n(50, avg_log2FC) %>%
   pull(gene)
 
 goi <- unique(goi)
@@ -585,8 +587,8 @@ dev.off()
 
 goi <- DEG.markers %>%
   group_by(cluster) %>%
-  top_n(100, avg_logFC) %>%
-  arrange(desc(avg_logFC), .by_group = TRUE) %>%
+  top_n(100, avg_log2FC) %>%
+  arrange(desc(avg_log2FC), .by_group = TRUE) %>%
   pull(gene)
 
 goi <- unique(goi)
@@ -630,7 +632,7 @@ rm(temp.seurat, temp.seurat.small)
 
 goi <- DEG.markers %>%
   group_by(cluster) %>%
-  top_n(10, avg_logFC) %>%
+  top_n(10, avg_log2FC) %>%
   pull(gene)
 
 goi <- unique(goi)
@@ -687,7 +689,7 @@ seurat.combined.small <- subset(seurat.combined, downsample = 300)
 
 # Get average expression
 average.seurat <- AverageExpression(seurat.combined,
-                                    assay = "RNA",
+                                    assay = "integrated",
                                     slot = "data",
                                     verbose = TRUE,
                                     return.seurat = TRUE)
@@ -702,7 +704,7 @@ average.seurat <- AverageExpression(seurat.combined,
 # get vector of clusters to iterate over
 Cluster.vect <- unique(seurat.combined.small@meta.data$seurat_clusters)
 
-
+#sum(rownames(average.seurat) %in% x$gene)
 for(i in 1:length(Cluster.vect)){
   
   print(paste0("Evaluating cluster = ", Cluster.vect[i]))
@@ -797,7 +799,7 @@ top.n <- 40
 for(i in 1:length(clusts)){
   
   temp.gene <- sig.genes[sig.genes$cluster == paste0(clusts[i]), ]
-  temp.top <- dplyr::top_n(temp.gene, top.n, avg_logFC)$gene
+  temp.top <- dplyr::top_n(temp.gene, top.n, avg_log2FC)$gene
   
   output.vect <- c(output.vect, temp.top)
   output.vect <- unique(output.vect)
@@ -866,7 +868,7 @@ top.n <- 40
 for(i in 1:length(clusts)){
   
   temp.gene <- sig.genes[sig.genes$cluster == paste0(clusts[i]), ]
-  temp.top <- dplyr::top_n(temp.gene, top.n, avg_logFC)$gene
+  temp.top <- dplyr::top_n(temp.gene, top.n, avg_log2FC)$gene
   
   output.vect <- c(output.vect, temp.top)
   output.vect <- unique(output.vect)
@@ -967,7 +969,7 @@ x <- read.csv("output/tables/DEG_Clusters/Cluster_markers_sig_only.csv")
 
 Top.cluster.genes <- x %>% 
   dplyr::group_by(cluster) %>%
-  dplyr::top_n(10, avg_logFC) %>%
+  dplyr::top_n(10, avg_log2FC) %>%
   dplyr::ungroup() %>% 
   dplyr::select(gene)
 
@@ -1068,7 +1070,7 @@ x <- read.csv("output/tables/DEG_Clusters/Cluster_markers_sig_only.csv")
 
 Top.cluster.genes <- x %>% 
   dplyr::group_by(cluster) %>%
-  dplyr::top_n(10, avg_logFC) %>%
+  dplyr::top_n(10, avg_log2FC) %>%
   dplyr::ungroup() %>% 
   dplyr::select(gene)
 

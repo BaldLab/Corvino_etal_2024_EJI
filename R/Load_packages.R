@@ -41,6 +41,8 @@ for(i in 1:length(pkgs)){
   }
 }
 
+
+
 #####################
 # Github packages
 #####################
@@ -170,7 +172,7 @@ library(scRepertoire)
 #renv::init()
 
 # Run snapshot to update renv.lock file 
-renv::snapshot()
+#renv::snapshot()
 
 # use to restore environment 
 #renv::restore()

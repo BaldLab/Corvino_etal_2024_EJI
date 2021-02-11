@@ -23,13 +23,17 @@ Built with R version `r getRversion()`
 ## Setup {.tabset}
 
 ### Environment
-```{r Environment_setup, message = FALSE}
+```{r setup, message = FALSE}
 knitr::opts_chunk$set(
   echo = TRUE,
   message = FALSE,
   warning = FALSE,  
   eval = TRUE, 
   tidy = TRUE
+)
+
+knitr::opts_knit$set(
+  root.dir = "../"
 )
 
 # Environment Set up
@@ -42,7 +46,7 @@ gc() # Free memory
 library("rstudioapi")
 
 # Set working directory to source file location
-setwd(dirname(getActiveDocumentContext()$path))
+#setwd(dirname(getActiveDocumentContext()$path))
 setwd("..")
 
 # Load packages
@@ -133,6 +137,11 @@ for(i in 1:length(TCR.genes)){
 # Plot heatmap of gene expression for TCR genes
 ##################################################
 
+# set idents
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+# set assay 
+DefaultAssay(seurat.combined) <- "integrated"
 
 
 # get average expression 

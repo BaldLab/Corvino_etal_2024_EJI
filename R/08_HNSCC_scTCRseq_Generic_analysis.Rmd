@@ -1,5 +1,5 @@
 ---
-title: "HNSCC_scTCRseq_Tracking_stimulatable_clones"
+title: "HNSCC_scTCRseq_Generic_analysis"
 author: "Dillon Corvino"
 date: "03/02/2020"
 output:
@@ -22,13 +22,17 @@ Built with R version `r getRversion()`
 ## Setup {.tabset}
 
 ### Environment
-```{r Environment_setup, message = FALSE}
+```{r setup, message = FALSE}
 knitr::opts_chunk$set(
   echo = TRUE,
   message = FALSE,
   warning = FALSE,  
   eval = TRUE, 
   tidy = TRUE
+)
+
+knitr::opts_knit$set(
+  root.dir = "../"
 )
 
 # Environment Set up
@@ -41,7 +45,7 @@ gc() # Free memory
 library("rstudioapi")
 
 # Set working directory to source file location
-setwd(dirname(getActiveDocumentContext()$path))
+#setwd(dirname(getActiveDocumentContext()$path))
 setwd("..")
 
 # Load packages
@@ -52,7 +56,7 @@ source("R/Setup.R", local = knitr::knit_global())
 
 # pipeline variables
 quick.load <- TRUE
-long.compute <- FALSE
+long.compute <- TRUE
 do.plot <- TRUE
 
 # load saved seurat object with cluster annotations and imputation performed
@@ -66,6 +70,9 @@ if(quick.load){
   seurat.tcr.filt <- readRDS("Exported_RDS_files/seurat_tcr_filt.rds")
   DefaultAssay(seurat.tcr.filt) <- "integrated"
   
+  # Also requires combined contig file 
+  combined.contig <- readRDS("Exported_RDS_files/combined_contig.rds")
+
 }
 
 ```

@@ -23,13 +23,17 @@ Built with R version `{r} getRversion()`
 
 ### Environment
 
-```{r Environment_setup, message = FALSE}
+```{r setup, message = FALSE}
 knitr::opts_chunk$set(
   echo = TRUE,
   message = FALSE,
   warning = FALSE,  
   eval = TRUE, 
   tidy = TRUE
+)
+
+knitr::opts_knit$set(
+  root.dir = "../"
 )
 
 # Environment Set up
@@ -42,7 +46,7 @@ gc() # Free memory
 library("rstudioapi")
 
 # Set working directory to source file location
-setwd(dirname(getActiveDocumentContext()$path))
+#setwd(dirname(getActiveDocumentContext()$path))
 setwd("..")
 
 # Load packages
@@ -53,7 +57,7 @@ source("R/Setup.R", local = knitr::knit_global())
 
 # pipeline variables
 quick.load <- TRUE
-long.compute <- FALSE
+long.compute <- TRUE
 
 # load saved seurat object with cluster annotations and imputation performed
 if(quick.load){
@@ -134,11 +138,14 @@ progenyBreaks = c(seq(min(summarized_progeny_scores_df), 0,
                       length.out=floor(paletteLength/2)))
 
 
-progeny_hmap = pheatmap(t(summarized_progeny_scores_df[,-1]),fontsize=14,
+pheatmap(t(summarized_progeny_scores_df[,-1]),fontsize=14,
                         fontsize_row = 10,
-                        color=myColor, breaks = progenyBreaks,
-                        main = "PROGENy (500)", angle_col = 45,
-                        treeheight_col = 0,  border_color = NA)
+                        color= myColor, 
+                        breaks = progenyBreaks,
+                        main = "PROGENy (500)", 
+                        angle_col = "45",
+                        treeheight_col = 0,  
+                        border_color = NA)
 
 dev.copy(pdf, "output/figures/GO_analysis/Progeny/Progeny_heatmap.pdf")
 dev.off()
@@ -173,7 +180,7 @@ Cluster.markers <- read.csv("output/tables/DEG_Clusters/Cluster_markers_unfilter
 # Up-regulated TFs
 sig.genes <- Cluster.markers %>%
   dplyr::filter(p_val_adj < 0.05) %>%
-  dplyr::filter(avg_logFC > 0.5 | avg_logFC < -0.5) %>%
+  dplyr::filter(avg_log2FC > 0.5 | avg_log2FC < -0.5) %>%
   dplyr::select(gene)
 
 sig.genes <- unique(sig.genes$gene)
@@ -188,6 +195,8 @@ TF.DEG <- sig.genes[TF.logic]
 # Plot TFs differentially regulated 
 ########################################
 
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+DefaultAssay(seurat.combined) <- "integrated"
 
 seurat.combined.small <- subset(seurat.combined, downsample = 300)
 
@@ -239,7 +248,7 @@ annotated.heatmap(seurat.combined,
                   cluster.id = "seurat_clusters",
                   assay.use = "integrated",
                   average.expression = FALSE,
-                  goi = top.genes, 
+                  goi = TF.DEG, 
                   genes.to.label = genes.id, 
                   col_order = clust.names, 
                   col.colours = clust.cols, 
@@ -276,14 +285,14 @@ Cluster.markers <- read.csv("output/tables/DEG_Clusters/Cluster_markers_unfilter
 
 UP.genes <- Cluster.markers %>%
   dplyr::filter(p_val_adj < 0.05) %>%
-  dplyr::filter(avg_logFC > 0.5) %>%
+  dplyr::filter(avg_log2FC > 0.5) %>%
   dplyr::select(gene)
 
 UP.genes <- unique(UP.genes$gene)
 
 DN.genes <- Cluster.markers %>%
   dplyr::filter(p_val_adj < 0.05) %>%
-  dplyr::filter(avg_logFC < -0.5) %>%
+  dplyr::filter(avg_log2FC < -0.5) %>%
   dplyr::select(gene)
 
 DN.genes <- unique(DN.genes$gene)
@@ -296,7 +305,7 @@ geneLists <- list(UP = UP.genes,
 Clust.genes <- Cluster.markers %>%
   dplyr::filter(p_val_adj < 0.05) %>%
   dplyr::group_by(cluster) %>%
-  dplyr::filter(avg_logFC > 0.5) %>%
+  dplyr::filter(avg_log2FC > 0.5) %>%
   dplyr::select(gene)
 
 unique(Clust.genes$cluster)
@@ -430,6 +439,7 @@ rm(DEG.predicted.TFs.export)
 # Plot heatmaps of DEG predicted TFs
 
 Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+DefaultAssay(seurat.combined) <- "integrated"
 
 seurat.combined.small <- subset(seurat.combined, downsample = 300)
 

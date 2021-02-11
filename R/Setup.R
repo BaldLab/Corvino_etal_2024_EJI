@@ -16,6 +16,7 @@ source("R/Colour_scheme_variable.R", local = knitr::knit_global())
 source("R/Functions/scRNAseq_function.R", local = knitr::knit_global())
 source("R/Functions/annotate_seurat_heatmap_function.R", local = knitr::knit_global())
 source("R/Functions/Enhanced_volcano_custom_defaults_function.R", local = knitr::knit_global())
+source("R/Functions/Modified_Celltalker_function.R", local = knitr::knit_global())
 
 # TCR specific functions
 source("R/Functions/getCircles_function.R", local = knitr::knit_global())

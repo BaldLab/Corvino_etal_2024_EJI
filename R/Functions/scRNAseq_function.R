@@ -99,7 +99,7 @@ clean.data <- function(input.data, group.id){
   rownames(output.data) <- output.data$gene
   
   output.data <- output.data %>%
-    dplyr::select(avg_logFC, p_val_adj)
+    dplyr::select(avg_log2FC, p_val_adj)
   
   colnames(output.data) <- c("logFC", "FDR")
   return(output.data)
