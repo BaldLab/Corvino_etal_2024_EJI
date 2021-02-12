@@ -1,0 +1,835 @@
+---
+title: "HNSCC_scRNAseq_IFN_Cluster_analysis"
+author: "Dillon Corvino"
+date: "03/02/2020"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: united
+    highlight: tango
+    df_print: paged
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+  markdown: 
+    wrap: 72
+---
+
+Built with R version `{r} getRversion()`
+
+## Setup {.tabset}
+
+### Environment
+
+```{r Environment_setup, message = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,  
+  eval = TRUE, 
+  tidy = TRUE
+)
+
+knitr::opts_knit$set(
+  root.dir = "../"
+)
+
+# Environment Set up
+rm(list = ls()) #Clean workspace
+cat("\014")     #Clean Console
+gc() # Free memory
+
+
+# Establish working directory
+library("rstudioapi")
+
+# Set working directory to source file location
+setwd(dirname(getActiveDocumentContext()$path))
+setwd("..")
+
+# Load packages
+source("R/Load_packages.R", local = knitr::knit_global())
+
+# Create output directories & load custom functions & colour scheme
+source("R/Setup.R", local = knitr::knit_global())
+
+
+# pipeline variables
+quick.load <- TRUE
+long.compute <- TRUE
+
+# load saved seurat object with cluster annotations and imputation performed
+if(quick.load){
+  seurat.combined <- readRDS("Exported_RDS_files/seurat_combined.rds")
+}
+
+
+```
+
+
+
+## Type I IFN cluster analysis {.tabset} // INCOMPLETE 
+
+### Plotting top DEGs in Type I IFN cluster
+```{r Type_I_IFN_cluster_vis}
+
+# Aim 
+# Visualise gene expression of the Type I IFN cluster
+
+# Generate output directories
+if(!dir.exists("output/figures/Type_I_IFN")){
+  dir.create("output/figures/Type_I_IFN", 
+             recursive = TRUE)
+}
+
+# Set assay to integrated
+DefaultAssay(seurat.combined) <- "integrated"
+
+# Set Idents 
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+# Calculate DEGs found in Type I IFN vs everything else 
+TypeI.markers <- FindMarkers(seurat.combined,
+                             ident.1 = "Type_I_IFN",
+                             assay = "integrated", 
+                             only.pos = TRUE)
+
+write.csv(TypeI.markers, "output/tables/Type_I_IFN_upregulated_markers.csv")
+
+Top.DEGs <- 
+  TypeI.markers %>% 
+  dplyr::filter(p_val_adj < 0.05) %>%
+  top_n(20, avg_log2FC) %>%
+  rownames()
+
+# Add transcription factors identified in next code chunk 
+Top.DEGs <- unique(c(Top.DEGs, "IRF7", "STAT1", "PLSCR1", "SP110"))
+
+for(i in seq_along(Top.DEGs)){
+  
+  print(plot_density(seurat.combined,
+                     Top.DEGs[i], 
+                     pal = "inferno"))
+  
+  dev.copy(pdf, paste0("output/figures/Type_I_IFN/Density_UMAP_", Top.DEGs[i], ".pdf"))
+  dev.off()
+}
+
+
+```
+
+
+### Type I IFN cluster Transcription factors
+```{r TF_analysis}
+
+# Create output dir
+# Generate output directories
+if(!dir.exists("output/figures/Type_I_IFN")){
+  dir.create("output/figures/Type_I_IFN", 
+             recursive = TRUE)
+}
+
+
+# Searching for TFs
+TF.ref.list <- read.delim("Data/TFcheckpoint.txt") # http://www.tfcheckpoint.org/index.php/browse
+
+dim(TF.ref.list) # 1020, 11
+colnames(TF.ref.list)
+head(TF.ref.list)
+
+TypeI.markers <- read.csv("output/tables/Type_I_IFN_upregulated_markers.csv", row.names = 1)
+
+# Up-regulated TFs
+sig.genes <- TypeI.markers %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  rownames()
+
+sig.genes <- unique(sig.genes)
+
+TF.logic <- sig.genes %in% TF.ref.list$Gene_symbol
+
+TF.DEG <- sig.genes[TF.logic]
+
+
+########################################
+# Plot TFs differentially regulated 
+########################################
+
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+seurat.combined.small <- subset(seurat.combined, downsample = 300)
+
+average.seurat <- AverageExpression(seurat.combined,
+                                    assay = "integrated",
+                                    slot = "data",
+                                    verbose = TRUE,
+                                    return.seurat = TRUE)
+
+DoHeatmap(average.seurat, 
+          features = TF.DEG, 
+          draw.lines = FALSE, 
+          raster = FALSE) + NoLegend()
+
+dev.copy(pdf, "output/figures/Type_I_IFN/Heatmap_TFs_upregulated_in_Type_I_IFN_average.pdf")
+dev.off()
+
+
+DoHeatmap(seurat.combined.small, 
+          features = TF.DEG, 
+          draw.lines = TRUE, 
+          raster = FALSE) + NoLegend()
+
+dev.copy(pdf, "output/figures/Type_I_IFN/Heatmap_TFs_upregulated_in_Type_I_IFN.pdf")
+dev.off()
+
+
+```
+
+
+### Creation and establishment of Type I IFN signature 
+```{r Type_I_signature}
+
+# Aim: 
+# Establish a signature that can identify Type I IFN cluster in this dataset and be applied to external validation datasets 
+# Goal is to have a minimal gene signature that can accurately and specifically identify Type I IFN cells
+
+
+# Set assay to integrated
+DefaultAssay(seurat.combined) <- "integrated"
+
+# Set Idents 
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+# Calculate DEGs found in Type I IFN vs everything else 
+TypeI.markers <- FindMarkers(seurat.combined,
+                             ident.1 = "Type_I_IFN",
+                             assay = "integrated", 
+                             only.pos = FALSE)
+
+
+# Downsample 
+seurat.combined.small <- subset(seurat.combined, downsample = 300)
+
+# Get average expression
+average.seurat <- AverageExpression(seurat.combined,
+                                    assay = "integrated",
+                                    slot = "data",
+                                    verbose = TRUE,
+                                    return.seurat = TRUE)
+
+
+
+# Number of genes that are significantly DEGs
+
+# Total 
+TypeI.markers %>% 
+  dplyr::filter(p_val_adj < 0.05) %>%
+  nrow() # 343 genes 
+
+# Up-regulated only 
+TypeI.markers %>% 
+  dplyr::filter(p_val_adj < 0.05 & avg_log2FC > 0) %>%
+  nrow() # 126 genes 
+
+# Down-regulated only 
+TypeI.markers %>% 
+  dplyr::filter(p_val_adj < 0.05 & avg_log2FC < 0) %>%
+  nrow() # 217 genes 
+
+
+
+
+# Iterate over generating a gene signature of various sizes
+n.val <- c(100)
+
+output.table <- matrix(nrow = length(n.val), ncol = 2)
+colnames(output.table) <- c("nval", "AUCval")
+output.table[,"nval"] <- n.val
+
+
+for(i in seq_along(n.val)){
+
+
+  # Generate signature using the top x genes in Type I cluster
+  IFN.sig <- 
+    TypeI.markers %>% 
+    dplyr::filter(p_val_adj < 0.05) %>%
+    dplyr::top_n(n.val[i], avg_log2FC) %>%
+    rownames()
+  
+  
+# Plot heatmap of gene expression within signature
+print(DoHeatmap(average.seurat,
+          features = IFN.sig, 
+          draw.lines = FALSE) + ggtitle(paste0("Signature using ", n.val[i])) + NoLegend())
+
+
+}
+
+
+
+
+```
+ 
+ 
+ 
+ # I AM WORKING HERE
+ 
+ ## WORKsPACE FOR SIG THRESHOLD 
+```{r}
+# WORK SPACE FOR DEtERMining SIGNATURE CUtt OFF 
+
+
+
+
+# UP signature
+
+IFN.sig.UP <- 
+  TypeI.markers %>% 
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::top_n(100, avg_log2FC) %>%
+  rownames()
+
+
+# Add module scores
+seurat.combined <- AddModuleScore(seurat.combined, 
+                                  features = list(IFN.sig.UP), 
+                                  name = "IFNsigUP",
+                                  ctrl = 80,
+                                  seed = 42)
+
+
+# Total stats
+total.dataset <- seurat.combined@meta.data %>%
+  summarize(median = median(IFNsigUP1), 
+            standard_deviation = sd(IFNsigUP1))
+
+
+# IFN cluster stats
+IFN.cluster <- seurat.combined@meta.data %>%
+  dplyr::group_by(seurat_clusters) %>% 
+  dplyr::filter(seurat_clusters == "Type_I_IFN") %>%
+  summarize(median = median(IFNsigUP1), 
+            standard_deviation = sd(IFNsigUP1))
+
+
+total.dataset
+IFN.cluster
+
+threshold.val <- total.dataset$standard_deviation * 2
+
+
+VlnPlot(seurat.combined, 
+        "IFNsig1")
+
+
+output.meta <- seurat.combined@meta.data %>%
+  dplyr::mutate(Prediction_UP = case_when(IFNsigUP1 <= threshold.val ~ "Other", 
+                                       IFNsigUP1 > threshold.val ~ "IFN_cell"))
+
+
+# Add Prediction to metadata of input.seurat  
+seurat.combined <- AddMetaData(seurat.combined, 
+                               metadata = output.meta$Prediction_UP, 
+                               col.name = "Prediction_UP")
+
+
+
+
+
+
+#####################
+# Down signature
+#####################
+
+IFN.sig.DN <- 
+  TypeI.markers %>% 
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::top_n(-200, avg_log2FC) %>%
+  rownames()
+
+
+# Add module scores
+  seurat.combined <- AddModuleScore(seurat.combined, 
+                                 features = list(IFN.sig.DN), 
+                                 name = "IFNsigDN",
+                                 ctrl = 80,
+                                 seed = 42)
+  
+  
+  # Calculate 75% quantile for threshold
+  stats.vals <- seurat.combined@meta.data %>%
+    dplyr::group_by(seurat_clusters) %>%
+    summarize(mean = mean(IFNsigDN1), 
+              n = n(), 
+              median = median(IFNsigDN1),
+              qs = quantile(IFNsigDN1, c(0.85)))
+  
+  
+  barplot(stats.vals$median)
+  
+  
+  # Total stats
+  total.dataset <- seurat.combined@meta.data %>%
+    summarize(median = median(IFNsigDN1), 
+              standard_deviation = sd(IFNsigDN1))
+  
+  
+  
+  IFN.cluster <- seurat.combined@meta.data %>%
+    dplyr::group_by(seurat_clusters) %>% 
+    dplyr::filter(seurat_clusters == "Type_I_IFN") %>%
+    summarize(median = median(IFNsigDN1), 
+              standard_deviation = sd(IFNsigDN1))
+  
+  total.dataset
+  
+  IFN.cluster
+  
+  threshold.val <- total.dataset$median
+
+  
+  
+  VlnPlot(seurat.combined, 
+          "IFNsigDN1")
+
+  
+  
+  
+  output.meta <- seurat.combined@meta.data %>%
+    dplyr::mutate(Prediction_DN = case_when(IFNsigDN1 <= threshold.val ~ "IFN_cell", 
+                                         IFNsigDN1 > threshold.val ~ "Other"))
+  
+  
+  # Add Prediction to metadata of input.seurat  
+  seurat.combined <- AddMetaData(seurat.combined, 
+                              metadata = output.meta$Prediction_DN, 
+                              col.name = "Prediction_DN")
+  
+  
+
+
+
+
+# Combine predictions
+  
+  
+  IFN.UP.logic <- seurat.combined@meta.data$Prediction_UP == "IFN_cell"
+  
+  IFN.DN.logic <- seurat.combined@meta.data$Prediction_DN == "IFN_cell"
+  
+  
+  seurat.combined@meta.data$Prediction_Summary <- "Other"
+    seurat.combined@meta.data$Prediction_Summary[IFN.UP.logic & IFN.DN.logic] <- "IFN_cell"
+
+  
+  
+  
+
+# visualise 
+
+
+
+VlnPlot(seurat.combined, 
+        feature = "IFNsig1",
+        group.by = "Prediction_Summary",
+        pt.size = 0)
+
+
+UMAPPlot(seurat.combined, 
+         pt.size = 2, 
+         group.by = "seurat_clusters", 
+         split.by = "Prediction_UP")
+
+
+
+x <- table(seurat.combined@meta.data$seurat_clusters, 
+      seurat.combined@meta.data$Prediction_UP)
+
+x <- table(seurat.combined@meta.data$seurat_clusters, 
+      seurat.combined@meta.data$Prediction_DN)
+
+x <- table(seurat.combined@meta.data$seurat_clusters, 
+      seurat.combined@meta.data$Prediction_Summary)
+
+
+
+barplot(t(x), beside = T, las = 2, legend = T)
+
+
+
+
+ # I AM WORKING HERE above this line
+
+
+
+
+
+
+
+
+##
+
+
+
+
+
+
+
+
+
+
+
+
+# Create and calculate module score using gene signature 
+seurat.combined <- AddModuleScore(seurat.combined, 
+                                  features = list(IFN.sig), 
+                                  assay = "integrated", 
+                                  name = "IFNsig",
+                                  ctrl = 80,
+                                  seed = 42)
+
+
+# Visualise gene signature module score on defined clusters
+VlnPlot(seurat.combined, "IFNsig1",
+        pt.size = 0, 
+        assay = "integrated", 
+        slot = "data",
+        cols = clust.cols)
+
+
+temp <- seurat.combined@meta.data %>%
+  summarize(mean = mean(IFNsig1), 
+            n = n(), 
+            median = median(IFNsig1),
+            qs = quantile(IFNsig1, c(0.75)))
+
+threshold.val <- temp$qs
+
+
+temp <- seurat.combined@meta.data %>%
+  dplyr::mutate(classification = case_when(IFNsig1 <= threshold.val ~ "Other", 
+                                          IFNsig1 > threshold.val ~ "IFN_clust"))
+
+
+
+
+temp <- temp %>%
+  mutate(response_var = case_when(seurat_clusters == "Type_I_IFN" ~ 1,
+                                  TRUE ~ 0), 
+         prediction_var = case_when(classification == "IFN_clust" ~ 1, 
+                                    TRUE ~ 0))
+
+
+
+roc_obj <- roc(response = temp$response_var,
+               predictor = temp$prediction_var, 
+               ci = TRUE, 
+               ci.alpha = 0.9,
+               stratified = FALSE,
+               plot = TRUE, 
+               auc.polygon = TRUE, 
+               max.auc.polygon = TRUE, 
+               grid = TRUE, 
+               print.auc = TRUE, 
+               show.thres = TRUE)
+
+
+
+print(paste0("for a signature of nval = ", n.val[i], " AUC = ", roc_obj$auc))
+print(threshold.val)
+
+
+output.table[i,"AUCval"] <- roc_obj$auc
+
+
+
+
+
+plot(output.table)
+
+
+
+# AUC hits limit at 14 genes. but top 10 genes is AUC = 0.9
+# therefore use top 10 upregulated genes as signature and 75% signature threshold 
+
+IFN.sig <- 
+  TypeI.markers %>% 
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::top_n(10, avg_log2FC) %>%
+  rownames()
+
+write.csv(IFN.sig, "output/tables/TypeI_IFN_sig.csv")
+
+
+
+
+
+
+
+
+IFN.sig.DN <- 
+  TypeI.markers %>% 
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::top_n(-10, avg_log2FC) %>%
+  rownames()
+
+write.csv(IFN.sig.DN, "output/tables/TypeI_IFN_sig_DN.csv")
+
+
+
+
+
+
+
+
+
+
+```
+
+
+
+
+```{r load_custom_functions}
+
+source("R/Functions/Predict_IFN_function.R", local = knitr::knit_global())
+source("R/Functions/evaluate_prediction_function.R", local = knitr::knit_global())
+
+
+```
+
+
+
+
+
+### Type I signature validation
+```{r Type_I_signature_validation_Cillo_dataset}
+
+
+# IFN signature 
+IFN.sig <- read.csv("output/tables/TypeI_IFN_sig.csv")
+IFN.sig <- IFN.sig$x
+
+IFN.sig.DN <- read.csv("output/tables/TypeI_IFN_sig_DN.csv")
+IFN.sig.DN <- IFN.sig.DN$x
+
+
+# Read in validation dataset
+# cd8_cells_clusterID = 2 is IFN sig cluster in cillo dataset
+
+Cillo_et_al <- readRDS("Exported_RDS_files/Cillo_TIL_CD8_only_filt.rds")
+
+
+Idents(Cillo_et_al) <- Cillo_et_al@meta.data$cd8_cells_clusterID
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Cillo_et_al <- IFN.sig.function(Cillo_et_al, 
+                 IFN.sig, 
+                 validation.cluster = "2", 
+                 validation.cluster.column = "cd8_cells_clusterID")
+
+
+head(Cillo_et_al@meta.data)
+
+VlnPlot(Cillo_et_al, 
+        feature = "IFNsig1",
+        group.by = "cd8_cells_clusterID",
+        pt.size = 0)
+
+VlnPlot(Cillo_et_al, 
+        feature = "IFNsigDN1",
+        group.by = "cd8_cells_clusterID",
+        pt.size = 0)
+
+
+
+
+
+
+
+seurat.combined@meta.data$temp <- as.character(seurat.combined@meta.data$seurat_clusters)
+
+
+not.IFN <- seurat.combined@meta.data$temp != "Type_I_IFN"
+IFN <- seurat.combined@meta.data$temp == "Type_I_IFN"
+
+seurat.combined@meta.data$temp[not.IFN] <- "Other"
+seurat.combined@meta.data$temp[IFN] <- "IFN"
+
+
+
+VlnPlot(seurat.combined, 
+        feature = "IFNsig1",
+        group.by = "temp",
+        pt.size = 0.2)
+
+n.val <- c(10, 20, 30, 50)
+
+for(i in seq_along(n.val)){
+
+IFN.sig <- 
+    TypeI.markers %>% 
+    dplyr::filter(p_val_adj < 0.05) %>%
+    dplyr::top_n(n.val[i], avg_log2FC) %>%
+    rownames()
+  
+seurat.combined <- Predict.IFN(seurat.combined, 
+                               gene.signature = IFN.sig,
+                               sig.name = "IFNsig", 
+                               quantile.threshold = 0.85)
+
+
+
+
+
+print(
+UMAPPlot(seurat.combined, 
+         pt.size = 2, 
+         group.by = "seurat_clusters", 
+         split.by = "Prediction")+ ggtitle(paste0("umap_", n.val[i])))
+
+
+print(VlnPlot(seurat.combined, 
+        feature = "IFNsig1",
+        split.by = "temp",
+        group.by = "Prediction",
+        pt.size = 0.2) + ggtitle(paste0("IFNsig1_", n.val[i])))
+
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+IFN.sig <- 
+    TypeI.markers %>% 
+    dplyr::filter(p_val_adj < 0.05) %>%
+    dplyr::top_n(10, avg_log2FC) %>%
+    rownames()
+ 
+Cillo_et_al <- Predict.IFN(Cillo_et_al, 
+                           gene.signature = IFN.sig,
+                           sig.name = "IFNsig", 
+                           quantile.threshold = 0.85)
+
+
+
+
+
+evaluate.prediction(Cillo_et_al, 
+                    validation.cluster = "2", 
+                    validation.column = "cd8_cells_clusterID")
+
+
+
+
+
+
+```
+
+
+
+```{r Sade_Feldman_IFN_signature}
+
+
+
+# IFN signature 
+IFN.sig <- read.csv("output/tables/TypeI_IFN_sig.csv")
+IFN.sig <- IFN.sig$x
+
+
+# Read in dataset
+#Sade_Feldman <- readRDS("Exported_RDS_files/Sade_Feldman_CD8_only.rds")
+
+Sade_Feldman <- readRDS("Exported_RDS_files/Sade_Feldman_all_cells.rds")
+
+head(Sade_Feldman@meta.data)
+
+Idents(Sade_Feldman) <- Sade_Feldman@meta.data$cluster_named
+
+
+
+
+
+x <- IFN.sig.function(Sade_Feldman, 
+                 IFN.sig)
+
+head(x)
+
+
+Sade_Feldman <- AddMetaData(Sade_Feldman, 
+                            metadata = x$classification, 
+                            col.name = "classification")
+
+
+Sade_Feldman <- AddMetaData(Sade_Feldman, 
+                            metadata = x$IFNsig1, 
+                            col.name = "IFNsig1")
+
+
+Sade_Feldman@meta.data
+
+
+VlnPlot(Sade_Feldman, 
+        feature = "IFNsig1",
+        group.by = "cluster_named",
+        pt.size = 0)
+
+UMAPPlot(Sade_Feldman, 
+         group.by = "classification", 
+         pt.size = 1)
+
+TSNEPlot(Sade_Feldman, 
+         group.by = "classification", 
+         pt.size = 1)
+
+
+TSNEPlot(Sade_Feldman, 
+         group.by = "cluster_named", 
+         pt.size = 1)
+
+
+#rm(Sade_Feldman_CD8)
+```
+
+

@@ -32,6 +32,10 @@ knitr::opts_chunk$set(
   tidy = TRUE
 )
 
+knitr::opts_knit$set(
+  root.dir = "../"
+)
+
 # Environment Set up
 rm(list = ls()) #Clean workspace
 cat("\014")     #Clean Console
@@ -42,7 +46,7 @@ gc() # Free memory
 library("rstudioapi")
 
 # Set working directory to source file location
-setwd(dirname(getActiveDocumentContext()$path))
+#setwd(dirname(getActiveDocumentContext()$path))
 setwd("..")
 
 # Load packages
@@ -54,13 +58,12 @@ source("R/Setup.R", local = knitr::knit_global())
 
 # pipeline variables
 quick.load <- TRUE
-long.compute <- FALSE
+long.compute <- TRUE
 
 # load saved seurat object with cluster annotations and imputation performed
 if(quick.load){
   seurat.combined <- readRDS("Exported_RDS_files/seurat_combined.rds")
 }
-
 
 
 # TO DO 

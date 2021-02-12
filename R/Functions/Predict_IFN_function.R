@@ -1,0 +1,45 @@
+
+
+Predict.IFN <- function(input.seurat, 
+                        gene.signature = IFNsig,
+                        sig.name = "IFNsig", 
+                        quantile.threshold = 0.85){
+  
+  
+  #browser()
+  
+  # Add module scores
+  input.seurat <- AddModuleScore(input.seurat, 
+                                 features = list(gene.signature), 
+                                 name = sig.name,
+                                 ctrl = 80,
+                                 seed = 42)
+  
+  # Seurat always appends "1" to signature ID. therefore 
+  seurat.sig.name <- paste0(sig.name, "1")
+  
+  # Calculate 75% quantile for threshold
+  stats.vals <- input.seurat@meta.data %>%
+    summarize(mean = mean(get(seurat.sig.name)), 
+              n = n(), 
+              median = median(get(seurat.sig.name)),
+              qs = quantile(get(seurat.sig.name), c(quantile.threshold)))
+  
+  
+  threshold.val <- stats.vals$qs
+  
+  
+  output.meta <- input.seurat@meta.data %>%
+    dplyr::mutate(Prediction = case_when(get(seurat.sig.name) <= threshold.val ~ "Other", 
+                                         get(seurat.sig.name) > threshold.val ~ "IFN_cell"))
+  
+  
+  # Add Prediction to metadata of input.seurat  
+  input.seurat <- AddMetaData(input.seurat, 
+                              metadata = output.meta$Prediction, 
+                              col.name = "Prediction")
+  
+  
+  return(input.seurat)
+  
+}

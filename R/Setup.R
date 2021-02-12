@@ -9,6 +9,9 @@ setwd("..")
 
 working.dir <- getwd()
 
+# For reproducibility
+set.seed(42)
+
 # Establish colour scheme
 source("R/Colour_scheme_variable.R", local = knitr::knit_global())
 
