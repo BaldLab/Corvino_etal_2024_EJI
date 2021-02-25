@@ -209,6 +209,11 @@ TypeI.markers <- FindMarkers(seurat.combined,
                              only.pos = FALSE)
 
 
+
+# Write dataset to file 
+write.csv(TypeI.markers, "output/tables/TypeI_markers.csv")
+
+
 # Downsample 
 seurat.combined.small <- subset(seurat.combined, downsample = 300)
 
@@ -274,22 +279,228 @@ print(DoHeatmap(average.seurat,
 ```
  
  
- 
- # I AM WORKING HERE
- 
- ## WORKsPACE FOR SIG THRESHOLD 
-```{r}
-# WORK SPACE FOR DEtERMining SIGNATURE CUtt OFF 
+```{r load_custom_functions}
+
+source("R/Functions/Predict_IFN_function.R", local = knitr::knit_global())
+source("R/Functions/evaluate_prediction_function.R", local = knitr::knit_global())
+source("R/Functions/visualise_prediction_function.R", local = knitr::knit_global())
+
+
+```
 
 
 
+
+```{r IFN_cluster_prediction}
+    
+    
+    
+# Automated prediction 
+    
+
+TypeI.markers <- read.csv("output/tables/TypeI_markers.csv", row.names = 1)
+
+         
 
 # UP signature
 
 IFN.sig.UP <- 
   TypeI.markers %>% 
   dplyr::filter(p_val_adj < 0.05) %>%
-  dplyr::top_n(100, avg_log2FC) %>%
+  dplyr::top_n(10, avg_log2FC) %>%
+  rownames()
+
+
+seurat.combined <- Predict.IFN(seurat.combined, 
+                               gene.signature = IFN.sig.UP,
+                               sig.name = "IFNsig_test")
+
+
+visualise.prediction(seurat.combined,
+                     sig.name = "IFNsig_test", 
+                     cluster.var = "seurat_clusters")
+
+
+
+
+
+
+UMAPPlot(seurat.combined, 
+         group.by = "seurat_clusters")
+
+
+
+
+FeaturePlot(seurat.combined, 
+            "GZMB", pt.size = 2, order = TRUE)
+
+p1 <- Nebulosa::plot_density(seurat.combined, "NKG7") + NoLegend()
+p2 <- Nebulosa::plot_density(seurat.combined, "GZMA") + NoLegend()
+p3 <- Nebulosa::plot_density(seurat.combined, "GZMB") + NoLegend()
+p4 <- Nebulosa::plot_density(seurat.combined, "GZMK") + NoLegend()
+p5 <- Nebulosa::plot_density(seurat.combined, "GZMM") + NoLegend()
+p6 <- Nebulosa::plot_density(seurat.combined, "PRF1") + NoLegend()
+p7 <- Nebulosa::plot_density(seurat.combined, "CTSW") + NoLegend()
+#p8 <- Nebulosa::plot_density(seurat.combined, "LAMP1") + NoLegend()
+p9 <- Nebulosa::plot_density(seurat.combined, "GZMH") + NoLegend()
+
+(p1 + p2 + p3 + p4) /
+(p5 + p6 + p9 + p7)
+
+#grep("GZM.*", rownames(seurat.combined), value = T)
+
+Nebulosa::plot_density(seurat.combined, c("GZMK", "GZMM"), joint = T)
+Nebulosa::plot_density(seurat.combined, c("GZMH", "GZMB", "PRF1"), joint = T)
+Nebulosa::plot_density(seurat.combined, c("GZMA"))
+
+
+# k and M and A
+# H and Prf and B
+# 
+
+
+
+#
+rm(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12)
+
+
+
+
+
+Cillo_et_al <- readRDS("Exported_RDS_files/Cillo_TIL_CD8_only_filt.rds")
+
+
+Idents(Cillo_et_al) <- Cillo_et_al@meta.data$cd8_cells_clusterID
+
+
+
+Cillo_et_al <- Predict.IFN(Cillo_et_al, 
+                               gene.signature = IFN.sig.UP,
+                               sig.name = "IFNsig_test")
+
+
+
+
+visualise.prediction(Cillo_et_al,
+                     sig.name = "IFNsig_test", 
+                     cluster.var = "cd8_cells_clusterID")
+
+
+evaluate.prediction(Cillo_et_al, 
+                    sig.name = "IFNsig_test", 
+                    validation.cluster = "2", 
+                    validation.column = "cd8_cells_clusterID")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+x <- table(seurat.combined@meta.data$seurat_clusters, 
+      seurat.combined@meta.data$IFNsig_test_Prediction)
+
+x <- table(seurat.combined@meta.data$seurat_clusters, 
+      seurat.combined@meta.data$Prediction_DN)
+
+x <- table(seurat.combined@meta.data$seurat_clusters, 
+      seurat.combined@meta.data$Prediction_Summary)
+
+x <- table(seurat.combined@meta.data$seurat_clusters, 
+      seurat.combined@meta.data$IFNsig_test_Prediction)
+
+
+x <- as.data.frame(x)
+x[, "IFN_cell"]
+x[, "IFN_cell"]
+
+
+y <- colSums(x)
+
+x[,1] <- x[,1]/y[1]
+x[,2] <- x[,2]/y[2]
+x <- x*100
+barplot(t(x),
+        beside = TRUE,
+        las = 2,
+        legend = TRUE,
+        ylim = c(0, 100))
+
+
+
+
+#
+    
+
+
+
+
+```
+
+
+
+
+```{r Sade_Feldman_IFN_signature}
+
+
+
+# IFN signature 
+IFN.sig <- read.csv("output/tables/TypeI_IFN_sig.csv")
+IFN.sig <- IFN.sig$x
+
+
+# Read in dataset
+
+#Sade_Feldman <- readRDS("Exported_RDS_files/Sade_Feldman_all_cells.rds")
+
+Sade_Feldman <- readRDS("Exported_RDS_files/Sade_Feldman_CD8_only.rds")
+
+
+Idents(Sade_Feldman) <- Sade_Feldman@meta.data$cluster_cd8
+
+
+
+Sade_Feldman <- Predict.IFN(Sade_Feldman, 
+                               gene.signature = IFN.sig.UP,
+                               sig.name = "IFNsig_test")
+
+
+
+visualise.prediction(Sade_Feldman,
+                     sig.name = "IFNsig_test", 
+                     cluster.var = "cluster_cd8")
+
+
+
+
+#rm(Sade_Feldman_CD8)
+```
+
+ ## WORKsPACE FOR SIG THRESHOLD 
+```{r working_area_for_sigthreshold}
+
+
+#######################################
+# Manual score calculation 
+#######################################
+
+TypeI.markers <- read.csv("output/tables/TypeI_markers.csv", row.names = 1)
+
+         
+
+# UP signature
+
+IFN.sig.UP <- 
+  TypeI.markers %>% 
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::top_n(10, avg_log2FC) %>%
   rownames()
 
 
@@ -322,7 +533,8 @@ threshold.val <- total.dataset$standard_deviation * 2
 
 
 VlnPlot(seurat.combined, 
-        "IFNsig1")
+        "IFNsigUP1", 
+        pt.size = 0.1)
 
 
 output.meta <- seurat.combined@meta.data %>%
@@ -347,7 +559,7 @@ seurat.combined <- AddMetaData(seurat.combined,
 IFN.sig.DN <- 
   TypeI.markers %>% 
   dplyr::filter(p_val_adj < 0.05) %>%
-  dplyr::top_n(-200, avg_log2FC) %>%
+  dplyr::top_n(-100, avg_log2FC) %>%
   rownames()
 
 
@@ -412,6 +624,17 @@ IFN.sig.DN <-
 
 
 
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
 
 # Combine predictions
   
@@ -427,409 +650,5 @@ IFN.sig.DN <-
   
   
   
-
-# visualise 
-
-
-
-VlnPlot(seurat.combined, 
-        feature = "IFNsig1",
-        group.by = "Prediction_Summary",
-        pt.size = 0)
-
-
-UMAPPlot(seurat.combined, 
-         pt.size = 2, 
-         group.by = "seurat_clusters", 
-         split.by = "Prediction_UP")
-
-
-
-x <- table(seurat.combined@meta.data$seurat_clusters, 
-      seurat.combined@meta.data$Prediction_UP)
-
-x <- table(seurat.combined@meta.data$seurat_clusters, 
-      seurat.combined@meta.data$Prediction_DN)
-
-x <- table(seurat.combined@meta.data$seurat_clusters, 
-      seurat.combined@meta.data$Prediction_Summary)
-
-
-
-barplot(t(x), beside = T, las = 2, legend = T)
-
-
-
-
- # I AM WORKING HERE above this line
-
-
-
-
-
-
-
-
-##
-
-
-
-
-
-
-
-
-
-
-
-
-# Create and calculate module score using gene signature 
-seurat.combined <- AddModuleScore(seurat.combined, 
-                                  features = list(IFN.sig), 
-                                  assay = "integrated", 
-                                  name = "IFNsig",
-                                  ctrl = 80,
-                                  seed = 42)
-
-
-# Visualise gene signature module score on defined clusters
-VlnPlot(seurat.combined, "IFNsig1",
-        pt.size = 0, 
-        assay = "integrated", 
-        slot = "data",
-        cols = clust.cols)
-
-
-temp <- seurat.combined@meta.data %>%
-  summarize(mean = mean(IFNsig1), 
-            n = n(), 
-            median = median(IFNsig1),
-            qs = quantile(IFNsig1, c(0.75)))
-
-threshold.val <- temp$qs
-
-
-temp <- seurat.combined@meta.data %>%
-  dplyr::mutate(classification = case_when(IFNsig1 <= threshold.val ~ "Other", 
-                                          IFNsig1 > threshold.val ~ "IFN_clust"))
-
-
-
-
-temp <- temp %>%
-  mutate(response_var = case_when(seurat_clusters == "Type_I_IFN" ~ 1,
-                                  TRUE ~ 0), 
-         prediction_var = case_when(classification == "IFN_clust" ~ 1, 
-                                    TRUE ~ 0))
-
-
-
-roc_obj <- roc(response = temp$response_var,
-               predictor = temp$prediction_var, 
-               ci = TRUE, 
-               ci.alpha = 0.9,
-               stratified = FALSE,
-               plot = TRUE, 
-               auc.polygon = TRUE, 
-               max.auc.polygon = TRUE, 
-               grid = TRUE, 
-               print.auc = TRUE, 
-               show.thres = TRUE)
-
-
-
-print(paste0("for a signature of nval = ", n.val[i], " AUC = ", roc_obj$auc))
-print(threshold.val)
-
-
-output.table[i,"AUCval"] <- roc_obj$auc
-
-
-
-
-
-plot(output.table)
-
-
-
-# AUC hits limit at 14 genes. but top 10 genes is AUC = 0.9
-# therefore use top 10 upregulated genes as signature and 75% signature threshold 
-
-IFN.sig <- 
-  TypeI.markers %>% 
-  dplyr::filter(p_val_adj < 0.05) %>%
-  dplyr::top_n(10, avg_log2FC) %>%
-  rownames()
-
-write.csv(IFN.sig, "output/tables/TypeI_IFN_sig.csv")
-
-
-
-
-
-
-
-
-IFN.sig.DN <- 
-  TypeI.markers %>% 
-  dplyr::filter(p_val_adj < 0.05) %>%
-  dplyr::top_n(-10, avg_log2FC) %>%
-  rownames()
-
-write.csv(IFN.sig.DN, "output/tables/TypeI_IFN_sig_DN.csv")
-
-
-
-
-
-
-
-
-
-
 ```
-
-
-
-
-```{r load_custom_functions}
-
-source("R/Functions/Predict_IFN_function.R", local = knitr::knit_global())
-source("R/Functions/evaluate_prediction_function.R", local = knitr::knit_global())
-
-
-```
-
-
-
-
-
-### Type I signature validation
-```{r Type_I_signature_validation_Cillo_dataset}
-
-
-# IFN signature 
-IFN.sig <- read.csv("output/tables/TypeI_IFN_sig.csv")
-IFN.sig <- IFN.sig$x
-
-IFN.sig.DN <- read.csv("output/tables/TypeI_IFN_sig_DN.csv")
-IFN.sig.DN <- IFN.sig.DN$x
-
-
-# Read in validation dataset
-# cd8_cells_clusterID = 2 is IFN sig cluster in cillo dataset
-
-Cillo_et_al <- readRDS("Exported_RDS_files/Cillo_TIL_CD8_only_filt.rds")
-
-
-Idents(Cillo_et_al) <- Cillo_et_al@meta.data$cd8_cells_clusterID
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-Cillo_et_al <- IFN.sig.function(Cillo_et_al, 
-                 IFN.sig, 
-                 validation.cluster = "2", 
-                 validation.cluster.column = "cd8_cells_clusterID")
-
-
-head(Cillo_et_al@meta.data)
-
-VlnPlot(Cillo_et_al, 
-        feature = "IFNsig1",
-        group.by = "cd8_cells_clusterID",
-        pt.size = 0)
-
-VlnPlot(Cillo_et_al, 
-        feature = "IFNsigDN1",
-        group.by = "cd8_cells_clusterID",
-        pt.size = 0)
-
-
-
-
-
-
-
-seurat.combined@meta.data$temp <- as.character(seurat.combined@meta.data$seurat_clusters)
-
-
-not.IFN <- seurat.combined@meta.data$temp != "Type_I_IFN"
-IFN <- seurat.combined@meta.data$temp == "Type_I_IFN"
-
-seurat.combined@meta.data$temp[not.IFN] <- "Other"
-seurat.combined@meta.data$temp[IFN] <- "IFN"
-
-
-
-VlnPlot(seurat.combined, 
-        feature = "IFNsig1",
-        group.by = "temp",
-        pt.size = 0.2)
-
-n.val <- c(10, 20, 30, 50)
-
-for(i in seq_along(n.val)){
-
-IFN.sig <- 
-    TypeI.markers %>% 
-    dplyr::filter(p_val_adj < 0.05) %>%
-    dplyr::top_n(n.val[i], avg_log2FC) %>%
-    rownames()
-  
-seurat.combined <- Predict.IFN(seurat.combined, 
-                               gene.signature = IFN.sig,
-                               sig.name = "IFNsig", 
-                               quantile.threshold = 0.85)
-
-
-
-
-
-print(
-UMAPPlot(seurat.combined, 
-         pt.size = 2, 
-         group.by = "seurat_clusters", 
-         split.by = "Prediction")+ ggtitle(paste0("umap_", n.val[i])))
-
-
-print(VlnPlot(seurat.combined, 
-        feature = "IFNsig1",
-        split.by = "temp",
-        group.by = "Prediction",
-        pt.size = 0.2) + ggtitle(paste0("IFNsig1_", n.val[i])))
-
-
-}
-
-
-
-
-
-
-
-
-
-
-
-
-IFN.sig <- 
-    TypeI.markers %>% 
-    dplyr::filter(p_val_adj < 0.05) %>%
-    dplyr::top_n(10, avg_log2FC) %>%
-    rownames()
  
-Cillo_et_al <- Predict.IFN(Cillo_et_al, 
-                           gene.signature = IFN.sig,
-                           sig.name = "IFNsig", 
-                           quantile.threshold = 0.85)
-
-
-
-
-
-evaluate.prediction(Cillo_et_al, 
-                    validation.cluster = "2", 
-                    validation.column = "cd8_cells_clusterID")
-
-
-
-
-
-
-```
-
-
-
-```{r Sade_Feldman_IFN_signature}
-
-
-
-# IFN signature 
-IFN.sig <- read.csv("output/tables/TypeI_IFN_sig.csv")
-IFN.sig <- IFN.sig$x
-
-
-# Read in dataset
-#Sade_Feldman <- readRDS("Exported_RDS_files/Sade_Feldman_CD8_only.rds")
-
-Sade_Feldman <- readRDS("Exported_RDS_files/Sade_Feldman_all_cells.rds")
-
-head(Sade_Feldman@meta.data)
-
-Idents(Sade_Feldman) <- Sade_Feldman@meta.data$cluster_named
-
-
-
-
-
-x <- IFN.sig.function(Sade_Feldman, 
-                 IFN.sig)
-
-head(x)
-
-
-Sade_Feldman <- AddMetaData(Sade_Feldman, 
-                            metadata = x$classification, 
-                            col.name = "classification")
-
-
-Sade_Feldman <- AddMetaData(Sade_Feldman, 
-                            metadata = x$IFNsig1, 
-                            col.name = "IFNsig1")
-
-
-Sade_Feldman@meta.data
-
-
-VlnPlot(Sade_Feldman, 
-        feature = "IFNsig1",
-        group.by = "cluster_named",
-        pt.size = 0)
-
-UMAPPlot(Sade_Feldman, 
-         group.by = "classification", 
-         pt.size = 1)
-
-TSNEPlot(Sade_Feldman, 
-         group.by = "classification", 
-         pt.size = 1)
-
-
-TSNEPlot(Sade_Feldman, 
-         group.by = "cluster_named", 
-         pt.size = 1)
-
-
-#rm(Sade_Feldman_CD8)
-```
-
-

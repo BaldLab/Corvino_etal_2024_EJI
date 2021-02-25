@@ -3,6 +3,8 @@
 Predict.IFN <- function(input.seurat, 
                         gene.signature = IFNsig,
                         sig.name = "IFNsig", 
+                        upregulated = "TRUE",
+                        deviation.multiplyer = 2,
                         quantile.threshold = 0.85){
   
   
@@ -22,22 +24,33 @@ Predict.IFN <- function(input.seurat,
   stats.vals <- input.seurat@meta.data %>%
     summarize(mean = mean(get(seurat.sig.name)), 
               n = n(), 
+              standard_deviation = sd(get(seurat.sig.name)),
               median = median(get(seurat.sig.name)),
               qs = quantile(get(seurat.sig.name), c(quantile.threshold)))
   
   
-  threshold.val <- stats.vals$qs
+  threshold.val <- stats.vals$median + (stats.vals$standard_deviation * deviation.multiplyer)
   
-  
+  if(upregulated){
   output.meta <- input.seurat@meta.data %>%
     dplyr::mutate(Prediction = case_when(get(seurat.sig.name) <= threshold.val ~ "Other", 
                                          get(seurat.sig.name) > threshold.val ~ "IFN_cell"))
+  
+  }else{
+    
+    output.meta <- input.seurat@meta.data %>%
+      dplyr::mutate(Prediction = case_when(get(seurat.sig.name) <= threshold.val ~ "IFN_cell", 
+                                           get(seurat.sig.name) > threshold.val ~ "Other"))
+    
+  }
+  
+  
   
   
   # Add Prediction to metadata of input.seurat  
   input.seurat <- AddMetaData(input.seurat, 
                               metadata = output.meta$Prediction, 
-                              col.name = "Prediction")
+                              col.name = paste0(sig.name, "_Prediction"))
   
   
   return(input.seurat)

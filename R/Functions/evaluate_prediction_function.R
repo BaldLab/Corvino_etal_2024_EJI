@@ -1,6 +1,7 @@
 
 
 evaluate.prediction <- function(input.seurat, 
+                                sig.name = "IFNsig",
                                 validation.column, 
                                 validation.cluster){
   
@@ -8,7 +9,7 @@ evaluate.prediction <- function(input.seurat,
   output.temp <- input.seurat@meta.data %>%
     mutate(response_var = case_when(get(validation.column) == get("validation.cluster") ~ 1,
                                     TRUE ~ 0), 
-           prediction_var = case_when(Prediction == "IFN_cell" ~ 1, 
+           prediction_var = case_when(get(paste0(sig.name, "_Prediction")) == "IFN_cell" ~ 1, 
                                       TRUE ~ 0))
   
   roc(response = output.temp$response_var,
