@@ -21,6 +21,17 @@ Built with R version `{r} getRversion()`
 
 ## Setup {.tabset}
 
+########################################################################################################################
+# DO NOT RUN THIS SCRIPT UNLESS ABSOLUTELY NECESSARY 
+# Because of random initialisation with UMAP etc. the generated plots will look different to those output as figures 
+# Please read in seurat_combined.RDS and use this for all analysis
+# Please only run scripts 02_.* onwards 
+########################################################################################################################
+
+
+
+
+
 ### Dataset information
 
 ```{r Dataset_Info}
@@ -122,7 +133,6 @@ Sample4.seurat@meta.data$group <- "S4"
 ### Merge Seurat objects
 
 ```{r merge_seurat}
-
 
 ######################
 # Merge samples
@@ -1083,7 +1093,6 @@ if(!dir.exists("output/figures/UMAP")){
 # Plot UMAPs with cluster names
 ##########################################
 
-
 Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
 
 # UMAP named clusters
@@ -1178,9 +1187,6 @@ UMAPPlot(object = seurat.combined,
 
 dev.copy(pdf, "output/figures/UMAP/UMAP_groupby_sample.pdf")
 dev.off()
-
-
-
 
 
 
@@ -1361,98 +1367,6 @@ if(long.compute){
 
 ```
 
-
-
-## Visualise distribution of cells across clusters/condition{.tabset}
-
-### Plot distribution of cells per each cluster
-
-```{r Distribution_cells_per_cluster}
-
-# Create output directory
-if(!dir.exists("output/figures/Clust_distribution")){
-  dir.create("output/figures/Clust_distribution", 
-             recursive = T)
-}
-
-################################
-# Plot cluster wise distribution
-################################
-default.mar <- par()$mar
-
-par(mar = c(10.1, 5.1, 4.1, 2.1))
-
-
-# Number of cells 
-x <- table(seurat.combined@meta.data$seurat_clusters)
-
-barplot(t(x), 
-        main = "Number of cells per clust",
-        ylab = "Number of cells",
-        cex.names = 1,
-        las = 2,
-        ylim = c(0, 2500),
-        legend = TRUE, 
-        beside = TRUE)
-
-
-dev.copy(pdf, "output/figures/Clust_distribution/Number_cells_per_clust.pdf")
-dev.off()
-
-# Frequency 
-x <- prop.table(table(seurat.combined@meta.data$seurat_clusters)) * 100
-
-barplot(t(x), 
-        main = "Freq of cells per clust",
-        ylab = "% of total",
-        cex.names = 1, 
-        las = 2,
-        ylim = c(0, 20),
-        legend = TRUE, 
-        beside = TRUE)
-
-dev.copy(pdf, "output/figures/Clust_distribution/Freq_cells_per_clust.pdf")
-dev.off()
-
-
-
-###################################################
-# Plot Freq per cluster per condition 
-###################################################
-
-# Be aware, US and Stim have diff total number of cells and therefore should be represented as a % normalised to total condition cell #
-
-condition.cell.n <- table(seurat.combined@meta.data$condition)
-US.cell.n <- condition.cell.n[1]
-Stim.cell.n <- condition.cell.n[2]
-
-Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
-Cluster.cell.n <- table(Idents(seurat.combined), seurat.combined@meta.data$condition)
-
-Cluster.cell.n[,1] <- Cluster.cell.n[,1]/US.cell.n*100
-Cluster.cell.n[,2] <- Cluster.cell.n[,2]/Stim.cell.n*100
-
-colSums(Cluster.cell.n) # sanity check, both should = 100%
-
-barplot(t(Cluster.cell.n),
-        main = "% of cells per cluster per condition",
-        ylab = "% of cells",
-        col = Condition.cols,
-        cex.names = 1, 
-        las = 2,
-        ylim = c(0, 30), 
-        beside = TRUE, 
-        legend = TRUE)
-
-dev.copy(pdf, "output/figures/Clust_distribution/Percent_cells_per_cluster_per_condition.pdf")
-dev.off()
-
-
-# reset margin to default 
-par(mar = c(default.mar))
-
-
-```
 
 
 ## Analysis optimisation code {.tabset}

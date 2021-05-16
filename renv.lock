@@ -281,10 +281,10 @@
     },
     "KernSmooth": {
       "Package": "KernSmooth",
-      "Version": "2.23-18",
+      "Version": "2.23-17",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "9e703ad8bf0e99f3691f05da32dfe68b"
+      "Hash": "bbff70c8c0357b5b88238c83f680fcd3"
     },
     "Lmoments": {
       "Package": "Lmoments",
@@ -890,10 +890,10 @@
     },
     "class": {
       "Package": "class",
-      "Version": "7.3-18",
+      "Version": "7.3-17",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "15ef288688a6919417ade6251deea2b3"
+      "Hash": "9267f5dab59a4ef44229858a142bded1"
     },
     "cli": {
       "Package": "cli",
@@ -943,10 +943,10 @@
     },
     "codetools": {
       "Package": "codetools",
-      "Version": "0.2-18",
+      "Version": "0.2-16",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "019388fc48e48b3da0d3a76ff94608a8"
+      "Hash": "89cf4b8207269ccf82fbeb6473fd662b"
     },
     "colorRamps": {
       "Package": "colorRamps",
@@ -3118,10 +3118,10 @@
     },
     "survival": {
       "Package": "survival",
-      "Version": "3.2-7",
+      "Version": "3.2-3",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "39c4ac6d22dad33db0ee37b40810ea12"
+      "Hash": "3cc6154c577a82f06250254db30a4bfb"
     },
     "sva": {
       "Package": "sva",

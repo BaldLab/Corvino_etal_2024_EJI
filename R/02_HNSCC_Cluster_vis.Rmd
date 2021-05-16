@@ -1,0 +1,303 @@
+---
+title: "02_HNSCC_cluster_vis"
+author: "Dillon Corvino"
+date: "03/02/2020"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: united
+    highlight: tango
+    df_print: paged
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+  markdown: 
+    wrap: 72
+---
+
+Built with R version `{r} getRversion()`
+
+## Setup {.tabset}
+
+### Dataset information
+
+```{r Dataset_Info}
+
+# HNSCC scRNAseq/scTCRseq dataset
+# Cells are HNSCC TILs sorted on Lymphocytes/Live/CD3+/CD4-/CD8+
+# Human samples
+# Each sample is a pool of 4 patients
+# samples 1 and 2 are unstimulated 
+# samples 3 and 4 are stimulated 
+# Patients in sample 1 match patients in sample 3 and sample 2 pairs with 4
+# Data acquired was transcript expression, ADT (antibody expression), and TCRA & B sequences
+# This analysis uses just Transcript and TCR data
+
+
+# General information
+# CellRanger was used for sequence alignment/QC/counts/TCR calls - performed by Ross (QIMR, Brisbane, Aus)
+# DC was provided the output from CellRanger (counts matrix) and used this as input for analysis within this script
+
+```
+
+### Environment
+
+```{r setup, message = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,  
+  eval = TRUE, 
+  tidy = TRUE
+)
+
+knitr::opts_knit$set(
+  root.dir = "../"
+)
+
+# Environment Set up
+rm(list = ls()) #Clean workspace
+cat("\014")     #Clean Console
+gc() # Free memory
+
+
+# Establish working directory
+library("rstudioapi")
+
+# Set working directory to source file location
+setwd(dirname(getActiveDocumentContext()$path))
+setwd("..")
+
+# Load packages
+source("R/Load_packages.R", local = knitr::knit_global())
+
+# Create output directories & load custom functions & colour scheme
+source("R/Setup.R", local = knitr::knit_global())
+
+
+```
+
+
+### Reading data
+
+```{r reading_data}
+
+
+seurat.combined <- readRDS("Exported_RDS_files/seurat_combined.rds")
+
+
+
+```
+
+
+## Cluster vis {.tabset}
+
+### UMAP with Named clusters
+
+```{r Vis_Named_Clusters_UMAP}
+
+# Create output directory
+if(!dir.exists("output/figures/UMAP")){
+  dir.create("output/figures/UMAP", 
+             recursive = T)
+}
+
+
+##########################################
+# Plot UMAPs with cluster names
+##########################################
+
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+# UMAP named clusters
+UMAPPlot(object = seurat.combined,
+         pt.size = 1,
+         label = FALSE, 
+         cols = clust.cols) + 
+  ggtitle("UMAP named clusters")
+
+dev.copy(pdf, "output/figures/UMAP/UMAP_clusters.pdf")
+dev.off()
+
+# UMAP named clusters - labeled 
+UMAPPlot(object = seurat.combined,
+         label = TRUE, 
+         pt.size = 1,
+         label.size = 6,
+         cols = clust.cols) + 
+  NoLegend() +
+  ggtitle("UMAP named clusters")
+
+dev.copy(pdf, "output/figures/UMAP/UMAP_clusters_labeled.pdf")
+dev.off()
+
+
+#############
+# Condition
+#############
+
+# Split by condition
+UMAPPlot(object = seurat.combined,
+         label = FALSE, 
+         pt.size = 1,
+         split.by = "condition",
+         label.size = 6,
+         cols = clust.cols) + 
+  ggtitle("UMAP split by condition")
+
+dev.copy(pdf, "output/figures/UMAP/UMAP_splitby_conditions.pdf")
+dev.off()
+
+# Split by condition // No legend
+UMAPPlot(object = seurat.combined,
+         label = FALSE, 
+         pt.size = 1,
+         split.by = "condition",
+         label.size = 6,
+         cols = clust.cols) + 
+  ggtitle("UMAP split by condition") + 
+  NoLegend()
+
+dev.copy(pdf, "output/figures/UMAP/UMAP_splitby_conditions_Nolegend.pdf")
+dev.off()
+
+# Group by condition
+UMAPPlot(object = seurat.combined,
+         label = FALSE, 
+         pt.size = 1,
+         group.by = "condition",
+         cols = Condition.cols,
+         label.size = 6) + 
+  ggtitle("UMAP group by condition")
+
+dev.copy(pdf, "output/figures/UMAP/UMAP_groupby_conditions.pdf")
+dev.off()
+
+
+#############
+# Sample
+#############
+
+# Split by Sample
+UMAPPlot(object = seurat.combined,
+         label = FALSE, 
+         pt.size = 1,
+         split.by = "group",
+         label.size = 6,
+         cols = clust.cols) + 
+  ggtitle("UMAP split by Sample")
+
+dev.copy(pdf, "output/figures/UMAP/UMAP_splitby_sample.pdf")
+dev.off()
+
+
+# Group by Sample
+UMAPPlot(object = seurat.combined,
+         label = FALSE, 
+         group.by = "group",
+         pt.size = 1,
+         label.size = 6) + 
+  ggtitle("UMAP group by Sample")
+
+dev.copy(pdf, "output/figures/UMAP/UMAP_groupby_sample.pdf")
+dev.off()
+
+
+```
+
+
+
+## Visualise distribution of cells across clusters/condition{.tabset}
+
+### Plot distribution of cells per each cluster
+
+```{r Distribution_cells_per_cluster}
+
+# Create output directory
+if(!dir.exists("output/figures/Clust_distribution")){
+  dir.create("output/figures/Clust_distribution", 
+             recursive = T)
+}
+
+################################
+# Plot cluster wise distribution
+################################
+default.mar <- par()$mar
+
+par(mar = c(10.1, 5.1, 4.1, 2.1))
+
+
+# Number of cells 
+x <- table(seurat.combined@meta.data$seurat_clusters)
+
+barplot(t(x), 
+        main = "Number of cells per clust",
+        ylab = "Number of cells",
+        cex.names = 1,
+        las = 2,
+        ylim = c(0, 2500),
+        legend = TRUE, 
+        beside = TRUE)
+
+
+dev.copy(pdf, "output/figures/Clust_distribution/Number_cells_per_clust.pdf")
+dev.off()
+
+# Frequency 
+x <- prop.table(table(seurat.combined@meta.data$seurat_clusters)) * 100
+
+barplot(t(x), 
+        main = "Freq of cells per clust",
+        ylab = "% of total",
+        cex.names = 1, 
+        las = 2,
+        ylim = c(0, 20),
+        legend = TRUE, 
+        beside = TRUE)
+
+dev.copy(pdf, "output/figures/Clust_distribution/Freq_cells_per_clust.pdf")
+dev.off()
+
+
+
+###################################################
+# Plot Freq per cluster per condition 
+###################################################
+
+# Be aware, US and Stim have diff total number of cells and therefore should be represented as a % normalised to total condition cell #
+
+condition.cell.n <- table(seurat.combined@meta.data$condition)
+US.cell.n <- condition.cell.n[1]
+Stim.cell.n <- condition.cell.n[2]
+
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+Cluster.cell.n <- table(Idents(seurat.combined), seurat.combined@meta.data$condition)
+
+Cluster.cell.n[,1] <- Cluster.cell.n[,1]/US.cell.n*100
+Cluster.cell.n[,2] <- Cluster.cell.n[,2]/Stim.cell.n*100
+
+colSums(Cluster.cell.n) # sanity check, both should = 100%
+
+barplot(t(Cluster.cell.n),
+        main = "% of cells per cluster per condition",
+        ylab = "% of cells",
+        col = Condition.cols,
+        cex.names = 1, 
+        las = 2,
+        ylim = c(0, 30), 
+        beside = TRUE, 
+        legend = TRUE)
+
+dev.copy(pdf, "output/figures/Clust_distribution/Percent_cells_per_cluster_per_condition.pdf")
+dev.off()
+
+
+# reset margin to default 
+par(mar = c(default.mar))
+
+
+```
+
+

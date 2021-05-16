@@ -70,8 +70,6 @@ if(quick.load){
 
 
 
-## Type I IFN cluster analysis {.tabset} // INCOMPLETE 
-
 ### Plotting top DEGs in Type I IFN cluster
 ```{r Type_I_IFN_cluster_vis}
 
@@ -187,9 +185,20 @@ dev.off()
 
 ```
 
+## Type I IFN cluster signature {.tabset}
 
-### Creation and establishment of Type I IFN signature 
-```{r Type_I_signature}
+### Load custom functions
+```{r load_custom_functions}
+
+source("R/Functions/Predict_IFN_function.R", local = knitr::knit_global())
+source("R/Functions/evaluate_prediction_function.R", local = knitr::knit_global())
+source("R/Functions/visualise_prediction_function.R", local = knitr::knit_global())
+
+```
+
+
+### calculate IFN cluster DEGs 
+```{r Type_I_DEGs}
 
 # Aim: 
 # Establish a signature that can identify Type I IFN cluster in this dataset and be applied to external validation datasets 
@@ -214,17 +223,6 @@ TypeI.markers <- FindMarkers(seurat.combined,
 write.csv(TypeI.markers, "output/tables/TypeI_markers.csv")
 
 
-# Downsample 
-seurat.combined.small <- subset(seurat.combined, downsample = 300)
-
-# Get average expression
-average.seurat <- AverageExpression(seurat.combined,
-                                    assay = "integrated",
-                                    slot = "data",
-                                    verbose = TRUE,
-                                    return.seurat = TRUE)
-
-
 
 # Number of genes that are significantly DEGs
 
@@ -245,13 +243,39 @@ TypeI.markers %>%
 
 
 
+```
+
+### defining Type I signature
+```{r defining_Type_I_signature}
+
+##########################################
+# Average dataset for visualisation
+##########################################
+
+# Downsample 
+seurat.combined.small <- subset(seurat.combined, downsample = 300)
+
+# Get average expression
+average.seurat <- AverageExpression(seurat.combined,
+                                    assay = "integrated",
+                                    slot = "data",
+                                    verbose = TRUE,
+                                    return.seurat = TRUE)
+
+
+# Read in type I markers
+TypeI.markers <- read.csv("output/tables/TypeI_markers.csv", row.names = 1)
+
+
+
 
 # Iterate over generating a gene signature of various sizes
-n.val <- c(100)
+n.val <- c(10, 20, 50, 80, 100, 120)
 
-output.table <- matrix(nrow = length(n.val), ncol = 2)
-colnames(output.table) <- c("nval", "AUCval")
-output.table[,"nval"] <- n.val
+
+#output.table <- matrix(nrow = length(n.val), ncol = 2)
+#colnames(output.table) <- c("nval", "AUCval")
+#output.table[,"nval"] <- n.val
 
 
 for(i in seq_along(n.val)){
@@ -270,99 +294,96 @@ print(DoHeatmap(average.seurat,
           features = IFN.sig, 
           draw.lines = FALSE) + ggtitle(paste0("Signature using ", n.val[i])) + NoLegend())
 
+# Predict cell state using signature
+seurat.combined <- Predict.IFN(seurat.combined, 
+                               gene.signature = IFN.sig,
+                               sig.name = "IFNsig")
+
+evaluate.prediction(seurat.combined, 
+                    sig.name = "IFNsig", 
+                    validation.cluster = "Type_I_IFN", 
+                    validation.column = "seurat_clusters")
 
 }
 
 
 
 
-```
- 
- 
-```{r load_custom_functions}
-
-source("R/Functions/Predict_IFN_function.R", local = knitr::knit_global())
-source("R/Functions/evaluate_prediction_function.R", local = knitr::knit_global())
-source("R/Functions/visualise_prediction_function.R", local = knitr::knit_global())
-
-
-```
 
 
 
 
-```{r IFN_cluster_prediction}
-    
-    
-    
-# Automated prediction 
-    
 
-TypeI.markers <- read.csv("output/tables/TypeI_markers.csv", row.names = 1)
+########################################
+# Type I up-regulated signature
+########################################
 
-         
-
-# UP signature
+# number of top DEGs to use 
+n.markers <- 50
 
 IFN.sig.UP <- 
   TypeI.markers %>% 
   dplyr::filter(p_val_adj < 0.05) %>%
-  dplyr::top_n(10, avg_log2FC) %>%
+  dplyr::top_n(n.markers, avg_log2FC) %>%
   rownames()
 
 
+
+# Write signature to file 
+write.csv(IFN.sig.UP, "output/tables/TypeI_up_regulated_signature.csv")
+
+```
+
+
+
+## Type I IFN cluster evaluation {.tabset}
+
+### Evaluating signature on HNSCC dataset
+```{r HNSCC_dataset_evaluation}
+    
+
+# Read in type I gene signature
+IFN.sig.UP <- read.csv("output/tables/TypeI_up_regulated_signature.csv", row.names = 1)
+IFN.sig.UP <- IFN.sig.UP$x    
+
+
+# Predict cell state using signature
 seurat.combined <- Predict.IFN(seurat.combined, 
                                gene.signature = IFN.sig.UP,
-                               sig.name = "IFNsig_test")
+                               sig.name = "IFNsig")
 
-
+# Visualise prediction
 visualise.prediction(seurat.combined,
-                     sig.name = "IFNsig_test", 
+                     sig.name = "IFNsig", 
                      cluster.var = "seurat_clusters")
 
 
+evaluate.prediction(seurat.combined, 
+                    sig.name = "IFNsig", 
+                    validation.cluster = "Type_I_IFN", 
+                    validation.column = "seurat_clusters")
 
 
 
+x <- prop.table(table(seurat.combined@meta.data$seurat_clusters, 
+      seurat.combined@meta.data$IFNsig_Prediction)) * 100
 
-UMAPPlot(seurat.combined, 
-         group.by = "seurat_clusters")
-
-
-
-
-FeaturePlot(seurat.combined, 
-            "GZMB", pt.size = 2, order = TRUE)
-
-p1 <- Nebulosa::plot_density(seurat.combined, "NKG7") + NoLegend()
-p2 <- Nebulosa::plot_density(seurat.combined, "GZMA") + NoLegend()
-p3 <- Nebulosa::plot_density(seurat.combined, "GZMB") + NoLegend()
-p4 <- Nebulosa::plot_density(seurat.combined, "GZMK") + NoLegend()
-p5 <- Nebulosa::plot_density(seurat.combined, "GZMM") + NoLegend()
-p6 <- Nebulosa::plot_density(seurat.combined, "PRF1") + NoLegend()
-p7 <- Nebulosa::plot_density(seurat.combined, "CTSW") + NoLegend()
-#p8 <- Nebulosa::plot_density(seurat.combined, "LAMP1") + NoLegend()
-p9 <- Nebulosa::plot_density(seurat.combined, "GZMH") + NoLegend()
-
-(p1 + p2 + p3 + p4) /
-(p5 + p6 + p9 + p7)
-
-#grep("GZM.*", rownames(seurat.combined), value = T)
-
-Nebulosa::plot_density(seurat.combined, c("GZMK", "GZMM"), joint = T)
-Nebulosa::plot_density(seurat.combined, c("GZMH", "GZMB", "PRF1"), joint = T)
-Nebulosa::plot_density(seurat.combined, c("GZMA"))
+barplot(t(x),
+        beside = TRUE,
+        las = 2,
+        legend = TRUE)
 
 
-# k and M and A
-# H and Prf and B
-# 
+```
+ 
+ 
+### Evaluating signature on Cillo dataset
 
+```{r Cillo_dataset_evaluation}
 
-
-#
-rm(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12)
-
+# Read in type I gene signature
+IFN.sig.UP <- read.csv("output/tables/TypeI_up_regulated_signature.csv", row.names = 1)
+IFN.sig.UP <- IFN.sig.UP$x    
 
 
 
@@ -374,76 +395,34 @@ Idents(Cillo_et_al) <- Cillo_et_al@meta.data$cd8_cells_clusterID
 
 
 
+
+# Predict cell state using signature
 Cillo_et_al <- Predict.IFN(Cillo_et_al, 
                                gene.signature = IFN.sig.UP,
-                               sig.name = "IFNsig_test")
+                               sig.name = "IFNsig")
 
-
-
-
+# Visualise prediction
 visualise.prediction(Cillo_et_al,
-                     sig.name = "IFNsig_test", 
+                     sig.name = "IFNsig", 
                      cluster.var = "cd8_cells_clusterID")
 
 
 evaluate.prediction(Cillo_et_al, 
-                    sig.name = "IFNsig_test", 
+                    sig.name = "IFNsig", 
                     validation.cluster = "2", 
                     validation.column = "cd8_cells_clusterID")
 
 
 
+x <- prop.table(table(Cillo_et_al@meta.data$cd8_cells_clusterID, 
+      Cillo_et_al@meta.data$IFNsig_Prediction)) * 100
 
-
-
-
-
-
-
-
-
-
-
-x <- table(seurat.combined@meta.data$seurat_clusters, 
-      seurat.combined@meta.data$IFNsig_test_Prediction)
-
-x <- table(seurat.combined@meta.data$seurat_clusters, 
-      seurat.combined@meta.data$Prediction_DN)
-
-x <- table(seurat.combined@meta.data$seurat_clusters, 
-      seurat.combined@meta.data$Prediction_Summary)
-
-x <- table(seurat.combined@meta.data$seurat_clusters, 
-      seurat.combined@meta.data$IFNsig_test_Prediction)
-
-
-x <- as.data.frame(x)
-x[, "IFN_cell"]
-x[, "IFN_cell"]
-
-
-y <- colSums(x)
-
-x[,1] <- x[,1]/y[1]
-x[,2] <- x[,2]/y[2]
-x <- x*100
 barplot(t(x),
         beside = TRUE,
         las = 2,
-        legend = TRUE,
-        ylim = c(0, 100))
-
-
-
-
-#
-    
-
-
-
+        legend = TRUE)
 
 ```
-
 
 
 
@@ -650,5 +629,46 @@ IFN.sig.DN <-
   
   
   
+```
+ 
+ 
+  ### testing differential cytotoxicity profiles
+```{r}
+
+
+FeaturePlot(seurat.combined, 
+            "GZMB", pt.size = 2, order = TRUE)
+
+p1 <- Nebulosa::plot_density(seurat.combined, "NKG7") + NoLegend()
+p2 <- Nebulosa::plot_density(seurat.combined, "GZMA") + NoLegend()
+p3 <- Nebulosa::plot_density(seurat.combined, "GZMB") + NoLegend()
+p4 <- Nebulosa::plot_density(seurat.combined, "GZMK") + NoLegend()
+p5 <- Nebulosa::plot_density(seurat.combined, "GZMM") + NoLegend()
+p6 <- Nebulosa::plot_density(seurat.combined, "PRF1") + NoLegend()
+p7 <- Nebulosa::plot_density(seurat.combined, "CTSW") + NoLegend()
+#p8 <- Nebulosa::plot_density(seurat.combined, "LAMP1") + NoLegend()
+p9 <- Nebulosa::plot_density(seurat.combined, "GZMH") + NoLegend()
+
+(p1 + p2 + p3 + p4) /
+(p5 + p6 + p9 + p7)
+
+#grep("GZM.*", rownames(seurat.combined), value = T)
+
+Nebulosa::plot_density(seurat.combined, c("GZMK", "GZMM"), joint = T)
+Nebulosa::plot_density(seurat.combined, c("GZMH", "GZMB", "PRF1"), joint = T)
+Nebulosa::plot_density(seurat.combined, c("GZMA"))
+
+
+# k and M and A
+# H and Prf and B
+# 
+
+
+
+#
+rm(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12)
+
+
+
 ```
  

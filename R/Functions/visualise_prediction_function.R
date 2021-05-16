@@ -16,6 +16,20 @@ visualise.prediction <- function(input.seurat,
   )
   
   print(
+  Nebulosa::plot_density(seurat.combined, 
+                         features = paste0(sig.name, "1"))
+  )
+  
+  
+  print(
+  FeaturePlot(seurat.combined, 
+              feature = paste0(sig.name, "1"), 
+              pt.size = 1, 
+              order = TRUE)
+  )
+  
+  
+  print(
     VlnPlot(input.seurat, 
             feature = paste0(sig.name, "1"),
             group.by = paste0(cluster.var),
