@@ -23,46 +23,31 @@
 
 -   Intermediate and processed files 
     - Can be found in ~/Exported_RDS_files
-    - Cillo and Sade_feldman ".rds" files are various outputs from analysis of these two published datasets 
-    - seurat_combined
+    - I have put many axillary ".rds" files into "~/Exported_RDS_files/Archive" in order to clean up the directory | this directory is not synced with github
+    - seurat_combined.rds = all cells and genes following filtering and annotation
+      - Contains all metadata, normalised data, imputed data, integrated US and Stim data
+    - seurat_tcr_filt.rds = only cells which have a paired alpha/beta TCR associated
+      - Analysis was seperated in this way to retain as many cells as possible for GEX analysis 
+      - TCR analysis may also not include innate cell subsets and therefore dataset was split between GEX analysis and TCR analysis
+      
+      
+      
+# Scripts
+- Knited ".html" outputs for each script can be found in "~"
+- Main script for reading in CellRanger output (~/Data/10X_GEX_data) and normalising, integrating, QC etc, is found in R/01_HNSCC_Dataset_Preprocessing.Rmd
+- Custom analysis functions and pipelines are located in ~/R/Functions or ~/R/Analysis
+- Output Directory creation, package loading, etc is all found within setup.R and Load_packages.R scripts in ~/R
+- scTCRseq analysis begins with ~/R/06_HNSCC_scTCRseq_dataset_Preprocessing.Rmd where raw CellRanger output is formatted
 
--   Data/ seurat\_combined.rds = all cells and genes following filtering and annotations
--   Data/ seurat\_tcr.rds = only cells which have a paired ab TCR
--   Data/VDJ\_data/ is the raw dataframes output by 10x (Cellranger) pipeline with TCR info
 
 # Gitignore
 
 -   all files in output/ will be ignored and not tracked in github
+-   all files in output_tcr/ will be ignored and not tracked in github
+-   Files in ~/Exported_RDS_files/Archive are ignored to reduce memory burden on collaborators who clone the repo
 
 # Gitattribute
 
 -   All .rds files in Exported\_RDS\_files are included in gitattribute file
 -   Add any large files that should be tracked by github to the .gitattribute file
 
-# To Do:
-
--   Overlay dataset with Cillo et al., HNSCC dataset (Any MAIT or GammaDelta cells)
-
--   Identify surface expressed genes in IFN cluster that can be used for sorting these cells
-
--   Generate IFN\_I cluster signature and validate with Cillo et al.,
-
--   Are IFN-I cells found in other disease settings, solid tumors, liquid tumors, autoimmune, viral, etc
-
-# Outstanding tasks
-
--   Track clonotypes - for each cluster in US do clones increase/decrease and/or move between clusters
-
-# scTCRseq tasks
-
--   Estimate epitope specificities with vdjdb tools
--   GLIPH analysis - note there is now a Gliph V2 algorithm
--   GLIPH visualisation
--   Logo TCR motif generation
-
-# scRNAseq tasks
-
--   Transcription factor network analysis
--   Establish a signature for TypeI-IFN cluster
--   Apply TypeI-IFN signature to other TIL datasets and look for presence/absence of these cells across HNSCC and other cancer entities
--   Velocity analysis

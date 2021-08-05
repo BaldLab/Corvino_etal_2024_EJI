@@ -12,6 +12,9 @@
 output/
 output_tcr/
 
+# Archived RDS files 
+Exported_RDS_files/Archive/
+
 # python code
 src/
 
