@@ -8,7 +8,23 @@
 -   Data acquired was transcript expression, ADT (antibody expression), and TCRA & B sequences
 -   This analysis uses just Transcript and TCR data
 
-# Note:
+# Data info:
+
+-   Input data can be found in ~/Data
+-   Gene expression data can be found ~/Data/10X_GEX_data
+    - This folder contains the output from CellRanger (Barcodes, genes, matrix) 
+    - Data is "cell by gene" matrix 
+    - This serves as the raw input to seurat pipeline
+
+-   TCR data can be found in ~/Data/TCR_data
+    - two .csv files per sample (Filtered_contig_annotations and clonotypes)
+
+-   All remaining input data are reference datasets, signature files, or other such input
+
+-   Intermediate and processed files 
+    - Can be found in ~/Exported_RDS_files
+    - Cillo and Sade_feldman ".rds" files are various outputs from analysis of these two published datasets 
+    - seurat_combined
 
 -   Data/ seurat\_combined.rds = all cells and genes following filtering and annotations
 -   Data/ seurat\_tcr.rds = only cells which have a paired ab TCR
