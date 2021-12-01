@@ -87,8 +87,6 @@ source("R/Setup.R", local = knitr::knit_global())
 
 seurat.combined <- readRDS("Exported_RDS_files/seurat_combined.rds")
 
-
-
 ```
 
 
@@ -298,6 +296,41 @@ dev.off()
 par(mar = c(default.mar))
 
 
+
+
+
+
+
+
+
 ```
 
+## Vis CD8A expression {.tabset}
+
+### Plot and count CD8A/B expression
+
+```{r CD8_expression}
+
+VlnPlot(seurat.combined, 
+        "CD8A",
+        group.by = "seurat_clusters") + NoLegend()
+
+
+logic.var <- rownames(seurat.combined@assays$integrated@data) == "CD8A"
+
+CD8A.expression <- seurat.combined@assays$integrated@data[logic.var, ]
+CD8A.expression.logic <- CD8A.expression > 0
+
+
+table(CD8A.expression.logic, seurat.combined@meta.data$seurat_clusters)
+
+prop.table(table(CD8A.expression.logic, seurat.combined@meta.data$seurat_clusters))*100
+
+
+prop.table(table(CD8A.expression.logic))*100
+
+table(CD8A.expression.logic)
+
+
+```
 
