@@ -1,7 +1,7 @@
 
 annotated.heatmap <- function(input.seurat,
-                              cluster.id = "seurat_clusters",
-                              assay.use = "integrated",
+                              cluster.id = "Clusters_l1",
+                              assay.use = "RNA",
                               average.expression = TRUE,
                               goi, 
                               genes.to.label, 
@@ -28,7 +28,7 @@ annotated.heatmap <- function(input.seurat,
   
   
   if(average.expression){
-    input.seurat <- AverageExpression(seurat.combined,
+    input.seurat <- AverageExpression(input.seurat,
                                       assay = assay.use,
                                       slot = "data",
                                       verbose = TRUE,

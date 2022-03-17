@@ -1,0 +1,438 @@
+---
+title: "24_Manuscript_Figure_2_output"
+author: "Dillon Corvino"
+date: "07/03/2022"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: united
+    highlight: tango
+    df_print: paged
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+  markdown: 
+    wrap: 72
+---
+
+Built with R version `{r} getRversion()`
+
+## Setup {.tabset}
+
+### Dataset information
+
+```{r Dataset_Info}
+
+# HNSCC scRNAseq/scTCRseq dataset
+# Cells are HNSCC TILs sorted on Lymphocytes/Live/CD3+/CD4-/CD8+
+# Human samples
+# Each sample is a pool of 4 patients
+# samples 1 and 2 are unstimulated 
+# samples 3 and 4 are stimulated 
+# Patients in sample 1 match patients in sample 3 and sample 2 pairs with 4
+# Data acquired was transcript expression, ADT (antibody expression), and TCRA & B sequences
+# This analysis uses just Transcript and TCR data
+
+
+# General information
+# CellRanger was used for sequence alignment/QC/counts/TCR calls - performed by Ross (QIMR, Brisbane, Aus)
+# DC was provided the output from CellRanger (counts matrix) and used this as input for analysis within this script
+
+```
+
+### Environment
+
+```{r setup, message = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,  
+  eval = TRUE, 
+  tidy = TRUE
+)
+
+knitr::opts_knit$set(
+  root.dir = "../"
+)
+
+# Environment Set up
+rm(list = ls()) #Clean workspace
+cat("\014")     #Clean Console
+gc() # Free memory
+
+
+# Establish working directory
+library("rstudioapi")
+
+# Set working directory to source file location
+setwd(dirname(getActiveDocumentContext()$path))
+setwd("..")
+
+# Load packages
+#source("R/Load_packages.R", local = knitr::knit_global())
+# use renv::restore() # lockfile
+
+# Create output directories & load custom functions & colour scheme
+source("R/Setup.R", local = knitr::knit_global())
+
+
+```
+
+
+### Reading data
+
+```{r reading_data}
+
+seurat.combined <- readRDS("Exported_RDS_files/seurat_combined.rds")
+
+```
+
+
+### Remove non-CD8 T cell clusters
+
+```{r Remove_clusters}
+
+# Create output directory
+if(!dir.exists("output/figures/Manuscript/Figure2")){
+  dir.create("output/figures/Manuscript/Figure2", 
+             recursive = T)
+}
+
+
+
+# set idents and assay to use
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+DefaultAssay(seurat.combined) <- "RNA"
+
+CD8.only.seurat <- subset(seurat.combined, idents = c("Naive_like_1_CM", "Naive_like_2_SC", "Naive_like_3", 
+                                                      "Cytotoxic", "Type_I_IFN", "Stimulated_1", 
+                                                      "Stimulated_exhausted", "Exhausted_1", "Exhausted_2", "TRM", "Proliferative"))
+
+
+levels(Idents(CD8.only.seurat))
+
+
+saveRDS(CD8.only.seurat, "Exported_RDS_files/CD8_only_seurat.rds")
+
+rm(seurat.combined)
+
+
+```
+
+
+### Calculate DEGs without innate clusters
+```{r DEG_calculation}
+
+# Run DEG analysis
+DefaultAssay(CD8.only.seurat) <- "RNA"
+
+Idents(CD8.only.seurat) <- CD8.only.seurat@meta.data$seurat_clusters
+unique(Idents(CD8.only.seurat))
+
+
+DEG.markers <- FindAllMarkers(CD8.only.seurat, 
+                              slot = "data", 
+                              logfc.threshold = 0.25,
+                              test.use = "wilcox",
+                              only.pos = FALSE)
+
+DEG.markers <- 
+  DEG.markers %>%
+  filter(p_val_adj < 0.05)
+
+
+write.csv(DEG.markers, "output/figures/Manuscript/Figure2/DEG_CD8_Clusters_only.csv")
+
+
+```
+ 
+ 
+### Heatmap visualisation of stimulation induced clusters 
+```{r stim_induced_cluster_DEGs}
+
+
+#################
+# Set up data
+#################
+
+# downsample
+Idents(CD8.only.seurat) <- CD8.only.seurat@meta.data$seurat_clusters
+
+seurat.combined.small <- subset(CD8.only.seurat, downsample = 100)
+
+# Visualise with integrated data
+DefaultAssay(seurat.combined.small) <- "integrated"
+seurat.combined.small <- Seurat::ScaleData(seurat.combined.small)
+
+
+
+
+
+#############
+# Heatmaps
+#############
+
+
+# top 10 DEGs per cluster
+goi <- DEG.markers %>%
+  group_by(cluster) %>%
+  top_n(10, avg_log2FC) %>%
+  pull(gene)
+
+goi <- unique(goi)
+
+
+
+DoHeatmap(seurat.combined.small, 
+          features = goi) + 
+  NoLegend()
+
+
+dev.copy(pdf, "output/figures/Manuscript/Figure2/DEG_CD8_Clusters_only.pdf")
+dev.off()
+
+
+
+##################################################################
+# Top DEGs between and shared stimulated clusters
+##################################################################
+
+
+## Get overlap and unique DEGs
+DEGs.Stim <- DEG.markers %>%
+  group_by(cluster) %>%
+  filter(cluster == c("Stimulated_1")) %>%
+  dplyr::filter(avg_log2FC > 1 | avg_log2FC < -1) 
+
+
+DEGs.Stim.Exhaust <- DEG.markers %>%
+  group_by(cluster) %>%
+  filter(cluster == c("Stimulated_exhausted")) %>%
+  dplyr::filter(avg_log2FC > 1 | avg_log2FC < -1) 
+
+library(RVenn)
+
+
+# Split data by upregulated or down-regulated
+DEGs.Stim.UP <- DEGs.Stim %>%
+  dplyr::filter(avg_log2FC > 1) %>%
+  pull(gene)
+
+DEGs.Stim.DN <- DEGs.Stim %>%
+  dplyr::filter(avg_log2FC < -1) %>%
+  pull(gene)
+
+
+DEGs.Stim.Exhaust.UP <- DEGs.Stim.Exhaust %>%
+  dplyr::filter(avg_log2FC > 1) %>%
+  pull(gene)
+
+DEGs.Stim.Exhaust.DN <- DEGs.Stim.Exhaust %>%
+  dplyr::filter(avg_log2FC < -1) %>%
+  pull(gene)
+
+
+
+
+# Venn overlap of UP-regulated genes
+
+UP.venn <- RVenn::Venn(list(Stim = DEGs.Stim.UP, stim_exhaust = DEGs.Stim.Exhaust.UP))
+
+RVenn::ggvenn(UP.venn)
+
+dev.copy(pdf, "output/figures/Manuscript/Figure2/UpRegulated_venn_overlap_Stim_and_StimExhausted.pdf")
+dev.off()
+
+# Venn overlap of DN-regulated genes
+
+DN.venn <- RVenn::Venn(list(Stim = DEGs.Stim.DN, stim_exhaust = DEGs.Stim.Exhaust.DN))
+
+RVenn::ggvenn(DN.venn)
+
+dev.copy(pdf, "output/figures/Manuscript/Figure2/DownRegulated_venn_overlap_Stim_and_StimExhausted.pdf")
+dev.off()
+
+
+
+
+########################################
+# Heatmap of Upregulated genes 
+########################################
+
+
+
+# Get list of goi
+Stim.goi <- RVenn::discern(UP.venn, "Stim")
+Stim_Exhaust.goi <- RVenn::discern(UP.venn, "stim_exhaust")
+joined.goi <- RVenn::overlap(UP.venn)
+
+
+
+input.df <- DEG.markers %>%
+  filter(cluster == c("Stimulated_1", "Stimulated_exhausted")) %>%
+  dplyr::filter(avg_log2FC > 1 | avg_log2FC < -1) 
+
+  
+
+# Unique to stimulated
+unique.stim <- input.df[input.df$gene %in% Stim.goi, ]
+
+unique.stim <- unique.stim %>%
+  filter(cluster == c("Stimulated_1")) %>%
+  arrange(desc(avg_log2FC)) %>%
+  pull(gene)
+
+
+# Unique to stim_exhausted
+unique.stim.exhausted <- input.df[input.df$gene %in% Stim_Exhaust.goi, ]
+
+unique.stim.exhausted <- unique.stim.exhausted %>%
+  filter(cluster == c("Stimulated_exhausted")) %>%
+  arrange(desc(avg_log2FC)) %>%
+  pull(gene)
+
+
+# Shared genes
+shared.goi <- input.df[input.df$gene %in% joined.goi, ]
+
+shared.goi <- shared.goi %>%
+  arrange(desc(avg_log2FC)) %>%
+  pull(gene)
+
+
+goi <- unique(c(unique.stim, shared.goi, unique.stim.exhausted))
+
+
+
+DoHeatmap(seurat.combined.small, 
+          features = goi) + 
+  NoLegend()
+
+dev.copy(pdf, "output/figures/Manuscript/Figure2/DEG_stim_and_Stim_Exh_Upregulated.pdf")
+dev.off()
+
+
+
+
+
+
+
+
+
+
+x <- RVenn::Venn(list(Stim_UP = DEGs.Stim.UP, stim_exhaust_UP = DEGs.Stim.Exhaust.UP,
+                      Stim_DN = DEGs.Stim.DN, Stim_exhausted_DN = DEGs.Stim.Exhaust.DN))
+
+RVenn::ggvenn(x)
+
+
+
+
+
+
+#dev.copy(pdf, "output/figures/Manuscript/Figure2/DEG_CD8_Clusters_only.pdf")
+#dev.off()
+
+
+
+library(Nebulosa)
+
+
+
+
+Nebulosa::plot_density(CD8.only.seurat, 
+                       joint = T,
+                       features = c("MTRNR2L8", "GZMA"))
+
+
+
+
+
+
+
+
+
+
+
+##################################################################
+# Use complexheatmap to generate a manuscript ready figure
+##################################################################
+
+# Source custom function // loaded in custom functions chunk 
+#source("R/annotate_seurat_heatmap.R")
+
+######################################################################
+# Generate a vector of the top DEGs to be plotted in the heatmap
+######################################################################
+
+# Ensure markers table is loaded
+Cluster.markers <- read.csv("output/tables/DEG_Clusters/Cluster_markers_sig_only.csv")
+
+
+# Get top cluster markers
+sig.genes <- Cluster.markers[Cluster.markers$p_val_adj < 0.05, ]
+
+clusts <- unique(sig.genes$cluster)
+output.vect <- NA
+top.n <- 40
+
+for(i in 1:length(clusts)){
+  
+  temp.gene <- sig.genes[sig.genes$cluster == paste0(clusts[i]), ]
+  temp.top <- dplyr::top_n(temp.gene, top.n, avg_log2FC)$gene
+  
+  output.vect <- c(output.vect, temp.top)
+  output.vect <- unique(output.vect)
+}
+
+top.genes <- output.vect
+
+# Genes to be labeled if present in plotted heatmap
+genes.id <- c("KLRB1", "TRAV1-2", "IL4I1", "IL18RAP", "TRBV21-1", "TRBV2", "TRGV9", "TRDV2",  "DPP4", 
+                 "IFNG", "TNF", "TCF7", "ENTPD1", "PDCD1", "TIGIT", "LAYN", "EOMES", "GZMA", "GZMB", "GZMK",
+                 "CXCR3", "TOX", "ZNF683", "CD226", "CXCL13", "CD160", "TBX21", "LAG3", "MKI67", "GNLY", "NKG7", "SELL", "IL7R")
+
+# Colour annotation for column labels 
+names(clust.cols) <- clust.names
+
+# Plot heatmap averaged values
+annotated.heatmap(seurat.combined, 
+                  cluster.id = "seurat_clusters",
+                  assay.use = "integrated",
+                  average.expression = TRUE,
+                  goi = top.genes, 
+                  genes.to.label = genes.id, 
+                  col_order = clust.names, 
+                  col.colours = clust.cols, 
+                  range.val = c(-2, 0, 2))
+
+dev.copy(pdf, "output/figures/Large_Summary_heatmaps/Heatmap_top_up_genes_bycluster_highlighted_geneIDs_averaged.pdf")
+dev.off()
+
+
+# Plot heatmap downsampled single cell values
+annotated.heatmap(seurat.combined, 
+                  cluster.id = "seurat_clusters",
+                  assay.use = "integrated",
+                  average.expression = FALSE,
+                  goi = top.genes, 
+                  genes.to.label = genes.id, 
+                  col_order = clust.names, 
+                  col.colours = clust.cols, 
+                  range.val = c(-2, 0, 2))
+
+dev.copy(pdf, "output/figures/Large_Summary_heatmaps/Heatmap_top_up_genes_bycluster_highlighted_geneIDs.pdf")
+dev.off()
+
+
+
+```
+
+
+
+
+
+

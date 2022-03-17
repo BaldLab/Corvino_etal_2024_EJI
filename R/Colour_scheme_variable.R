@@ -1,8 +1,10 @@
 ####################
 # Colour scheme
 ####################
+sample.cols <- c("lightcyan", "lightblue2", "lightsalmon", "lightsalmon3")
 
-Condition.cols <- c("turquoise", "red")
+condition.cols <- c("royalblue", "salmon2")
+names(condition.cols) <- c("US", "Stimulated")
 
 clust.cols <- c("#E41A1C", # Naive_like_1_CM
                 "#A6761D", # Naive_like_2_SC
@@ -35,3 +37,22 @@ clust.names <- c("Naive_like_1_CM",
                  "Proliferative")
 
 names(clust.cols) <- clust.names
+
+
+
+# For visualisation use batlow where possible
+
+#install.packages('scico')
+library("scico")
+
+#scico_palette_show()
+batlow.pal <- scico(100, palette = 'batlow')
+
+
+# Custom color scheme for clusters
+keep.logic <- names(clust.cols) %in% c("gd_T_g9d2", "gd_T_non_g9d2", "MAIT")
+innate.cols <- clust.cols[keep.logic]
+CD8.cols <- clust.cols[!keep.logic]
+
+
+

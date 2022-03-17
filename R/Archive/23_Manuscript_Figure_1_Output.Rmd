@@ -1,0 +1,237 @@
+---
+title: "23_Manuscript_Figure_1_output"
+author: "Dillon Corvino"
+date: "03/03/2022"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: united
+    highlight: tango
+    df_print: paged
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+  markdown: 
+    wrap: 72
+---
+
+Built with R version `{r} getRversion()`
+
+## Setup {.tabset}
+
+### Dataset information
+
+```{r Dataset_Info}
+
+# HNSCC scRNAseq/scTCRseq dataset
+# Cells are HNSCC TILs sorted on Lymphocytes/Live/CD3+/CD4-/CD8+
+# Human samples
+# Each sample is a pool of 4 patients
+# samples 1 and 2 are unstimulated 
+# samples 3 and 4 are stimulated 
+# Patients in sample 1 match patients in sample 3 and sample 2 pairs with 4
+# Data acquired was transcript expression, ADT (antibody expression), and TCRA & B sequences
+# This analysis uses just Transcript and TCR data
+
+
+# General information
+# CellRanger was used for sequence alignment/QC/counts/TCR calls - performed by Ross (QIMR, Brisbane, Aus)
+# DC was provided the output from CellRanger (counts matrix) and used this as input for analysis within this script
+
+```
+
+### Environment
+
+```{r setup, message = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,  
+  eval = TRUE, 
+  tidy = TRUE
+)
+
+knitr::opts_knit$set(
+  root.dir = "../"
+)
+
+# Environment Set up
+rm(list = ls()) #Clean workspace
+cat("\014")     #Clean Console
+gc() # Free memory
+
+
+# Establish working directory
+library("rstudioapi")
+
+# Set working directory to source file location
+setwd(dirname(getActiveDocumentContext()$path))
+setwd("..")
+
+# Load packages
+#source("R/Load_packages.R", local = knitr::knit_global())
+# use renv::restore() # lockfile
+
+# Create output directories & load custom functions & colour scheme
+source("R/Setup.R", local = knitr::knit_global())
+
+
+```
+
+
+### Reading data
+
+```{r reading_data}
+
+seurat.combined <- readRDS("Exported_RDS_files/seurat_combined.rds")
+
+```
+
+
+### Nebulosa plots of key genes
+
+```{r Nebulosa_plots_key_genes}
+
+# Create output directory
+if(!dir.exists("output/figures/Manuscript/Figure1")){
+  dir.create("output/figures/Manuscript/Figure1", 
+             recursive = T)
+}
+
+ library(Nebulosa)
+
+# set idents and assay to use
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+DefaultAssay(seurat.combined) <- "RNA"
+
+
+
+
+# Plot nebulosa density plots of key markers 
+
+if(!dir.exists("output/figures/Manuscript/Figure1/Nebulosa_RNA")){
+  dir.create("output/figures/Manuscript/Figure1/Nebulosa_RNA", 
+             recursive = T)
+}
+
+goi <- c("EOMES", "GZMB", "PRF1", "IFNG", "LAG3", "HAVCR2", "MKI67", "TCF7", "TOX", "IL7R", "PDCD1", "PRF1", "SELL", "NKG7", "TNF", "TIGIT", "CD226", "CCR7", "KLRB1", "RORA", "ISG15", "TRDC", "TRAV1-2", "ZNF683")
+
+for(i in 1:length(goi)){
+  
+print(Nebulosa::plot_density(seurat.combined, 
+                       features = goi[i],
+                       reduction = "umap",
+                       method = "ks"))
+
+dev.copy(pdf, paste0("output/figures/Manuscript/Figure1/Nebulosa_RNA/Nebulosa_RNA_", goi[i], ".pdf"))
+dev.off()
+
+
+}
+
+
+
+  goi <- c("ITGAE", "ZNF683", "TRAV1-2")
+  i = 2
+  
+print(Nebulosa::plot_density(seurat.combined, 
+                       features = goi[i],
+                       reduction = "umap",
+                       method = "ks"))
+
+dev.copy(pdf, paste0("output/figures/Manuscript/Figure1/Nebulosa_RNA/Nebulosa_RNA_", goi[i], ".pdf"))
+dev.off()
+
+
+
+install.packages('scico')
+library("scico")
+
+scico_palette_show()
+
+scico(4, palette = 'batlow')
+
+
+
+
+
+?Nebulosa::plot_density
+
+
+```
+
+
+### Freq of cells per cluster/condition
+
+```{r Freq_cells_per}
+
+# Create output directory
+if(!dir.exists("output/figures/Manuscript/Figure1")){
+  dir.create("output/figures/Manuscript/Figure1", 
+             recursive = T)
+}
+
+
+# set idents and assay to use
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+DefaultAssay(seurat.combined) <- "RNA"
+
+
+
+
+# Plot nebulosa density plots of key markers 
+
+if(!dir.exists("output/figures/Manuscript/Figure1/Freq_Barplots")){
+  dir.create("output/figures/Manuscript/Figure1/Freq_Barplots", 
+             recursive = T)
+}
+
+x <- table(seurat.combined@meta.data$seurat_clusters)
+y <- prop.table(table(seurat.combined@meta.data$seurat_clusters)) * 100
+
+barplot(x, main = "# of cells per cluster", xlab = "Cluster #", ylab = "# of cells", las = 2,
+    cex.names = 0.8, ylim = c(0, 2000))
+
+
+
+
+cells.per.clust <- table(seurat.combined@meta.data$seurat_clusters, seurat.combined@meta.data$condition)
+cells.total <- colSums(cells.per.clust)
+
+
+freq.per.clust <- cells.per.clust * NA
+
+
+
+freq.per.clust[,1] <- (cells.per.clust[,1]/cells.total[1])*100
+freq.per.clust[,2] <- (cells.per.clust[,2]/cells.total[2])*100
+
+colSums(freq.per.clust)
+
+
+write.csv(freq.per.clust, "output/figures/Manuscript/Figure1/Freq_Barplots/Freq_per_Clust_per_condition.csv")
+
+
+barplot(freq.per.clust, 
+        main = "# of cells per cluster",
+        xlab = "Cluster #",
+        ylab = "# of cells", 
+        las = 2,
+        #ylim = c(0, 2000),
+        beside = F,
+    cex.names = 0.8
+    )
+
+
+
+
+
+
+
+
+```
+

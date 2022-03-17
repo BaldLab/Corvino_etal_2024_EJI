@@ -426,7 +426,7 @@ if(!dir.exists("output/figures/Stim_1_vs_Stim_exhausted")){
 
 
 # Run DEG analysis
-DefaultAssay(seurat.combined) <- "integrated"
+DefaultAssay(seurat.combined) <- "RNA"
 
 Idents(seurat.combined) <- seurat.combined@meta.data$condition_clust
 unique(Idents(seurat.combined))
@@ -528,14 +528,14 @@ dev.off()
 # Do DEG analysis across clonally related clusters 
 ######################################################
 
-DefaultAssay(seurat.combined) <- "integrated"
+DefaultAssay(seurat.combined) <- "RNA"
 Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
 
 temp.seurat <- subset(seurat.combined, idents = c("Exhausted_1", "Exhausted_2",
                                                   "Cytotoxic", "Type_I_IFN",
                                                   "Stimulated_exhausted", "Stimulated_1"))
 
-DefaultAssay(temp.seurat) <- "integrated"
+DefaultAssay(temp.seurat) <- "RNA"
 
 # Set Idents 
 Idents(temp.seurat) <- temp.seurat@meta.data$seurat_clusters

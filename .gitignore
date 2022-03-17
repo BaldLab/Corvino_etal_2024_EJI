@@ -9,11 +9,15 @@
 .Ruserdata
 
 # All output files
-output/
-output_tcr/
+output/**/**
+output_tcr/**/**
 
 # Archived RDS files 
 Exported_RDS_files/Archive/
+Exported_RDS_files/**/**
+
+# Data
+Data/**/**
 
 # python code
 src/

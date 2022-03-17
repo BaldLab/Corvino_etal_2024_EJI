@@ -166,6 +166,8 @@ library(Trex)
 
 BiocManager::install("DelayedArray", force = TRUE)
 
+
+
 Trex_vectors <- maTrex(seurat.tcr.filt, 
                        AA.method = "mean", 
                     AA.properties = "KF", 

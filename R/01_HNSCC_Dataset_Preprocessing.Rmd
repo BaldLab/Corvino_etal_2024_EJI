@@ -78,18 +78,18 @@ gc() # Free memory
 library("rstudioapi")
 
 # Set working directory to source file location
-#setwd(dirname(getActiveDocumentContext()$path))
+setwd(dirname(getActiveDocumentContext()$path))
 setwd("..")
 
 # Load packages
-source("R/Load_packages.R", local = knitr::knit_global())
+#source("R/Load_packages.R", local = knitr::knit_global())
 
 # Create output directories & load custom functions & colour scheme
 source("R/Setup.R", local = knitr::knit_global())
 
 # pipeline variables
 quick.load <- FALSE
-long.compute <- TRUE
+long.compute <- FALSE
 
 ```
 
@@ -1344,6 +1344,22 @@ Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
 
 ```{r export_RDS, eval=FALSE}
 if(!quick.load){
+  
+  # creatine a permenant metadata column for cluster info 
+  seurat.combined@meta.data$Clusters_l1 <- seurat.combined@meta.data$seurat_clusters
+  
+  # Also removing un-necessary metadata info
+  head(seurat.combined@meta.data)
+  
+  seurat.combined@meta.data$integrated_snn_res.0.4 <- NULL
+  seurat.combined@meta.data$seurat_clusters_old <- NULL
+  seurat.combined@meta.data$seurat_clusters_new <- NULL
+  
+  # set idents and assay to use
+  Idents(seurat.combined) <- seurat.combined@meta.data$Clusters_l1
+  
+  DefaultAssay(seurat.combined) <- "RNA"
+  
   saveRDS(seurat.combined, file = "Exported_RDS_files/seurat_combined.rds")
 }
 
@@ -1366,6 +1382,635 @@ if(long.compute){
 
 
 ```
+
+
+
+
+## Subset data for innate clusters and recalculate dimreduction {.tabset}
+
+
+### Keep only Innate clusters & perform Dim reduction and clustering
+
+```{r Keep_innate_and_recluster}
+
+if(long.compute){
+  
+  
+  # set idents and assay to use
+  Idents(seurat.combined) <- seurat.combined@meta.data$Clusters_l1
+  
+  DefaultAssay(seurat.combined) <- "RNA"
+  
+  
+  # Keep only innate clusters
+  unique(Idents(seurat.combined))
+  
+  Innate.seurat <- subset(seurat.combined, idents = c("gd_T_g9d2", "gd_T_non_g9d2", "MAIT"))
+  
+  levels(Idents(Innate.seurat))
+  
+  
+  # Set seed for reproducibility
+  set.seed(42)
+  
+  
+  # Scale data
+  Innate.seurat <- ScaleData(Innate.seurat, 
+                             verbose = TRUE)
+  
+  # Find variable features
+  Innate.seurat <- FindVariableFeatures(Innate.seurat)
+  
+  
+  
+  # Run PCA
+  Innate.seurat <- RunPCA(Innate.seurat, 
+                          npcs = 30, 
+                          verbose = TRUE)
+  
+  # Find Neighbors
+  Innate.seurat <- FindNeighbors(Innate.seurat, 
+                                 reduction = "pca", 
+                                 k.param = 20,
+                                 dims = 1:20)
+  
+  # Find clusters
+  Innate.seurat <- FindClusters(Innate.seurat, 
+                                random.seed = 42,
+                                resolution = 0.4) # 0.4 is cluster resolution decided upon
+  
+  # Run UMAP
+  Innate.seurat <- RunUMAP(object = Innate.seurat,
+                           reduction = "pca",
+                           dims = 1:20,
+                           umap.method = "uwot",
+                           n.neighbors = 50, # 5 to 50
+                           min.dist = 0.5, # Sensible values are in the range 0.001 to 0.5
+                           seed.use = 42)
+  
+  
+  Idents(Innate.seurat) <- Innate.seurat@meta.data$Clusters_l1
+  DefaultAssay(Innate.seurat) <- "RNA"
+  
+  
+  # For plotting etc downstream, remove unused levels in cluster annotation 
+  levels(Innate.seurat@meta.data$Clusters_l1)
+  Innate.seurat@meta.data$Clusters_l1 <- droplevels(Innate.seurat@meta.data$Clusters_l1)
+  levels(Innate.seurat@meta.data$Clusters_l1)
+
+  # Save dataset for reproducibility
+  saveRDS(Innate.seurat, "Exported_RDS_files/Innate_seurat.rds")
+  
+}
+
+
+```
+
+
+
+## Subset data for CD8 clusters only and recalculate dim-reduction {.tabset}
+
+
+### Keep CD8 clusters and re-perform dim reduction
+
+```{r keep_CD8_only_and_recluster}
+
+if(long.compute){
+  
+  
+  # set idents and assay to use
+  Idents(seurat.combined) <- seurat.combined@meta.data$Clusters_l1
+  
+  DefaultAssay(seurat.combined) <- "RNA"
+  
+  
+  # Keep only innate clusters
+  unique(Idents(seurat.combined))
+  
+  CD8.seurat <- subset(seurat.combined, idents = c("Naive_like_1_CM", "Naive_like_2_SC", "Naive_like_3", 
+                                                   "Cytotoxic", "Type_I_IFN", "Stimulated_1", 
+                                                   "Stimulated_exhausted", "Exhausted_1", "Exhausted_2", "TRM", "Proliferative"))
+  
+  
+  
+  levels(Idents(CD8.seurat))
+  
+  
+  # Set seed for reproducibility
+  set.seed(42)
+  
+  
+  # Scale data
+  CD8.seurat <- ScaleData(CD8.seurat, 
+                          verbose = TRUE)
+  
+  # Find variable features
+  CD8.seurat <- FindVariableFeatures(CD8.seurat)
+  
+  
+  # Run PCA
+  CD8.seurat <- RunPCA(CD8.seurat, 
+                       npcs = 30, 
+                       verbose = TRUE)
+  
+  # Find Neighbors
+  CD8.seurat <- FindNeighbors(CD8.seurat, 
+                              reduction = "pca", 
+                              k.param = 20,
+                              dims = 1:20)
+  
+  # Find clusters
+  CD8.seurat <- FindClusters(CD8.seurat, 
+                             random.seed = 42,
+                             resolution = 0.4) # 0.4 is cluster resolution decided upon
+  
+  # Run UMAP
+  CD8.seurat <- RunUMAP(object = CD8.seurat,
+                        reduction = "pca",
+                        dims = 1:20,
+                        umap.method = "uwot",
+                        n.neighbors = 50, # 5 to 50
+                        min.dist = 0.1, # Sensible values are in the range 0.001 to 0.5
+                        seed.use = 42)
+  
+  Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
+  DefaultAssay(CD8.seurat) <- "RNA"
+
+    # For plotting etc downstream, remove unused levels in cluster annotation 
+  levels(CD8.seurat@meta.data$Clusters_l1)
+  CD8.seurat@meta.data$Clusters_l1 <- droplevels(CD8.seurat@meta.data$Clusters_l1)
+  levels(CD8.seurat@meta.data$Clusters_l1)
+  
+  # Save dataset for reproducibility
+  saveRDS(CD8.seurat, "Exported_RDS_files/CD8_seurat.rds")
+  
+}
+
+```
+
+
+## Adding TCR data {.tabset}
+
+### Format data with scRepertoire
+```{r Format_data_with_scRep}
+
+  # Ensure set to working dir
+setwd(working.dir)
+
+#################################
+# Read in and format data
+#################################
+
+# Load library
+library("scRepertoire")
+
+# read in contig files
+S1.contig <- read.csv("Data/TCR_data/Sample1_filtered_contig_annotations.csv", stringsAsFactors = FALSE)
+S2.contig <- read.csv("Data/TCR_data/Sample2_filtered_contig_annotations.csv", stringsAsFactors = FALSE)
+S3.contig <- read.csv("Data/TCR_data/Sample3_filtered_contig_annotations.csv", stringsAsFactors = FALSE)
+S4.contig <- read.csv("Data/TCR_data/Sample4_filtered_contig_annotations.csv", stringsAsFactors = FALSE)
+
+# create list of contigs
+contig.list <- list(S1.contig, S2.contig,
+                    S3.contig, S4.contig)
+
+# Combine contig list
+combined.contig <- combineTCR(contig.list, 
+                              samples = c("S1", "S2", "S3", "S4"), 
+                              ID = c("US", "US", "Stim", "Stim"), 
+                              cells = "T-AB",
+                              removeNA = TRUE,
+                              removeMulti = FALSE, 
+                              filterMulti = TRUE) # take the top 2 expressed chains for cells with multiple chains 
+
+# on average, filteringMulti results in approx. 200 more cells for each sample than outright removing cells
+
+# Need to amend BarcodeID to match with seurat object
+combined.contig$S1_US$barcode <- gsub("US_", "", combined.contig$S1_US$barcode)
+combined.contig$S2_US$barcode <- gsub("US_", "", combined.contig$S2_US$barcode)
+combined.contig$S3_Stim$barcode <- gsub("Stim_", "", combined.contig$S3_Stim$barcode)
+combined.contig$S4_Stim$barcode <- gsub("Stim_", "", combined.contig$S4_Stim$barcode)
+
+
+########################################################
+# Use CD8 Only seurat dataset for TCR analysis 
+########################################################
+
+# Read in CD8 only dataset
+CD8.seurat <- readRDS("Exported_RDS_files/CD8_seurat.rds")
+
+Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
+DefaultAssay(CD8.seurat) <- "RNA"
+
+
+
+# Combine seurat object with contig info combineExpression
+CD8.seurat.tcr <- combineExpression(combined.contig,
+                                    CD8.seurat,
+                                    cloneCall = "aa",
+                                    chain = "both",
+                                    proportion = TRUE,
+                                    cloneTypes = c(Rare = 1e-04, 
+                                                   Small = 0.001,
+                                                   Medium = 0.01, 
+                                                   Large = 0.1, 
+                                                   Hyperexpanded = 1),
+                                    group.by = "ID", # Alternative frequencies are calculated in next code Chunk
+                                    filterNA = TRUE) # should seurat object be subsetted to remove NA values
+
+
+
+# Write out data for future use in scRep package
+saveRDS(combined.contig, "Exported_RDS_files/combined_contig.rds")
+
+
+# remove unneeded objects
+rm(contig.list, S1.contig, S2.contig, S3.contig, S4.contig)
+
+```
+
+
+### Subsetting metadata to designate TRAV/J/C and TRBV/J/C genes
+```{r Subset_CTaa_by_GeneID}
+
+
+library(stringr)
+
+# Note, changed the order so that gene call is extracted into metadata before filtering for clone size 
+# as such, there is a single cell with two TRA calls. this is messing with subsetting. 
+#  therefore, remove this cell S2_CTTAGGAGTGACAAAT, from exhausted_2 cluster.
+
+cell.ids <- rownames(CD8.seurat.tcr@meta.data)
+remove.logic <- grepl("^S2_CTTAGGAGTGACAAAT-1$", cell.ids)
+sum(remove.logic)
+cell.ids <- cell.ids[!remove.logic]
+
+
+CD8.seurat.tcr <- subset(CD8.seurat.tcr, cells = cell.ids)
+
+
+
+
+# Split the CTgene string at "." 
+temp.list <- str_split(CD8.seurat.tcr@meta.data$CTgene, "\\.")
+
+# First and second elements of the list are V and J calls
+CD8.seurat.tcr@meta.data$TRAV <- sapply(temp.list, "[[", 1)
+CD8.seurat.tcr@meta.data$TRAJ <- sapply(temp.list, "[[", 2)
+
+# Third element is the TRAC and TRBV combined - therefore split this by "_"
+temp.list.2 <- sapply(temp.list, "[[", 3)
+temp.list.2 <- str_split(temp.list.2, "_")
+
+# First element is TRAC and second is TRBV gene call
+CD8.seurat.tcr@meta.data$TRAC <- sapply(temp.list.2, "[[", 1)
+CD8.seurat.tcr@meta.data$TRBV <- sapply(temp.list.2, "[[", 2)
+
+# 4th and 5th elements of original list are TRBJ and TRBC calls respectively
+CD8.seurat.tcr@meta.data$TRBJ <- sapply(temp.list, "[[", 4)
+CD8.seurat.tcr@meta.data$TRBC <- sapply(temp.list, "[[", 6)
+
+# remove unneeded variables 
+rm(temp.list, 
+   temp.list.2)
+
+```
+
+
+
+### Filter dataset
+```{r Filter_data}
+
+
+################################
+# Define filtering parameters 
+################################
+
+# Use relaxed filtering params,
+# data used for specific plots may be filtered to remove low abundance clonotypes but keep entire dataset intact. 
+
+
+min.clonesize <- 1 # greater than or equal to clonesize
+
+clonosize.per.condition <- TRUE # Should the min.clonesize use total dataset clonesize (FALSE) or condition-wise clonesize (TRUE)
+
+remove.self.ribbons <- FALSE # term used later in circos plot generation
+
+
+###################
+# Filter dataset
+###################
+
+# ensure data is only cells with an assigned tcr
+
+Idents(CD8.seurat.tcr) <- CD8.seurat.tcr@meta.data$Clusters_l1
+
+
+
+# Remove small clonotypes (i.e, < min.clonesize) 
+
+if(clonosize.per.condition){
+  # Filter min clone size in a per condition specific manner i.e must hit threshold within the condition not the entire dataset
+  clonotypes <- table(CD8.seurat.tcr@meta.data$CTaa, CD8.seurat.tcr@meta.data$condition)
+  keep.clonotypes <- rownames(clonotypes)[clonotypes[ , "US"] >= min.clonesize | clonotypes[ , "Stim"] >= min.clonesize]
+}else{
+  clonotypes <- table(CD8.seurat.tcr@meta.data$CTaa)
+  keep.clonotypes <- names(clonotypes)[clonotypes >= min.clonesize]
+}
+
+# Entire dataset 
+Idents(CD8.seurat.tcr) <- CD8.seurat.tcr@meta.data$CTaa
+length(unique(Idents(CD8.seurat.tcr))) # 2,922 clonotypes
+
+
+CD8.seurat.tcr <- subset(CD8.seurat.tcr,
+                         idents = keep.clonotypes)
+
+length(unique(Idents(CD8.seurat.tcr))) # 2,922 clonotypes
+
+# All clonotypes kept as they are present in at least one cell in US or Stim datasets
+
+# Remove unneeded variables 
+rm(clonotypes, 
+   keep.clonotypes)
+
+```
+
+
+
+
+### Count clonotype frequencies and normalise
+```{r Count_and_normalise_clonotype_frequencies}
+
+####################################################################################
+# Need to count clonotype occurrence per condition and then normalise this value 
+####################################################################################
+
+# create temp meta.data df and append cell_ID as column (lost in dplyr workflow)
+meta.data.temp <- CD8.seurat.tcr@meta.data
+meta.data.temp$cell_ID <- rownames(CD8.seurat.tcr@meta.data)
+
+
+# Get total number of cells in each condition
+US.cell.n <- table(meta.data.temp$condition)[1] # 3,045 
+Stim.cell.n <- table(meta.data.temp$condition)[2] # 3,392
+total.cell.n <- US.cell.n + Stim.cell.n # 6,437
+
+
+
+####################################################################################
+# Count occurence of clonotypes across entire dataset 
+####################################################################################
+# Also: Normalise n() by # of cells within dataset
+meta.data.temp <- meta.data.temp %>%
+  dplyr::group_by(CTaa) %>%
+  dplyr::mutate(Total_clonotype_n = n()) %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(Total_clonotype_freq = (Total_clonotype_n/total.cell.n)*100) %>%
+  dplyr::ungroup()
+
+####################################################################################
+# Count occurence of clonotypes across entire condition 
+####################################################################################
+# Also: Normalise n() by # of cells within condition
+meta.data.temp <- meta.data.temp %>%
+  dplyr::group_by(CTaa, condition) %>%
+  dplyr::mutate(Clone_conditionwise_n = n()) %>%
+  dplyr::group_by(condition) %>%
+  dplyr::mutate(Clone_conditionwise_freq = case_when(condition == "US" ~ (Clone_conditionwise_n/US.cell.n)*100, 
+                                                     condition == "Stim" ~ (Clone_conditionwise_n/Stim.cell.n)*100)) %>%
+  dplyr::ungroup()
+
+####################################################################################
+# Count occurence of clonotypes within each cluster per condition 
+####################################################################################
+# Also: Normalise n() by # of cells within condition
+meta.data.temp <- meta.data.temp %>%
+  dplyr::group_by(CTaa, condition, Clusters_l1) %>%
+  dplyr::mutate(Clone_Clust_conditionwise_n = n()) %>%
+  dplyr::group_by(condition) %>%
+  dplyr::mutate(Clone_Clust_conditionwise_freq = case_when(condition == "US" ~ (Clone_Clust_conditionwise_n/US.cell.n)*100, 
+                                                           condition == "Stim" ~ (Clone_Clust_conditionwise_n/Stim.cell.n)*100)) %>%
+  dplyr::ungroup()
+
+
+######################################
+# Add new metadata to seurat object
+######################################
+
+#########
+# Total 
+#########
+
+# Add total clonotype n value
+CD8.seurat.tcr <- AddMetaData(object = CD8.seurat.tcr, 
+                          col.name = "Total_clonotype_n",
+                          metadata = meta.data.temp$Total_clonotype_n)
+
+# Add total clonotype freq
+CD8.seurat.tcr <- AddMetaData(object = CD8.seurat.tcr, 
+                          col.name = "Total_clonotype_freq",
+                          metadata = meta.data.temp$Total_clonotype_freq)
+
+##################
+# Condition-wise 
+##################
+
+# Add clone condition-wise n value
+CD8.seurat.tcr <- AddMetaData(object = CD8.seurat.tcr, 
+                          col.name = "Clone_conditionwise_n",
+                          metadata = meta.data.temp$Clone_conditionwise_n)
+
+# Add Clone condition-wise freq
+CD8.seurat.tcr <- AddMetaData(object = CD8.seurat.tcr, 
+                          col.name = "Clone_conditionwise_freq",
+                          metadata = meta.data.temp$Clone_conditionwise_freq)
+
+################################
+# Cluster and Condition-wise 
+################################
+
+# Add Clone Clust and condition-wise n value
+CD8.seurat.tcr <- AddMetaData(object = CD8.seurat.tcr, 
+                          col.name = "Clone_Clust_conditionwise_n",
+                          metadata = meta.data.temp$Clone_Clust_conditionwise_n)
+
+# Add Clone Clust and condition-wise Freq
+CD8.seurat.tcr <- AddMetaData(object = CD8.seurat.tcr, 
+                          col.name = "Clone_Clust_conditionwise_freq",
+                          metadata = meta.data.temp$Clone_Clust_conditionwise_freq)
+
+
+#############################################
+# Scale variables for downstream plotting
+#############################################
+scale.var <- c(0, 10)
+
+# Scale total clonotype number
+CD8.seurat.tcr@meta.data$Total_clonotype_scaled <- scales::rescale(CD8.seurat.tcr@meta.data$Total_clonotype_n, 
+                                                               to = scale.var)
+
+
+# Scale clonotype per condition freq
+CD8.seurat.tcr@meta.data$Clone_conditionwise_scaled <- scales::rescale(CD8.seurat.tcr@meta.data$Clone_conditionwise_freq, 
+                                                                   to = scale.var)
+
+# Scale clonotype per cluster per condition freq
+CD8.seurat.tcr@meta.data$Clone_Clust_conditionwise_scaled <- scales::rescale(CD8.seurat.tcr@meta.data$Clone_Clust_conditionwise_freq, 
+                                                                         to = scale.var)
+
+
+rm(meta.data.temp)
+
+```
+
+### Annotate cells as rare, small, hyperexpanded etc and clean metadata
+```{r annotate_clonotype}
+
+
+# clonotype calculation done by scRep doesnt look right, use my own abundance calculation and re-annotate clonotype
+
+
+# Firstly, remove freq data and clonotype call, and indicator generated by scRep
+head(CD8.seurat.tcr@meta.data)
+
+CD8.seurat.tcr@meta.data$Frequency <- NULL
+CD8.seurat.tcr@meta.data$cloneType <- NULL
+CD8.seurat.tcr@meta.data$indicator <- NULL
+head(CD8.seurat.tcr@meta.data)
+
+
+
+
+# get clonotype abundance stats
+
+
+summary(CD8.seurat.tcr@meta.data$Total_clonotype_n) # 140 = max
+summary(CD8.seurat.tcr@meta.data$Clone_conditionwise_n) # 97 = max
+
+clonotype.vals <- CD8.seurat.tcr@meta.data$Clone_conditionwise_n
+cloneType <- CD8.seurat.tcr@meta.data$Clone_conditionwise_n * NA
+
+single = 1
+small = 5
+medium = 10
+large = 20
+hyperexpanded = 150
+
+cloneType[clonotype.vals == single] <- "Single (1)"
+cloneType[clonotype.vals > single & clonotype.vals <= small] <- "Small (1 < X <= 5)"
+cloneType[clonotype.vals > small & clonotype.vals <= medium] <- "Medium (5 < X <= 10)"
+cloneType[clonotype.vals > medium & clonotype.vals <= large] <- "Large (10 < X <= 20)"
+cloneType[clonotype.vals > large & clonotype.vals <= hyperexpanded] <- "Hyperexpanded (20 < X <= 150)"
+unique(cloneType)
+
+
+# Ensure seurat object clonoType var is a factor with correct levels
+CD8.seurat.tcr@meta.data$cloneType <- factor(cloneType, 
+                                         levels = c("Hyperexpanded (20 < X <= 150)",
+                                                    "Large (10 < X <= 20)", 
+                                                    "Medium (5 < X <= 10)",
+                                                    "Small (1 < X <= 5)", 
+                                                    "Single (1)"))
+
+
+
+unique(CD8.seurat.tcr@meta.data$cloneType)
+
+```
+
+
+
+
+### Clonotype Overlap
+```{r Clonotype_Overlap}
+
+Idents(CD8.seurat.tcr) <- CD8.seurat.tcr@meta.data$Clusters_l1
+
+# Get vector of clonotypes found in US cells
+US.clonotypes <- CD8.seurat.tcr@meta.data %>%
+  dplyr::filter(condition == "US") %>%
+  dplyr::select(CTaa)
+
+US.clonotypes <- unique(US.clonotypes$CTaa)
+
+length(US.clonotypes) # 243 clonotypes
+
+# Get vector of clonotypes found in US cells
+Stim.clonotypes <- CD8.seurat.tcr@meta.data %>%
+  dplyr::filter(condition == "Stim") %>%
+  dplyr::select(CTaa)
+
+Stim.clonotypes <- unique(Stim.clonotypes$CTaa)
+
+length(Stim.clonotypes) # 253 clonotypes
+
+
+# Get shared and unique clonotypes 
+shared.clonotypes <- US.clonotypes[US.clonotypes %in% Stim.clonotypes]
+unique.US <- US.clonotypes[!US.clonotypes %in% Stim.clonotypes]
+unique.Stim <- Stim.clonotypes[!Stim.clonotypes %in% US.clonotypes]
+
+
+####################
+# Add to metadata
+####################
+meta.data.vec <- CD8.seurat.tcr@meta.data %>%
+  dplyr::mutate(Clonotype_overlap = case_when(CTaa %in% shared.clonotypes ~ "Shared", 
+                                              CTaa %in% unique.US ~ "US", 
+                                              CTaa %in% unique.Stim ~ "Stim")) %>%
+  dplyr::select(Clonotype_overlap)
+
+
+CD8.seurat.tcr <- AddMetaData(CD8.seurat.tcr,
+                              meta.data.vec$Clonotype_overlap,
+                              "Clonotype_overlap")
+
+
+# Remove large objects no longer required
+rm(shared.clonotypes, 
+   unique.US, 
+   unique.Stim, 
+   US.clonotypes, 
+   Stim.clonotypes)
+
+```
+
+
+
+### Export tcr seurat object
+```{r export_tcr_RDS}
+
+saveRDS(CD8.seurat.tcr, file = "Exported_RDS_files/CD8_seurat_tcr.rds")
+
+
+
+# remove single clonetypes for certain analysis
+Idents(CD8.seurat.tcr) <- CD8.seurat.tcr@meta.data$cloneType
+CD8.seurat.tcr.filt <- subset(CD8.seurat.tcr, idents = c("Hyperexpanded (20 < X <= 150)",
+                                                         "Large (10 < X <= 20)",
+                                                         "Medium (5 < X <= 10)",
+                                                         "Small (1 < X <= 5)"))
+
+
+CD8.seurat.tcr@meta.data$cloneType <- droplevels(CD8.seurat.tcr@meta.data$cloneType)
+
+saveRDS(CD8.seurat.tcr.filt, file = "Exported_RDS_files/CD8_seurat_tcr_filt.rds")
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

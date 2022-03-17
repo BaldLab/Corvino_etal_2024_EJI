@@ -14,9 +14,6 @@ Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
 # Read in data
 ################
 
-exp.mat <- read.table(file = "Data/Cell_cycle_input_dataset/nestorawa_forcellcycle_expressionMatrix.txt", 
-                      header = TRUE, 
-                      as.is = TRUE, row.names = 1)
 
 # A list of cell cycle markers, from Tirosh et al, 2015, is loaded with Seurat.
 # We can segregate this list into markers of G2/M phase and markers of S phase
@@ -83,14 +80,18 @@ dev.off()
 #######################
 
 VlnPlot(seurat.combined, 
-        features = "S.Score")
+        features = "S.Score", 
+        pt.size = 0, 
+        cols = clust.cols) + NoLegend()
 
 dev.copy(pdf, "output/figures/cell_cycle/VlnPlot_Sscore.pdf")
 dev.off()
 
 
 VlnPlot(seurat.combined,
-        features = "G2M.Score")
+        features = "G2M.Score",
+        pt.size = 0, 
+        cols = clust.cols) + NoLegend()
 
 dev.copy(pdf, "output/figures/cell_cycle/VlnPlot_G2Mscore.pdf")
 dev.off()
@@ -101,7 +102,8 @@ dev.off()
 
 RidgePlot(seurat.combined, 
           features = c("S.Score", "G2M.Score"), 
-          log = TRUE)
+          log = TRUE, 
+          cols = clust.cols)
 
 dev.copy(pdf, "output/figures/cell_cycle/RidgePlot_S_and_G2Mscore.pdf")
 dev.off()

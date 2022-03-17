@@ -50,7 +50,7 @@ setwd(dirname(getActiveDocumentContext()$path))
 setwd("..")
 
 # Load packages
-source("R/Load_packages.R", local = knitr::knit_global())
+#source("R/Load_packages.R", local = knitr::knit_global())
 
 # Create output directories & load custom functions & colour scheme
 source("R/Setup.R", local = knitr::knit_global())
@@ -62,7 +62,7 @@ do.plot <- TRUE
 
 # Load scRNAseq dataset
 seurat.combined <- readRDS("Exported_RDS_files/seurat_combined.rds")
-DefaultAssay(seurat.combined) <- "integrated"
+DefaultAssay(seurat.combined) <- "RNA"
 
 ```
 
@@ -169,6 +169,55 @@ rm(contig.list, S1.contig, S2.contig, S3.contig, S4.contig, meta.data, meta.tcr)
 ```
 
 
+### Subsetting metadata to designate TRAV/J/C and TRBV/J/C genes
+```{r Subset_CTaa_by_GeneID}
+
+# Note, changed the order so that gene call is extracted into metadata before filtering for clone size 
+# as such, there is a single cell with two TRA calls. this is messing with subsetting. 
+#  therefore, remove this cell S2_CTTAGGAGTGACAAAT, from exhausted_2 cluster.
+
+
+library(stringr)
+
+
+cell.ids <- rownames(seurat.tcr@meta.data)
+remove.logic <- grepl("^S2_CTTAGGAGTGACAAAT-1$", cell.ids)
+sum(remove.logic)
+cell.ids <- cell.ids[!remove.logic]
+
+
+seurat.tcr <- subset(seurat.tcr, cells = cell.ids)
+
+
+
+
+# Split the CTgene string at "." 
+temp.list <- str_split(seurat.tcr@meta.data$CTgene, "\\.")
+
+# First and second elements of the list are V and J calls
+seurat.tcr@meta.data$TRAV <- sapply(temp.list, "[[", 1)
+seurat.tcr@meta.data$TRAJ <- sapply(temp.list, "[[", 2)
+
+# Third element is the TRAC and TRBV combined - therefore split this by "_"
+temp.list.2 <- sapply(temp.list, "[[", 3)
+temp.list.2 <- str_split(temp.list.2, "_")
+
+# First element is TRAC and second is TRBV gene call
+seurat.tcr@meta.data$TRAC <- sapply(temp.list.2, "[[", 1)
+seurat.tcr@meta.data$TRBV <- sapply(temp.list.2, "[[", 2)
+
+# 4th and 5th elements of original list are TRBJ and TRBC calls respectively
+seurat.tcr@meta.data$TRBJ <- sapply(temp.list, "[[", 4)
+seurat.tcr@meta.data$TRBC <- sapply(temp.list, "[[", 6)
+
+# remove unneeded variables 
+rm(temp.list, 
+   temp.list.2)
+
+```
+
+
+
 ### Filter dataset
 ```{r Filter_data}
 
@@ -256,33 +305,7 @@ rm(initial.n,
 ```
 
 
-### Subsetting metadata to designate TRAV/J/C and TRBV/J/C genes
-```{r Subset_CTaa_by_GeneID}
 
-# Split the CTgene string at "." 
-temp.list <- str_split(seurat.tcr.filt@meta.data$CTgene, "\\.")
-
-# First and second elements of the list are V and J calls
-seurat.tcr.filt@meta.data$TRAV <- sapply(temp.list, "[[", 1)
-seurat.tcr.filt@meta.data$TRAJ <- sapply(temp.list, "[[", 2)
-
-# Third element is the TRAC and TRBV combined - therefore split this by "_"
-temp.list.2 <- sapply(temp.list, "[[", 3)
-temp.list.2 <- str_split(temp.list.2, "_")
-
-# First element is TRAC and second is TRBV gene call
-seurat.tcr.filt@meta.data$TRAC <- sapply(temp.list.2, "[[", 1)
-seurat.tcr.filt@meta.data$TRBV <- sapply(temp.list.2, "[[", 2)
-
-# 4th and 5th elements of original list are TRBJ and TRBC calls respectively
-seurat.tcr.filt@meta.data$TRBJ <- sapply(temp.list, "[[", 4)
-seurat.tcr.filt@meta.data$TRBC <- sapply(temp.list, "[[", 6)
-
-# remove unneeded variables 
-rm(temp.list, 
-   temp.list.2)
-
-```
 
 ### Count clonotype frequencies and normalise
 ```{r Count_and_normalise_clonotype_frequencies}
@@ -468,6 +491,7 @@ rm(shared.clonotypes,
    Stim.clonotypes)
 
 ```
+
 
 
 ### Export tcr seurat object

@@ -47,11 +47,11 @@ gc() # Free memory
 library("rstudioapi")
 
 # Set working directory to source file location
-#setwd(dirname(getActiveDocumentContext()$path))
+setwd(dirname(getActiveDocumentContext()$path))
 setwd("..")
 
 # Load packages
-source("R/Load_packages.R", local = knitr::knit_global())
+#source("R/Load_packages.R", local = knitr::knit_global())
 
 # Create output directories & load custom functions & colour scheme
 source("R/Setup.R", local = knitr::knit_global())
@@ -64,17 +64,95 @@ do.plot <- TRUE
 # load saved seurat object with cluster annotations and imputation performed
 if(quick.load){
   seurat.combined <- readRDS("Exported_RDS_files/seurat_combined.rds")
-  DefaultAssay(seurat.combined) <- "integrated"
+  DefaultAssay(seurat.combined) <- "RNA"
   
   seurat.tcr <- readRDS("Exported_RDS_files/seurat_tcr.rds")
-  DefaultAssay(seurat.tcr) <- "integrated"
+  DefaultAssay(seurat.tcr) <- "RNA"
   
   seurat.tcr.filt <- readRDS("Exported_RDS_files/seurat_tcr_filt.rds")
-  DefaultAssay(seurat.tcr.filt) <- "integrated"
+  DefaultAssay(seurat.tcr.filt) <- "RNA"
   
 }
 
 ```
+
+
+### Clonal network
+```{r ClonalNetwork}
+
+# Create output directories
+if(!dir.exists("output_tcr/figures/clonalnetworks")){
+  dir.create("output_tcr/figures/clonalnetworks",
+             recursive = TRUE)}
+
+#install.packages("ggraph")
+library(ggraph)
+
+#devtools::install_github("ncborcherding/scRepertoire@dev")
+library("scRepertoire")
+
+
+# subset data
+Idents(seurat.tcr.filt) <- seurat.tcr.filt@meta.data$condition
+US.seurat <- subset(seurat.tcr.filt, idents = "US")
+Stim.seurat <- subset(seurat.tcr.filt, idents = "Stim")
+
+
+# visualise clusters
+p1 <- UMAPPlot(seurat.tcr.filt, 
+         group.by = "seurat_clusters",
+         label = T) + NoLegend() + ggtitle("")
+
+# clusters to plot
+clust.ids <- as.character(unique(seurat.tcr.filt@meta.data$seurat_clusters))
+
+# plot all clusters
+for(i in seq_along(clust.ids)){
+
+  p2 <- scRepertoire::clonalNetwork(US.seurat, 
+                                    reduction = "umap", 
+                                    identity = "seurat_clusters",
+                                    filter.proportion = 0.01,
+                                    filter.identity = clust.ids[i],
+                                    cloneCall = "aa") + ggtitle("US")
+  
+  p3 <- scRepertoire::clonalNetwork(Stim.seurat, 
+                                    reduction = "umap", 
+                                    identity = "seurat_clusters",
+                                    filter.proportion = 0.01,
+                                    filter.identity = clust.ids[i],
+                                    cloneCall = "aa") + ggtitle("Stim")
+  
+
+  print(p1 + p2/p3)
+  
+ ggsave(paste0("output_tcr/figures/clonalnetworks/ClonalNetwork_", clust.ids[i], ".pdf"))
+
+  
+}
+
+
+
+
+
+
+
+
+
+scRepertoire::clonalNetwork(US.seurat, 
+                                    reduction = "umap", 
+                                    identity = "seurat_clusters",
+                                    filter.proportion = 0.01,
+                                    filter.identity = clust.ids[i],
+                                    cloneCall = "aa") + ggtitle("US")
+
+
+
+
+
+```
+
+
 
 
 

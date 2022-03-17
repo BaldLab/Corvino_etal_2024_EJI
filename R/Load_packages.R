@@ -59,6 +59,12 @@ for(i in 1:length(pkgs)){
 #devtools::install_github("xmc811/Scillus", ref = "development")
 library("Scillus")
 
+# install.packages("devtools")
+#devtools::install_github("jackbibby1/SCPA")
+library("SCPA")
+
+
+
 # Nebulosa for density plotting
 #devtools::install_github("powellgenomicslab/Nebulosa")
 library("Nebulosa")

@@ -1,0 +1,204 @@
+---
+title: "22_Manuscript_output"
+author: "Dillon Corvino"
+date: "03/03/2022"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: united
+    highlight: tango
+    df_print: paged
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+  markdown: 
+    wrap: 72
+---
+
+Built with R version `{r} getRversion()`
+
+## Setup {.tabset}
+
+### Dataset information
+
+```{r Dataset_Info}
+
+# HNSCC scRNAseq/scTCRseq dataset
+# Cells are HNSCC TILs sorted on Lymphocytes/Live/CD3+/CD4-/CD8+
+# Human samples
+# Each sample is a pool of 4 patients
+# samples 1 and 2 are unstimulated 
+# samples 3 and 4 are stimulated 
+# Patients in sample 1 match patients in sample 3 and sample 2 pairs with 4
+# Data acquired was transcript expression, ADT (antibody expression), and TCRA & B sequences
+# This analysis uses just Transcript and TCR data
+
+
+# General information
+# CellRanger was used for sequence alignment/QC/counts/TCR calls - performed by Ross (QIMR, Brisbane, Aus)
+# DC was provided the output from CellRanger (counts matrix) and used this as input for analysis within this script
+
+```
+
+### Environment
+
+```{r setup, message = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,  
+  eval = TRUE, 
+  tidy = TRUE
+)
+
+knitr::opts_knit$set(
+  root.dir = "../"
+)
+
+# Environment Set up
+rm(list = ls()) #Clean workspace
+cat("\014")     #Clean Console
+gc() # Free memory
+
+
+# Establish working directory
+library("rstudioapi")
+
+# Set working directory to source file location
+setwd(dirname(getActiveDocumentContext()$path))
+setwd("..")
+
+# Load packages
+#source("R/Load_packages.R", local = knitr::knit_global())
+# use renv::restore() # lockfile
+
+# Create output directories & load custom functions & colour scheme
+source("R/Setup.R", local = knitr::knit_global())
+
+
+```
+
+
+### Reading data
+
+```{r reading_data}
+
+seurat.combined <- readRDS("Exported_RDS_files/seurat_combined.rds")
+
+```
+
+
+## Cluster annotation {.tabset}
+
+### Mapping to seurat PBMC reference
+
+```{r seurat_PBMC_ref_Mapping}
+
+
+# Create output directory
+if(!dir.exists("output/figures/Reference_mapping")){
+  dir.create("output/figures/Reference_mapping", 
+             recursive = T)
+}
+
+
+# load packages
+library(Seurat)
+library(SeuratDisk)
+library(ggplot2)
+library(patchwork)
+
+
+# load reference dataset
+#reference.pbmc <- LoadH5Seurat("../Seurat_PBMC_Multimodal/Data/pbmc_multimodal.h5seurat")
+
+
+# visualise data 
+DimPlot(object = reference.pbmc, 
+        reduction = "wnn.umap", 
+        group.by = "celltype.l3",
+        label = TRUE,
+        label.size = 3,
+        repel = TRUE) + NoLegend()
+
+
+# subset data for just CD8 and other T cells 
+
+#Idents(reference.pbmc) <- reference.pbmc@meta.data$celltype.l1
+
+#reference.pbmc.CD8.otherT <- subset(reference.pbmc, idents = c("CD8 T", "other T"))
+
+# Save seurat reference
+#SaveH5Seurat(reference.pbmc.CD8.otherT, "Data/pbmcs_multimodal_reference_CD8_and_otherT.h5seurat")
+
+reference.pbmc.CD8.otherT <- LoadH5Seurat("Data/pbmcs_multimodal_reference_CD8_and_otherT.h5seurat")
+
+
+# visualise data 
+DimPlot(object = reference.pbmc.CD8.otherT, 
+        reduction = "wnn.umap", 
+        group.by = "celltype.l1",
+        label = TRUE,
+        label.size = 3,
+        repel = TRUE) + NoLegend()
+
+
+
+# set up query dataset 
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+DefaultAssay(seurat.combined) <- "integrated"
+
+
+# normalise with SCT to match reference 
+seurat.combined <- SCTransform(seurat.combined, verbose = FALSE)
+
+
+
+anchors <- FindTransferAnchors(reference = reference.pbmc,
+                               query = seurat.combined,
+                               normalization.method = "SCT",
+                               reference.reduction = "spca",
+                               dims = 1:50)
+
+
+
+mapped.seurat <- MapQuery(anchorset = anchors,
+                          query = seurat.combined,
+                          reference = reference.pbmc,
+                          refdata = list(
+                            celltype.l1 = "celltype.l1",
+                            celltype.l2 = "celltype.l2",
+                            predicted_ADT = "ADT"),
+                          reference.reduction = "spca", 
+                          reduction.model = "wnn.umap")
+
+
+
+p1 <- DimPlot(mapped.seurat, 
+             reduction = "umap", 
+             group.by = "predicted.celltype.l2",
+             label = TRUE,
+             label.size = 3, 
+             repel = TRUE) + NoLegend()
+
+p2 <- DimPlot(mapped.seurat, 
+             reduction = "umap", 
+             group.by = "seurat_clusters",
+             label = TRUE,
+             label.size = 3, 
+             repel = TRUE) + NoLegend()
+
+
+p1 + p2
+
+dev.copy(pdf, "output/figures/Reference_mapping/With_entire_dataset.pdf")
+dev.off()
+
+rm(mapped.seurat, anchors, p1, p2, reference.pbmc, seurat.combined)
+
+
+```
+
