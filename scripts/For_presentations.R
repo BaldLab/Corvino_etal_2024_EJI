@@ -179,10 +179,14 @@ UMAPPlot(seurat.combined,
 
 
 
+seurat.combined@meta.data
 
 
-
-
+UMAPPlot(seurat.combined, 
+         shuffle = F,
+         pt.size = 1,
+         cols = condition.cols,
+         group.by = "condition")
 
 
 

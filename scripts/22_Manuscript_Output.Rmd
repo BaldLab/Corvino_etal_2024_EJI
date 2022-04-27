@@ -72,7 +72,7 @@ setwd("..")
 
 # Load packages
 #source("R/Load_packages.R", local = knitr::knit_global())
-# use renv::restore() # lockfile
+renv::restore() # lockfile
 
 # Create output directories & load custom functions & colour scheme
 source("R/Setup.R", local = knitr::knit_global())
@@ -973,11 +973,23 @@ dev.off()
 }
 
 
+UMAPPlot(object = CD8.seurat,
+         group.by = "condition",
+         cols = temp.cols,
+         pt.size = 1,
+         shuffle = T,
+         label = TRUE, 
+         label.size = 6) + 
+    NoLegend()
+dev.copy(pdf, paste0(output.fig3, "/UMAP_CD8_condition_combined_coloured.pdf"))
+dev.off()
+
+temp.cols <- condition.cols
+names(temp.cols)[2] <-  "Stim"
+temp.cols[2] <- "#ee8262"
 
 
-
-
-
+library(RColorBrewer)
 
 
 ```

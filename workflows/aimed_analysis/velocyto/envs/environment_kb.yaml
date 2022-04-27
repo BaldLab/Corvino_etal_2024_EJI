@@ -1,0 +1,7 @@
+name: 2021_bald_kb
+channels:
+  - bioconda
+  - conda-forge
+dependencies:
+  - kb-python=0.26.4
+  - ngs-tools=1.5.9

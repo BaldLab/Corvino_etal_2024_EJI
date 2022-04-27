@@ -8,16 +8,17 @@
 # User-specific files
 .Ruserdata
 
-# All output files
-output/**/**
-output_tcr/**/**
+# archived files
+archive/**/**
 
-# Archived RDS files 
-Exported_RDS_files/Archive/
-Exported_RDS_files/**/**
+# All output files
+results/**/**
+
+# saved objects
+saves/**/**
 
 # Data
-Data/**/**
+data/**/**
 
 # python code
 src/
@@ -37,6 +38,7 @@ src/
 # produced vignettes
 vignettes/*.html
 vignettes/*.pdf
+vignettes/**/**
 
 # OAuth2 token, see https://github.com/hadley/httr/releases/tag/v0.3
 .httr-oauth
