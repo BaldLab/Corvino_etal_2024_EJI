@@ -85,43 +85,131 @@ long.compute <- FALSE
 
 ```{r reading_data}
 
-########################
-# Load all datasets 
-########################
-# load saved seurat object with cluster annotations and imputation performed
-if(quick.load){
-  seurat.combined <- LoadH5Seurat("saves/seurat_combined.h5Seurat")
+# Read in CD8 only dataset
+CD8.seurat <- LoadH5Seurat("saves/CD8_seurat.h5Seurat")
+Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
+DefaultAssay(CD8.seurat) <- "RNA"
+
+```
+
+## Type I IFN score {.tabset}
+
+### Info
+```{r info}
+# analysis derived from Patrick Gunther from aimed analytics 
+# original code from patrick is found in bald_analysis.rmd
+
+```
+
+### Define signature
+```{r define_signature}
+# Create output directory
+
+output.dir <- "results/Manuscript/Figure4/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
+             recursive = TRUE)
+}
+
+if(long.compute){
+DefaultAssay(CD8.seurat) <- "RNA"
+inf_cluster_signature <- FindMarkers(CD8.seurat,
+                                     ident.1 = "Type_I_IFN",
+                                     logfc.threshold = 0,
+                                     min.pct = 0)
+
+inf_cluster_signature <-
+  inf_cluster_signature%>%
+  as_tibble(rownames = "gene_symbol") %>%
+  mutate(DE=case_when(
+    avg_log2FC>0 & p_val_adj <=.1 ~ "up",
+    avg_log2FC<0 & p_val_adj <=.1 ~ "down",
+    TRUE ~ "notDE"))
+
+write_csv(x = inf_cluster_signature,
+          file = paste0(output.dir, "ifncluster_DE_result.csv"))
+
+
+
+inf_cluster_signature %>%
+  mutate(label=if_else(abs(avg_log2FC)>1 & p_val_adj<.1,
+                       gene_symbol,"")) %>%
+  ggplot(aes(avg_log2FC,y=-log10(p_val))) +
+  geom_point(aes(color=avg_log2FC)) +
+  geom_text_repel(aes(label=label),max.time = 2,max.overlaps = 20,segment.colour = "grey",size=3) +
+  theme_minimal() +
+  scale_color_distiller(palette = "RdBu",limits=c(-1,1),oob=scales::squish)
+
+
+inf_cluster_signature %>%
+  group_by(DE) %>% tally()
+
 }
 
 
 
-# Complete dataset
-seurat.combined <- readRDS("Exported_RDS_files/seurat_combined.rds")
 
-# set idents and assay to use
-Idents(seurat.combined) <- seurat.combined@meta.data$Clusters_l1
-DefaultAssay(seurat.combined) <- "RNA"
+# 
+# 
+# # All markers
+# 
+# all_markers <- FindAllMarkers(seurat_combined,logfc.threshold = .4)
+# 
+# all_markers %>%
+#   group_by(cluster) %>%
+#   top_n(n = 5, wt = avg_log2FC) -> top10
+# 
+# seurat_combined <- ScaleData(seurat_combined,features = rownames(seurat_combined))
+# 
+# DoHeatmap(seurat_combined, features = top10$gene,
+#           group.colors = pals::cols25()) +
+#   NoLegend() +
+#   scale_fill_viridis_c(option = "A")
 
 
-# Read in innate only dataset
-Innate.seurat <- readRDS("Exported_RDS_files/Innate_seurat.rds")
+#write_csv(x = all_markers,
+#          file = paste0("/work_dir/results/exports/DE_result_allcluster_",Sys.Date(),".csv"))
 
-Idents(Innate.seurat) <- Innate.seurat@meta.data$Clusters_l1
-DefaultAssay(Innate.seurat) <- "RNA"
-
-# Read in CD8 only dataset
-CD8.seurat <- readRDS("Exported_RDS_files/CD8_seurat.rds")
-Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
-DefaultAssay(CD8.seurat) <- "RNA"
-
-# CD8 TCR data
-CD8.seurat.tcr <- readRDS("Exported_RDS_files/CD8_seurat_tcr.rds")
-CD8.seurat.tcr.filt <- readRDS("Exported_RDS_files/CD8_seurat_tcr_filt.rds")
-
+#save.image(file = paste0("/work_dir/results/saves/",Sys.Date(),"_after_signature.RData"))
 
 ```
 
 
+
+## Validation bald dataset
+
+```{r}
+ifn_pos_signature <- inf_cluster_signature %>%
+  filter(avg_log2FC>=log2(2) , p_val_adj<=.1) %>%
+  pull(gene_symbol)
+
+ifn_signatures <- list(ifn_pos_signature=ifn_pos_signature)
+
+```
+
+
+### UCell
+```{r}
+DefaultAssay(seurat_combined) <- "RNA"
+seurat_combined <- AddModuleScore_UCell(seurat_combined,
+                                     features = ifn_signatures,
+                                     ncores = 2)
+
+# Viz data
+featnames <- paste0(names(ifn_signatures), "_UCell")
+FeaturePlot(seurat_combined, features = featnames,
+            pt.size = 0.1, max.cutoff = "q99",
+            ncol = 1,cols = viridis::magma(n = 50))
+
+VlnPlot(seurat_combined, features = featnames,
+        pt.size = 0, group.by = "seurat_clusters") +
+  scale_fill_manual(values = pals::cols25()) +
+  geom_boxplot(width=.1,fill="white")
+
+plot_density(seurat_combined, featnames)
+
+```
 
 
 

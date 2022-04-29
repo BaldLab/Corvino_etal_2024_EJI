@@ -12,7 +12,7 @@ output:
     toc: true
     theme: theme.css
 editor_options: 
-  chunk_output_type: inline
+  chunk_output_type: console
 ---
 ```{r set-options, echo=FALSE, cache=FALSE}
 options(layout="l-page")
@@ -42,7 +42,7 @@ require(ggsci)
 library(harmony)
 require(irGSEA)
 require(ReactomePA)
-source("functions.R")
+source("scripts/aimed_analysis/functions.R")
 
 
 ```
