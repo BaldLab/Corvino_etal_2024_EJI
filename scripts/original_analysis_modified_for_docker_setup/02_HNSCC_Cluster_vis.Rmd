@@ -70,12 +70,12 @@ library("rstudioapi")
 setwd(dirname(getActiveDocumentContext()$path))
 setwd("..")
 
-# Load packages
-source("R/Load_packages.R", local = knitr::knit_global())
-
 # Create output directories & load custom functions & colour scheme
-source("R/Setup.R", local = knitr::knit_global())
+source("scripts/Setup.R", local = knitr::knit_global())
 
+# pipeline variables
+quick.load <- FALSE
+long.compute <- FALSE
 
 ```
 
@@ -84,8 +84,7 @@ source("R/Setup.R", local = knitr::knit_global())
 
 ```{r reading_data}
 
-
-seurat.combined <- readRDS("Exported_RDS_files/seurat_combined.rds")
+seurat.combined <- LoadH5Seurat("saves/seurat_combined.h5Seurat")
 
 ```
 
@@ -97,8 +96,10 @@ seurat.combined <- readRDS("Exported_RDS_files/seurat_combined.rds")
 ```{r Vis_Named_Clusters_UMAP}
 
 # Create output directory
-if(!dir.exists("output/figures/UMAP")){
-  dir.create("output/figures/UMAP", 
+output.dir <- "results/scRNAseq/figures/UMAP/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
              recursive = T)
 }
 
@@ -116,8 +117,9 @@ UMAPPlot(object = seurat.combined,
          cols = clust.cols) + 
   ggtitle("UMAP named clusters")
 
-dev.copy(pdf, "output/figures/UMAP/UMAP_clusters.pdf")
+dev.copy(pdf, paste0(output.dir, "UMAP_clusters.pdf"))
 dev.off()
+
 
 # UMAP named clusters - labeled 
 UMAPPlot(object = seurat.combined,
@@ -128,7 +130,7 @@ UMAPPlot(object = seurat.combined,
   NoLegend() +
   ggtitle("UMAP named clusters")
 
-dev.copy(pdf, "output/figures/UMAP/UMAP_clusters_labeled.pdf")
+dev.copy(pdf, paste0(output.dir, "UMAP_clusters_labeled.pdf"))
 dev.off()
 
 
@@ -145,8 +147,9 @@ UMAPPlot(object = seurat.combined,
          cols = clust.cols) + 
   ggtitle("UMAP split by condition")
 
-dev.copy(pdf, "output/figures/UMAP/UMAP_splitby_conditions.pdf")
+dev.copy(pdf, paste0(output.dir, "UMAP_splitby_conditions.pdf"))
 dev.off()
+
 
 # Split by condition // No legend
 UMAPPlot(object = seurat.combined,
@@ -158,8 +161,9 @@ UMAPPlot(object = seurat.combined,
   ggtitle("UMAP split by condition") + 
   NoLegend()
 
-dev.copy(pdf, "output/figures/UMAP/UMAP_splitby_conditions_Nolegend.pdf")
+dev.copy(pdf, paste0(output.dir, "UMAP_splitby_conditions_Nolegend.pdf"))
 dev.off()
+
 
 # Group by condition
 UMAPPlot(object = seurat.combined,
@@ -170,7 +174,7 @@ UMAPPlot(object = seurat.combined,
          label.size = 6) + 
   ggtitle("UMAP group by condition")
 
-dev.copy(pdf, "output/figures/UMAP/UMAP_groupby_conditions.pdf")
+dev.copy(pdf, paste0(output.dir, "UMAP_groupby_conditions.pdf"))
 dev.off()
 
 
@@ -187,9 +191,8 @@ UMAPPlot(object = seurat.combined,
          cols = clust.cols) + 
   ggtitle("UMAP split by Sample")
 
-dev.copy(pdf, "output/figures/UMAP/UMAP_splitby_sample.pdf")
+dev.copy(pdf, paste0(output.dir, "UMAP_splitby_sample.pdf"))
 dev.off()
-
 
 # Group by Sample
 UMAPPlot(object = seurat.combined,
@@ -199,9 +202,8 @@ UMAPPlot(object = seurat.combined,
          label.size = 6) + 
   ggtitle("UMAP group by Sample")
 
-dev.copy(pdf, "output/figures/UMAP/UMAP_groupby_sample.pdf")
+dev.copy(pdf, paste0(output.dir, "UMAP_groupby_sample.pdf"))
 dev.off()
-
 
 ```
 
@@ -214,10 +216,13 @@ dev.off()
 ```{r Distribution_cells_per_cluster}
 
 # Create output directory
-if(!dir.exists("output/figures/Clust_distribution")){
-  dir.create("output/figures/Clust_distribution", 
+output.dir <- "results/scRNAseq/figures/Clust_distribution/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
              recursive = T)
 }
+
 
 ################################
 # Plot cluster wise distribution
@@ -239,9 +244,9 @@ barplot(t(x),
         legend = TRUE, 
         beside = TRUE)
 
-
-dev.copy(pdf, "output/figures/Clust_distribution/Number_cells_per_clust.pdf")
+dev.copy(pdf, paste0(output.dir, "Number_cells_per_clust.pdf"))
 dev.off()
+
 
 # Frequency 
 x <- prop.table(table(seurat.combined@meta.data$seurat_clusters)) * 100
@@ -255,9 +260,8 @@ barplot(t(x),
         legend = TRUE, 
         beside = TRUE)
 
-dev.copy(pdf, "output/figures/Clust_distribution/Freq_cells_per_clust.pdf")
+dev.copy(pdf, paste0(output.dir, "Freq_cells_per_clust.pdf"))
 dev.off()
-
 
 
 ###################################################
@@ -288,20 +292,11 @@ barplot(t(Cluster.cell.n),
         beside = TRUE, 
         legend = TRUE)
 
-dev.copy(pdf, "output/figures/Clust_distribution/Percent_cells_per_cluster_per_condition.pdf")
+dev.copy(pdf, paste0(output.dir, "Percent_cells_per_cluster_per_condition.pdf"))
 dev.off()
-
 
 # reset margin to default 
 par(mar = c(default.mar))
-
-
-
-
-
-
-
-
 
 ```
 

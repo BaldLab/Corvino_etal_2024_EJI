@@ -68,6 +68,9 @@ custom.enhanced.volcano <- function(toptable,
                                     borderWidth = 0.8, 
                                     borderColour = "black") 
 {
+  # load required package
+  library("ggrepel")
+  
   if (!is.numeric(toptable[[x]])) {
     stop(paste(x, " is not numeric!", sep = ""))
   }

@@ -39,7 +39,6 @@ clust.names <- c("Naive_like_1_CM",
 names(clust.cols) <- clust.names
 
 
-
 # For visualisation use batlow where possible
 
 #install.packages('scico')
@@ -54,5 +53,5 @@ keep.logic <- names(clust.cols) %in% c("gd_T_g9d2", "gd_T_non_g9d2", "MAIT")
 innate.cols <- clust.cols[keep.logic]
 CD8.cols <- clust.cols[!keep.logic]
 
-
-
+# remove un-necessary variables
+rm(keep.logic, clust.names)

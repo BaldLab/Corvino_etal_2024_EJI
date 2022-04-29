@@ -34,6 +34,8 @@ annotated.heatmap <- function(input.seurat,
                                       verbose = TRUE,
                                       return.seurat = TRUE)
     
+    input.seurat <- ScaleData(input.seurat)
+    
     # Get matrix for heatmap
     heatmap.matrix <- GetAssayData(input.seurat,
                                    slot = "scale.data", 
@@ -128,5 +130,3 @@ annotated.heatmap <- function(input.seurat,
                 use_raster = TRUE))
   
 }
-#dev.copy(pdf, "output/figures/Large_Summary_heatmaps/Heatmap_top_up_genes_bycluster_highlighted_geneIDs.pdf")
-#dev.off()

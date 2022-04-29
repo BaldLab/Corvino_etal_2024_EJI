@@ -1,0 +1,786 @@
+---
+title: "01_Manuscript_Figure_1"
+author: "Dillon Corvino"
+date: "07/03/2022"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: united
+    highlight: tango
+    df_print: paged
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+  markdown: 
+    wrap: 72
+---
+
+Built with R version `{r} getRversion()`
+
+## Setup {.tabset}
+
+### Dataset information
+
+```{r Dataset_Info}
+
+# HNSCC scRNAseq/scTCRseq dataset
+# Cells are HNSCC TILs sorted on Lymphocytes/Live/CD3+/CD4-/CD8+
+# Human samples
+# Each sample is a pool of 4 patients
+# samples 1 and 2 are unstimulated 
+# samples 3 and 4 are stimulated 
+# Patients in sample 1 match patients in sample 3 and sample 2 pairs with 4
+# Data acquired was transcript expression, ADT (antibody expression), and TCRA & B sequences
+# This analysis uses just Transcript and TCR data
+
+
+# General information
+# CellRanger was used for sequence alignment/QC/counts/TCR calls - performed by Ross (QIMR, Brisbane, Aus)
+# DC was provided the output from CellRanger (counts matrix) and used this as input for analysis within this script
+
+```
+
+### Environment
+
+```{r setup, message = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,  
+  eval = TRUE, 
+  tidy = TRUE
+)
+
+knitr::opts_knit$set(
+  root.dir = "../"
+)
+
+# Environment Set up
+rm(list = ls()) #Clean workspace
+cat("\014")     #Clean Console
+gc() # Free memory
+
+
+# Establish working directory
+library("rstudioapi")
+
+# Set working directory to source file location
+setwd(dirname(getActiveDocumentContext()$path))
+setwd("..")
+
+# Create output directories & load custom functions & colour scheme
+source("scripts/Setup.R", local = knitr::knit_global())
+
+```
+
+
+### Reading data
+
+```{r reading_data}
+
+########################
+# Load all datasets 
+########################
+
+# complete dataset
+  seurat.combined <- LoadH5Seurat("saves/seurat_combined.h5Seurat")
+
+# set idents and assay to use
+Idents(seurat.combined) <- seurat.combined@meta.data$Clusters_l1
+DefaultAssay(seurat.combined) <- "RNA"
+
+```
+
+
+
+## Figure 1 Overview of dataset {.tabset}
+
+
+### Set up for fig 1
+```{r Fig_1_setup}
+
+# Create output directory
+
+output.dir <- "results/Manuscript/Figure1/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
+             recursive = T)
+}
+
+# load required packages
+library("Nebulosa")
+
+
+```
+
+
+### Nebulosa plots of key genes
+```{r Nebulosa_plots_key_genes}
+
+output.nebulosa <- "results/Manuscript/Figure1/Nebulosa_RNA/"
+
+# Plot nebulosa density plots of key markers 
+if(!dir.exists(paste0(output.nebulosa))){
+  dir.create(paste0(output.nebulosa), 
+             recursive = T)
+}
+
+
+# genes of ineterest
+goi <- c("EOMES", "GZMB", "PRF1", "IFNG", "LAG3", "HAVCR2", "MKI67", "TCF7", "TOX", "IL7R", "PDCD1", "PRF1", "SELL", "NKG7", "TNF", "TIGIT", "CD226", "CCR7", "KLRB1", "RORA", "ISG15", "TRDC", "TRAV1-2", "ZNF683")
+
+for(i in 1:length(goi)){
+  
+  print(Plot_Density_Custom(seurat.combined, 
+                            features = goi[i],
+                            custom_palette = batlow.pal,
+                            joint = FALSE, 
+                            pt.size = 1, 
+                            reduction = "umap"))
+  
+  dev.copy(pdf, paste0(output.nebulosa, "Nebulosa_RNA_", goi[i], ".pdf"))
+  dev.off()
+  
+    
+}
+
+
+Plot_Density_Joint_Only(seurat.combined,
+                        features = c("TRAV1-2", "KLRB1"),
+                        pt.size = 1,
+                        custom_palette = batlow.pal)
+
+dev.copy(pdf, paste0(output.nebulosa, "Nebulosa_RNA_TRAV_and_KLRB1.pdf"))
+dev.off()
+
+```
+
+
+### Stacked VlnPlots, Dot plot chemokines and US vs Stim umap plot
+```{r various_fig1_plots}
+
+# Cell cycle scoring
+cc.genes$s.genes
+cc.genes$g2m.genes
+
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+
+
+#######################
+# Cell cycle analysis
+#######################
+
+seurat.combined <- CellCycleScoring(seurat.combined, 
+                                    s.features = s.genes, 
+                                    g2m.features = g2m.genes, 
+                                    set.ident = FALSE)
+
+
+seurat.combined@meta.data$S.Score
+
+
+
+gene_list_plot <- list(goi.1 = c("CD28", "CD226", "TCF7", "TBX21"),
+                       goi.2 = c("GNLY", "PRF1", "GZMK", "XCL1"),
+                       goi.3 = c("TOX", "CTLA4", "LAG3", "TNFRSF9"),
+                       goi.4 = c("KLRC1", "CD300A", "RORA", "G2M.Score"))
+
+for(i in seq_along(gene_list_plot)){
+
+  
+  print(Stacked_VlnPlot(seurat_object = seurat.combined,
+                assay = "RNA",
+                pt.size = 0,
+                features = gene_list_plot[[i]],
+                x_lab_rotate = TRUE,
+                 plot_spacing = 0.15,
+                colors_use = clust.cols))
+
+
+  dev.copy(pdf, paste0(output.dir, "Stacked_VlnPlots_", i, ".pdf"))
+  dev.off()
+  
+  
+  }
+
+
+
+
+# Chemokine receptor plots
+
+
+goi <- c("CCR6", "CCR7", "CXCR3", "CXCR4", "CXCR6", "CXCL13")
+
+
+DotPlot_scCustom(seurat_object = seurat.combined, 
+                 features = goi,
+                 flip_axes = F,
+                 x_lab_rotate = TRUE)
+
+dev.copy(pdf, paste0(output.dir, "Dotplot_chemokine_receptors.pdf"))
+dev.off()
+
+
+# Umap plot stim vs unstim
+UMAPPlot(seurat.combined, 
+         shuffle = T,
+         pt.size = 1,
+         cols = condition.cols,
+         group.by = "condition")
+
+dev.copy(pdf, paste0(output.dir, "/UMAP_condition_coloured.pdf"))
+dev.off()
+
+```
+ 
+ 
+### Key stats of the dataset
+```{r dataset_stats}
+
+# Get basic stats on cells per cluster and per sample and plot these values 
+
+cells.sample.clust <- table(seurat.combined@meta.data$group, seurat.combined@meta.data$Clusters_l1)
+cells.cluster <- colSums(cells.sample.clust)
+
+
+output.df <- cells.sample.clust*NA
+
+for(i in 1:length(cells.cluster)){
+output.df[,i] <- (cells.sample.clust[,i]/cells.cluster[i]) * 100
+}
+
+
+colSums(output.df)
+
+# Plot freq of sample per cluster
+barplot(output.df, 
+        las = 2,
+        col = sample.cols, 
+        cex.names = 0.4)
+
+dev.copy(pdf, paste0(output.dir, "Freq_of_sample_per_cluster.pdf"))
+dev.off()
+
+
+
+
+# freq of cells per cluster
+
+total.cells <- sum(cells.cluster)
+freq.clust <- (cells.cluster/total.cells)*100
+
+z <- order(freq.clust, decreasing = T)
+
+barplot(freq.clust[z], 
+        las = 2,
+        ylim = c(0, 20),
+        col = clust.cols[z], 
+        cex.names = 0.4)
+
+dev.copy(pdf, paste0(output.dir, "Freq_of_cells_per_cluster.pdf"))
+dev.off()
+
+
+```
+
+
+## NOT MODIFIED FOR DOCKER ENVIRO
+
+## Supplementary Figure 1 Innate clusters overview {.tabset}
+
+
+### Set up for fig 1
+```{r Fig_2_setup}
+
+# Create output directory
+output.fig2 <- "output/figures/Manuscript/Figure2"
+
+
+if(!dir.exists(paste0(output.fig2))){
+  dir.create(paste0(output.fig2), 
+             recursive = T)
+}
+
+
+
+# MAIT rearrangment 
+# TRAV1-2/TRAJ33
+
+
+
+```
+
+
+
+### Visualise Innate-only UMAP
+```{r vis_Innate_UMAP}
+
+
+
+# Plot UMAP projection
+
+UMAPPlot(object = Innate.seurat,
+         group.by = "Clusters_l1",
+         cols = innate.cols,
+         label = TRUE, 
+         pt.size = 1,
+         label.size = 6)  + NoLegend()
+
+dev.copy(pdf, paste0(output.fig2, "/UMAP_innate_clusters_named.pdf"))
+dev.off()
+
+
+
+
+UMAPPlot(object = Innate.seurat,
+         group.by = "Clusters_l1",
+         split.by = "condition",
+         cols = innate.cols,
+         label = TRUE, 
+         pt.size = 1,
+         label.size = 6)  + NoLegend()
+
+dev.copy(pdf, paste0(output.fig2, "/UMAP_innate_clusters_named_condition_split.pdf"))
+dev.off()
+
+
+
+```
+
+
+### Getting TCR data for Innate clusters
+```{r TCR_for_Innate_clusters}
+
+
+library(gplots)
+
+# read in unfiltered TCR data, as most MAIT cells are low abundance clones lost in filtering
+seurat.tcr <- readRDS("Exported_RDS_files/seurat_tcr.rds")
+
+unique(seurat.tcr@meta.data$seurat_clusters) # Gamma/delta T-cells are not found in the filtered tcr dataset
+
+# filter for MAIT cells
+MAIT.TCR <- subset(seurat.tcr, idents = c("MAIT"))
+
+# remove large dataset
+rm(seurat.tcr)
+
+
+# 290 MAIT cells in dataset
+# 130 cells have a TCR associated
+# 130/290 = ~44% of MAIT cells
+
+
+########################
+# Heatmap functions
+########################
+
+hclust.func <- function(x){
+  hclust(x, method = 'ward.D2')
+}
+
+dist.func <- function(x){
+  dist(x,method = 'binary')
+}
+
+library(RColorBrewer)
+
+
+col.palette <- colorRampPalette(brewer.pal(8, "RdYlBu"))(600)
+
+
+######################################################
+# Plot TCR usage as a log2() of cell number
+######################################################
+
+# CTaa
+
+x <- table(MAIT.TCR@meta.data$CTaa, MAIT.TCR@meta.data$condition_clust)
+
+
+heatmap.2(as.matrix(log2(x+1)), 
+          scale = "none",
+          trace = "none",
+          Colv = TRUE,
+          cexRow = 0.5, 
+          margins = c(8, 15),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = rev(col.palette))     
+
+dev.copy(pdf, paste0(output.fig2, "/Heatmap_CTaa.pdf"))
+dev.off()
+
+# CT gene
+
+x <- table(MAIT.TCR@meta.data$CTgene, MAIT.TCR@meta.data$condition_clust)
+
+heatmap.2(as.matrix(log2(x+1)), 
+          scale = "none",
+          trace = "none",
+          Colv = TRUE,
+          cexRow = 0.5, 
+          margins = c(8, 15),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = rev(col.palette))     
+
+dev.copy(pdf, paste0(output.fig2, "/Heatmap_CT_gene.pdf"))
+dev.off()
+
+# TRAV gene
+
+x <- table(MAIT.TCR@meta.data$TRAV, MAIT.TCR@meta.data$condition_clust)
+
+
+heatmap.2(as.matrix(log2(x+1)), 
+          scale = "none",
+          trace = "none",
+          Colv = TRUE,
+          cexRow = 0.5, 
+          margins = c(8, 15),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = rev(col.palette))     
+
+dev.copy(pdf, paste0(output.fig2, "/Heatmap_TRA_Vgene.pdf"))
+dev.off()
+
+
+# TRAJ gene
+
+
+x <- table(MAIT.TCR@meta.data$TRAJ, MAIT.TCR@meta.data$condition_clust)
+
+
+heatmap.2(as.matrix(log2(x+1)), 
+          scale = "none",
+          trace = "none",
+          Colv = TRUE,
+          cexRow = 0.5, 
+          margins = c(8, 15),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = rev(col.palette))     
+
+dev.copy(pdf, paste0(output.fig2, "/Heatmap_TRA_Jgene.pdf"))
+dev.off()
+
+
+
+# TRBV gene
+x <- table(MAIT.TCR@meta.data$TRBV, MAIT.TCR@meta.data$condition_clust)
+
+heatmap.2(as.matrix(log2(x+1)), 
+          scale = "none",
+          trace = "none",
+          Colv = TRUE,
+          cexRow = 0.5, 
+          margins = c(8, 15),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = rev(col.palette))     
+
+dev.copy(pdf, paste0(output.fig2, "/Heatmap_TRB_Vgene.pdf"))
+dev.off()
+
+# TRBJ gene
+x <- table(MAIT.TCR@meta.data$TRBJ, MAIT.TCR@meta.data$condition_clust)
+
+heatmap.2(as.matrix(log2(x+1)), 
+          scale = "none",
+          trace = "none",
+          Colv = TRUE,
+          cexRow = 0.5, 
+          margins = c(8, 15),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = rev(col.palette))     
+
+dev.copy(pdf, paste0(output.fig2, "/Heatmap_TRB_Jgene.pdf"))
+dev.off()
+
+# remove large dataset
+rm(MAIT.TCR)
+
+
+```
+
+
+### Innate cell DEG and heatmap
+```{r Innate_cell_DEG_and_Heatmap}
+
+
+# Run DEG analysis
+DEG.markers <- FindAllMarkers(Innate.seurat, 
+                              slot = "data", 
+                              logfc.threshold = 0.25,
+                              test.use = "wilcox",
+                              only.pos = TRUE)
+
+# Filter for significance
+DEG.markers <- 
+  DEG.markers %>%
+  filter(p_val_adj < 0.05)
+
+
+write.csv(DEG.markers, paste0(output.fig2, "/DEG_Innate_Clusters_only.csv"))
+
+
+
+# Get top DEGs
+goi <- DEG.markers %>%
+  dplyr::group_by(cluster) %>%
+  dplyr::filter(avg_log2FC > 1) %>%
+  dplyr::pull(gene)
+
+
+goi <- unique(goi)
+
+DefaultAssay(Innate.seurat) <- "RNA"
+
+# Plot heatmap
+DoHeatmap(Innate.seurat, 
+          features = goi,
+          raster = FALSE)
+
+dev.copy(pdf, paste0(output.fig2, "/Heatmap_DEGs.pdf"))
+dev.off()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+########################################################
+# Plot TF heatmap but only annotate specific genes 
+########################################################
+
+# Source custom function // loaded in custom functions chunk 
+#source("R/annotate_seurat_heatmap.R")
+
+# Colour annotation for column labels 
+names(clust.cols) <- clust.names
+
+genes.id <- c("BACH2", "EOMES", "KLF2", "ZEB2", "IRF4", "TCF7", "JUNB", "ATF4", "IRF7", "STAT1")
+
+# Plot heatmap averaged values
+annotated.heatmap(seurat.combined, 
+                  cluster.id = "seurat_clusters",
+                  assay.use = "integrated",
+                  average.expression = TRUE,
+                  goi = TF.DEG, 
+                  genes.to.label = genes.id, 
+                  col_order = clust.names, 
+                  col.colours = clust.cols, 
+                  range.val = c(-2, 0, 2))
+
+dev.copy(pdf, "output/figures/Large_Summary_heatmaps/Heatmap_top_up_genes_bycluster_highlighted_geneIDs_averaged.pdf")
+dev.off()
+
+
+# Plot heatmap downsampled single cell values
+annotated.heatmap(seurat.combined, 
+                  cluster.id = "seurat_clusters",
+                  assay.use = "integrated",
+                  average.expression = FALSE,
+                  goi = TF.DEG, 
+                  genes.to.label = genes.id, 
+                  col_order = clust.names, 
+                  col.colours = clust.cols, 
+                  range.val = c(-2, 0, 2))
+
+dev.copy(pdf, "output/figures/Large_Summary_heatmaps/Heatmap_top_up_genes_bycluster_highlighted_geneIDs.pdf")
+dev.off()
+
+
+```
+
+
+### Innate cell TF analysis 
+
+```{r TF_analysis}
+
+
+# Searching for TFs
+TF.ref.list <- read.delim("Data/TFcheckpoint.txt") # http://www.tfcheckpoint.org/index.php/browse
+
+dim(TF.ref.list) # 1020, 11
+colnames(TF.ref.list)
+head(TF.ref.list)
+
+Cluster.markers <- read.csv(paste0(output.fig2, "/DEG_Innate_Clusters_only.csv"), row.names = 1)
+
+
+
+# Up-regulated TFs
+sig.genes <- Cluster.markers %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::filter(avg_log2FC > 0.5) %>%
+  dplyr::select(gene)
+
+sig.genes <- unique(sig.genes$gene)
+TF.logic <- sig.genes %in% TF.ref.list$Gene_symbol
+
+TF.DEG <- sig.genes[TF.logic]
+
+
+
+
+########################################
+# Plot TFs differentially regulated 
+########################################
+
+Idents(Innate.seurat) <- Innate.seurat@meta.data$Clusters_l1
+DefaultAssay(Innate.seurat) <- "RNA"
+
+#seurat.combined.small <- subset(seurat.combined, downsample = 300)
+
+average.seurat <- AverageExpression(Innate.seurat,
+                                    assay = "RNA",
+                                    slot = "data",
+                                    verbose = TRUE,
+                                    return.seurat = TRUE)
+
+DoHeatmap(average.seurat, 
+          features = TF.DEG, 
+          draw.lines = FALSE, 
+          raster = FALSE)
+
+dev.copy(pdf, paste0(output.fig2, "/Heatmap_of_TF_diff_expressed.pdf"))
+dev.off()
+
+
+
+```
+
+### Scillus
+
+```{r Scillus_GSEA}
+
+
+#remotes::install_github("xmc811/Scillus")
+library("Scillus")
+
+
+# Scillus package would not compile
+# I took the functions and made a new .R file
+# Some of the functions called and used in this script required modifications to work outside of the package environment
+
+
+#source("~/Documents/Work/Sciebo/Scripts/Packages/Scillus_package/Scillus_functions.R")
+#load("~/Documents/Work/Sciebo/Scripts/Packages/Scillus_package/pathways.hallmark.rda")
+
+
+
+######################
+# Cluster analysis
+######################
+
+# set idents to cluster
+Idents(Innate.seurat) <- Innate.seurat@meta.data$Clusters_l1
+
+
+# get a broad list of DEG markers 
+Cluster.markers <- FindAllMarkers(Innate.seurat,
+                                  assay = "RNA",
+                                  only.pos = TRUE,
+                                  min.diff.pct = 0.1,
+                                  logfc.threshold = 0,
+                                  return.thresh = 0.01)
+
+
+
+
+# Threshold marker list by P value and fold change for GO analysis 
+
+GO.markers <- Cluster.markers[Cluster.markers$p_val_adj < 0.05, ]
+GO.markers <- GO.markers[abs(GO.markers$avg_log2FC) > 0.25, ]
+dim(Cluster.markers) # 8,635 genes
+dim(GO.markers) # 4,890 genes
+
+table(GO.markers$cluster) # number of genes DEG per cluster // used to justify using topn = 100
+
+# Plot Gene Ontology analysis
+# CC, BP, MF
+
+# To plot graph for a specific cluster use below code
+#plot_cluster_go(Module.markers, cluster_name = "Activated", org = "human", ont = "MF")
+
+# CC 
+pdf(paste0(output.fig2, "/GO_Clusters_CC.pdf"), width = 20, height = 20)
+
+plot_all_cluster_go(GO.markers,
+                    topn = 100,
+                    org = "human", 
+                    ont = "CC")
+
+dev.off()
+
+
+# BP 
+pdf(paste0(output.fig2, "/GO_Clusters_BP.pdf"), width = 20, height = 20)
+
+plot_all_cluster_go(GO.markers,
+                    topn = 100,
+                    org = "human", 
+                    ont = "BP")
+
+dev.off()
+
+# MF 
+pdf(paste0(output.fig2, "/GO_Clusters_MF.pdf"), width = 20, height = 20)
+
+plot_all_cluster_go(GO.markers,
+                    topn = 100,
+                    org = "human", 
+                    ont = "MF")
+dev.off()
+
+
+
+
+```
+
+
+
+
+
+
+
+

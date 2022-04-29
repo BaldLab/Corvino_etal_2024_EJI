@@ -1,0 +1,127 @@
+---
+title: "04_Manuscript_Figure_4"
+author: "Dillon Corvino"
+date: "07/03/2022"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: united
+    highlight: tango
+    df_print: paged
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+  markdown: 
+    wrap: 72
+---
+
+Built with R version `{r} getRversion()`
+
+## Setup {.tabset}
+
+### Dataset information
+
+```{r Dataset_Info}
+
+# HNSCC scRNAseq/scTCRseq dataset
+# Cells are HNSCC TILs sorted on Lymphocytes/Live/CD3+/CD4-/CD8+
+# Human samples
+# Each sample is a pool of 4 patients
+# samples 1 and 2 are unstimulated 
+# samples 3 and 4 are stimulated 
+# Patients in sample 1 match patients in sample 3 and sample 2 pairs with 4
+# Data acquired was transcript expression, ADT (antibody expression), and TCRA & B sequences
+# This analysis uses just Transcript and TCR data
+
+
+# General information
+# CellRanger was used for sequence alignment/QC/counts/TCR calls - performed by Ross (QIMR, Brisbane, Aus)
+# DC was provided the output from CellRanger (counts matrix) and used this as input for analysis within this script
+
+```
+
+### Environment
+
+```{r setup, message = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,  
+  eval = TRUE, 
+  tidy = TRUE
+)
+
+knitr::opts_knit$set(
+  root.dir = "../"
+)
+
+# Environment Set up
+rm(list = ls()) #Clean workspace
+cat("\014")     #Clean Console
+gc() # Free memory
+
+
+# Establish working directory
+library("rstudioapi")
+
+# Set working directory to source file location
+setwd(dirname(getActiveDocumentContext()$path))
+setwd("..")
+
+# Create output directories & load custom functions & colour scheme
+source("scripts/Setup.R", local = knitr::knit_global())
+
+# pipeline variables
+long.compute <- FALSE
+
+
+
+```
+
+
+### Reading data
+
+```{r reading_data}
+
+########################
+# Load all datasets 
+########################
+# load saved seurat object with cluster annotations and imputation performed
+if(quick.load){
+  seurat.combined <- LoadH5Seurat("saves/seurat_combined.h5Seurat")
+}
+
+
+
+# Complete dataset
+seurat.combined <- readRDS("Exported_RDS_files/seurat_combined.rds")
+
+# set idents and assay to use
+Idents(seurat.combined) <- seurat.combined@meta.data$Clusters_l1
+DefaultAssay(seurat.combined) <- "RNA"
+
+
+# Read in innate only dataset
+Innate.seurat <- readRDS("Exported_RDS_files/Innate_seurat.rds")
+
+Idents(Innate.seurat) <- Innate.seurat@meta.data$Clusters_l1
+DefaultAssay(Innate.seurat) <- "RNA"
+
+# Read in CD8 only dataset
+CD8.seurat <- readRDS("Exported_RDS_files/CD8_seurat.rds")
+Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
+DefaultAssay(CD8.seurat) <- "RNA"
+
+# CD8 TCR data
+CD8.seurat.tcr <- readRDS("Exported_RDS_files/CD8_seurat_tcr.rds")
+CD8.seurat.tcr.filt <- readRDS("Exported_RDS_files/CD8_seurat_tcr_filt.rds")
+
+
+```
+
+
+
+
+

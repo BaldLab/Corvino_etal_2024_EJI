@@ -15,10 +15,13 @@ archive/**/**
 results/**/**
 
 # saved objects
-saves/**/**
+saves/archive/**/**
 
 # Data
-data/**/**
+data/archive/**/**
+
+# vignettes
+vignettes/archive/**/**
 
 # python code
 src/
@@ -34,6 +37,10 @@ src/
 
 # RStudio files
 .Rproj.user/
+.bash_history
+.config/rstudio/rstudio-prefs.json
+.local/**/**
+
 
 # OAuth2 token, see https://github.com/hadley/httr/releases/tag/v0.3
 .httr-oauth
