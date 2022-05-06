@@ -16,6 +16,7 @@ set.seed(42)
 library("Seurat")
 library("SeuratDisk")
 library("dplyr")
+library("scCustomize")
 
 # Establish colour scheme
 source("scripts/variables/Colour_scheme_variable.R", local = knitr::knit_global())

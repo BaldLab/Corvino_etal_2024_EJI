@@ -76,13 +76,40 @@ source("scripts/Setup.R", local = knitr::knit_global())
 # pipeline variables
 long.compute <- FALSE
 
+# load required packages
+require(tidyverse)
+require(Seurat)
+require(useful)
+require(ggrepel)
+require(clusterProfiler)
+require(enrichplot)
+require(org.Hs.eg.db)
+require(UCell)
+require(Nebulosa)
+require(ggsci)
+library(harmony)
+require(irGSEA)
+#source("scripts/aimed_analysis/functions.R")
 
 
+
+# Create output directory
+output.dir <- "results/Manuscript/Figure4/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
+             recursive = TRUE)
+}
 ```
 
 
-### Reading data
 
+
+## Type I IFN score HNSCC dataset {.tabset}
+
+
+
+### Reading data
 ```{r reading_data}
 
 # Read in CD8 only dataset
@@ -92,124 +119,460 @@ DefaultAssay(CD8.seurat) <- "RNA"
 
 ```
 
-## Type I IFN score {.tabset}
-
-### Info
-```{r info}
-# analysis derived from Patrick Gunther from aimed analytics 
-# original code from patrick is found in bald_analysis.rmd
-
-```
 
 ### Define signature
 ```{r define_signature}
-# Create output directory
 
-output.dir <- "results/Manuscript/Figure4/"
-
-if(!dir.exists(paste0(output.dir))){
-  dir.create(paste0(output.dir), 
-             recursive = TRUE)
-}
-
+# Compute DEGs and define the Type_I_IFN cluster signature
 if(long.compute){
-DefaultAssay(CD8.seurat) <- "RNA"
-inf_cluster_signature <- FindMarkers(CD8.seurat,
-                                     ident.1 = "Type_I_IFN",
-                                     logfc.threshold = 0,
-                                     min.pct = 0)
-
-inf_cluster_signature <-
-  inf_cluster_signature%>%
-  as_tibble(rownames = "gene_symbol") %>%
-  mutate(DE=case_when(
-    avg_log2FC>0 & p_val_adj <=.1 ~ "up",
-    avg_log2FC<0 & p_val_adj <=.1 ~ "down",
-    TRUE ~ "notDE"))
-
-write_csv(x = inf_cluster_signature,
-          file = paste0(output.dir, "ifncluster_DE_result.csv"))
-
-
-
-inf_cluster_signature %>%
-  mutate(label=if_else(abs(avg_log2FC)>1 & p_val_adj<.1,
-                       gene_symbol,"")) %>%
-  ggplot(aes(avg_log2FC,y=-log10(p_val))) +
-  geom_point(aes(color=avg_log2FC)) +
-  geom_text_repel(aes(label=label),max.time = 2,max.overlaps = 20,segment.colour = "grey",size=3) +
-  theme_minimal() +
-  scale_color_distiller(palette = "RdBu",limits=c(-1,1),oob=scales::squish)
-
-
-inf_cluster_signature %>%
-  group_by(DE) %>% tally()
-
+  
+  DefaultAssay(CD8.seurat) <- "RNA"
+  
+  # Calculate DEGs
+  IFN.clust.DEGs <- FindMarkers(CD8.seurat,
+                                ident.1 = "Type_I_IFN",
+                                logfc.threshold = 0,
+                                min.pct = 0)
+  # Annotate DEGs
+  IFN.clust.DEGs <-
+    IFN.clust.DEGs%>%
+    as_tibble(rownames = "gene_symbol") %>%
+    mutate(DE = case_when(
+      avg_log2FC > 0 & p_val_adj <= 0.1 ~ "up",
+      avg_log2FC < 0 & p_val_adj <= 0.1 ~ "down",
+      TRUE ~ "notDE"))
+  
+  # Export results
+  write_csv(x = IFN.clust.DEGs,
+            file = paste0(output.dir, "IFN_clust_DEGs.csv"))
+  
+  
+  # Define signature as top DEGs only
+  IFN.sig <- IFN.clust.DEGs %>%
+    filter(p_val_adj <= 0.05) %>%
+    top_n(20, avg_log2FC)
+  
+  
+  # Export results
+  write_csv(x = IFN.sig,
+            file = paste0(output.dir, "IFN_signature.csv"))
+  
+  
 }
 
 
+# create signatures
+IFN.clust.DEGs <- read.csv(paste0(output.dir, "IFN_clust_DEGs.csv"))
 
-
-# 
-# 
-# # All markers
-# 
-# all_markers <- FindAllMarkers(seurat_combined,logfc.threshold = .4)
-# 
-# all_markers %>%
-#   group_by(cluster) %>%
-#   top_n(n = 5, wt = avg_log2FC) -> top10
-# 
-# seurat_combined <- ScaleData(seurat_combined,features = rownames(seurat_combined))
-# 
-# DoHeatmap(seurat_combined, features = top10$gene,
-#           group.colors = pals::cols25()) +
-#   NoLegend() +
-#   scale_fill_viridis_c(option = "A")
-
-
-#write_csv(x = all_markers,
-#          file = paste0("/work_dir/results/exports/DE_result_allcluster_",Sys.Date(),".csv"))
-
-#save.image(file = paste0("/work_dir/results/saves/",Sys.Date(),"_after_signature.RData"))
-
-```
-
-
-
-## Validation bald dataset
-
-```{r}
-ifn_pos_signature <- inf_cluster_signature %>%
-  filter(avg_log2FC>=log2(2) , p_val_adj<=.1) %>%
+Sig.10 <- IFN.clust.DEGs %>%
+  filter(p_val_adj <= 0.05) %>%
+  top_n(10, avg_log2FC) %>%
   pull(gene_symbol)
 
-ifn_signatures <- list(ifn_pos_signature=ifn_pos_signature)
+Sig.10.down <- IFN.clust.DEGs %>%
+  filter(p_val_adj <= 0.05) %>%
+  top_n(-10, avg_log2FC) %>%
+  pull(gene_symbol)
+
+Sig.10.down <- paste0(Sig.10.down, "-")
+Sig.10 <- paste0(Sig.10, "+")
+
+
+
+Signature.list <- list(Top_10 = Sig.10,
+                       Top10_bot10 = c(Sig.10, Sig.10.down))
+
+signature.names <- paste0(names(Signature.list), "_UCell")
+
+
+
+
+# extract hallmark pathways
+# x <- msigdbr::msigdbr(species = "Homo sapiens",
+#                       category = "H")
+# 
+# Hallmark.IFNa.response <- x[x$gs_name == "HALLMARK_INTERFERON_ALPHA_RESPONSE", ]$gene_symbol
+# Hallmark.IFNa.response <- unique(Hallmark.IFNa.response)
+# 
+# 
+# Hallmark.IFNg.response <- x[x$gs_name == "HALLMARK_INTERFERON_GAMMA_RESPONSE", ]$gene_symbol
+# Hallmark.IFNg.response <- unique(Hallmark.IFNg.response)
+# 
+# 
+# # create list of signatures
+# Signature.list <- list(Positive_sig = IFN.sig, 
+#                        IFNa_Hallmark = Hallmark.IFNa.response,
+#                        IFNg_Hallmark = Hallmark.IFNg.response)
+# 
+# signature.names <- paste0(names(Signature.list), "_UCell")
 
 ```
 
 
-### UCell
-```{r}
-DefaultAssay(seurat_combined) <- "RNA"
-seurat_combined <- AddModuleScore_UCell(seurat_combined,
-                                     features = ifn_signatures,
-                                     ncores = 2)
+### UCell HNSCC dataset
+```{r Ucell_HNSCC_dataset}
 
-# Viz data
-featnames <- paste0(names(ifn_signatures), "_UCell")
-FeaturePlot(seurat_combined, features = featnames,
-            pt.size = 0.1, max.cutoff = "q99",
-            ncol = 1,cols = viridis::magma(n = 50))
+# Calculate Ucell scores for signatures
+DefaultAssay(CD8.seurat) <- "RNA"
+CD8.seurat <- AddModuleScore_UCell(CD8.seurat,
+                                     features = Signature.list,
+                                     ncores = 4)
 
-VlnPlot(seurat_combined, features = featnames,
-        pt.size = 0, group.by = "seurat_clusters") +
-  scale_fill_manual(values = pals::cols25()) +
-  geom_boxplot(width=.1,fill="white")
 
-plot_density(seurat_combined, featnames)
+
+# Visualise results
+VlnPlot(CD8.seurat,
+        pt.size = 0, 
+        cols = CD8.cols,
+        same.y.lims = T,
+        features = signature.names[1],
+        group.by = "Clusters_l1") + 
+  NoLegend()
+
+dev.copy(pdf, paste0(output.dir, "HNSCC_VlnPlot_UCell_scores_top10.pdf"))
+dev.off()
+
+
+ 
+Plot_Density_Custom(CD8.seurat, 
+                    features =  signature.names[1],
+                    custom_palette = batlow.pal,
+                    joint = FALSE, 
+                    pt.size = 1, 
+                    reduction = "umap")
+
+dev.copy(pdf, paste0(output.dir, "HNSCC_Nebulosa_top10.pdf"))
+dev.off()
+
+
 
 ```
 
+### UCell HNSCC dataset noIFN cluster
+```{r Ucell_HNSCC_dataset}
+
+# Calculate Ucell scores for signatures
+DefaultAssay(CD8.seurat) <- "RNA"
+keep.var <- levels(Idents(CD8.seurat))
+keep.var <- keep.var[-5]
+
+temp.seurat <- subset(CD8.seurat, idents = keep.var)
+levels(Idents(temp.seurat))
+
+temp.seurat <- AddModuleScore_UCell(temp.seurat,
+                                     features = Signature.list,
+                                     ncores = 4)
+
+
+# Visualise results
+VlnPlot(temp.seurat,
+        pt.size = 0, 
+        cols = CD8.cols,
+        same.y.lims = T,
+        features = signature.names[1],
+        group.by = "Clusters_l1") + 
+  NoLegend()
+
+dev.copy(pdf, paste0(output.dir, "HNSCC_VlnPlot_UCell_scores_top10_no_IFN.pdf"))
+dev.off()
+
+ 
+
+Plot_Density_Custom(temp.seurat, 
+                    features =  signature.names[1],
+                    custom_palette = batlow.pal,
+                    joint = FALSE, 
+                    pt.size = 1, 
+                    reduction = "umap")
+
+dev.copy(pdf, paste0(output.dir, "HNSCC_Nebulosa_top10_no_IFN.pdf"))
+dev.off()
+
+
+dev.copy(pdf, paste0(output.dir, "HNSCC_Nebulosa_top10_no_IFN.pdf"))
+dev.off()
+
+rm(temp.seurat)
+
+
+```
+
+## Type I IFN score Cillo dataset {.tabset}
+
+### read in cillo data
+
+```{r read_dataset_cillo}
+
+Cillo.CD8.Seurat <- LoadH5Seurat("data/external_datasets/Cillo_TIL_CD8_only.h5Seurat")
+
+
+head(Cillo.CD8.Seurat@meta.data)
+
+
+DimPlot(Cillo.CD8.Seurat, 
+        reduction = "tsne", 
+        group.by = "Pt_ID")
+
+
+
+```
+ 
+### UCell Cillo
+```{r cillo_ucell}
+
+# Calculate Ucell scores for signatures
+DefaultAssay(Cillo.CD8.Seurat) <- "RNA"
+Cillo.CD8.Seurat <- AddModuleScore_UCell(Cillo.CD8.Seurat,
+                                     features = Signature.list,
+                                     ncores = 4)
+
+# Visualise results
+VlnPlot(Cillo.CD8.Seurat,
+        pt.size = 0, 
+        same.y.lims = T,
+        features = signature.names[1],
+        group.by = "cd8_cells_clusterID") + 
+  NoLegend()
+
+dev.copy(pdf, paste0(output.dir, "Cillo_VlnPlot_UCell_scores_top10.pdf"))
+dev.off()
+
+
+Plot_Density_Custom(Cillo.CD8.Seurat, 
+                    features =  signature.names[1],
+                    custom_palette = batlow.pal,
+                    joint = FALSE, 
+                    pt.size = 1, 
+                    reduction = "umap")
+
+dev.copy(pdf, paste0(output.dir, "Cillo_Nebulosa_top10.pdf"))
+dev.off()
+
+
+# UMAPPlot(Cillo.CD8.Seurat)
+# 
+# 
+# Idents(Cillo.CD8.Seurat) <- Cillo.CD8.Seurat@meta.data$cd8_cells_clusterID 
+# Cluster_Highlight_Plot(seurat_object = Cillo.CD8.Seurat,
+#                        cluster_name = "2",
+#                        reduction = "umap",
+#                        highlight_color = "navy",
+#     background_color = "lightgray")
+# 
+
+
+```
+
+## Type I IFN score pancancer dataset {.tabset}
+
+### Prepare dataset / read and filter for CD8
+
+```{r read_dataset_pancancer}
+
+if(long.compute){
+pancancer.seurat <- LoadH5Seurat("data/external_datasets/Utility_dataset.h5Seurat")
+
+Idents(pancancer.seurat) <- pancancer.seurat@meta.data$consensus.Tcell
+pancancer.cd8 <- subset(pancancer.seurat, idents = "CD8")
+
+# 1 cell of mixed annoation and 2 other cells remain - remove these
+Idents(pancancer.cd8) <- pancancer.cd8@meta.data$consensus.major
+pancancer.cd8 <- subset(pancancer.cd8, idents = "T_cell")
+
+SaveH5Seurat(pancancer.cd8, 
+             "data/external_datasets/pancancer_cd8.h5Seurat")
+
+# 
+Idents(pancancer.cd8) <- pancancer.cd8@meta.data$Type
+pancancer.cd8 <- subset(pancancer.cd8, idents = c("Tumor", "Normal"))
+
+SaveH5Seurat(pancancer.cd8, 
+             "data/external_datasets/pancancer_cd8_tumor_normal.h5Seurat")
+
+
+# Normalise and harmonize dataset and calculate umap projection
+pancancer.cd8 <- 
+  pancancer.cd8 %>%
+  NormalizeData() %>%
+  FindVariableFeatures() %>%
+  ScaleData() %>%
+  RunPCA() %>%
+  harmony::RunHarmony(reduction = "pca",
+                      group.by.vars = c("Cohort"), 
+                      plot_convergence = TRUE, 
+                      verbose = TRUE) %>%
+  RunUMAP(reduction = "harmony", 
+          dims = 1:20) %>%
+  FindNeighbors(reduction = "harmony",
+                dims = 1:20) %>%
+  FindClusters(resolution = 0.5)
+
+# Export harmony corrected object
+SaveH5Seurat(pancancer.cd8, 
+             "data/external_datasets/pancancer_cd8_tumor_normal_harmonised.h5Seurat", 
+             overwrite = TRUE)
+
+}
+
+```
+ 
+### apply ucell score to pancancer
+
+```{r ucell_pancancer}
+
+
+if(long.compute){
+
+pancancer.cd8 <- LoadH5Seurat("data/external_datasets/pancancer_cd8_tumor_normal_harmonised.h5Seurat")
+
+# Calculate Ucell scores for signatures
+DefaultAssay(pancancer.cd8) <- "RNA"
+pancancer.cd8 <- UCell::AddModuleScore_UCell(pancancer.cd8,
+                                             features = Signature.list,
+                                             ncores = 4)
+
+# Export harmony corrected object
+SaveH5Seurat(pancancer.cd8, 
+             "data/external_datasets/pancancer_cd8_tumor_normal_harmonised.h5Seurat", 
+             overwrite = TRUE)
+
+}
+
+
+# Visualise results
+VlnPlot(pancancer.cd8,
+        pt.size = 0, 
+        same.y.lims = T,
+        features = signature.names[1],
+        group.by = "seurat_clusters") + 
+  NoLegend()
+
+dev.copy(pdf, paste0(output.dir, "Pancancer_VlnPlot_UCell_scores_top10.pdf"))
+dev.off()
+
+
+ 
+Plot_Density_Custom(pancancer.cd8, 
+                    features =  signature.names[1],
+                    custom_palette = batlow.pal,
+                    joint = FALSE, 
+                    pt.size = 1, 
+                    reduction = "umap")
+
+dev.copy(pdf, paste0(output.dir, "pancancer_Nebulosa_top10.pdf"))
+dev.off()
+
+
+
+
+
+
+
+
+# extract normed values 
+
+var.by.cluster <- table(pancancer.cd8@meta.data$Type,
+                        pancancer.cd8@meta.data$seurat_clusters)
+
+total.cells.type <- rowSums(var.by.cluster)
+
+output.df <- var.by.cluster*NA
+
+# normalise along row
+for(i in 1:length(total.cells.type)){
+output.df[i,] <- (var.by.cluster[i,]/total.cells.type[i]) * 100
+}
+
+
+output.df[,8]
+
+# Plot freq of IFN cluster
+barplot(output.df[,8], 
+        las = 2,
+        col = c("gray", "blue"), 
+        cex.names = 0.6, 
+        ylim = c(0, 5))
+
+dev.copy(pdf, paste0(output.dir, "pancancer_barplot_cluster_7_normed_type.pdf"))
+dev.off()
+
+write.csv(output.df, paste0(output.dir, "pancancer_barplot_cluster_7_normed_by_type.csv"))
+
+
+
+
+
+
+var.by.cluster <- table(pancancer.cd8@meta.data$Tissue,
+                        pancancer.cd8@meta.data$seurat_clusters)
+
+total.cells <- rowSums(var.by.cluster)
+
+output.df <- var.by.cluster*NA
+
+# normalise along row
+for(i in 1:length(total.cells)){
+output.df[i,] <- (var.by.cluster[i,]/total.cells[i]) * 100
+}
+
+
+output.df[,8]
+
+# Plot freq of IFN cluster
+barplot(output.df[,8], 
+        las = 2,
+        col = c("gray", "blue"), 
+        cex.names = 0.6, 
+        ylim = c(0, 30))
+
+dev.copy(pdf, paste0(output.dir, "pancancer_barplot_cluster_7_normed_by_tissue.pdf"))
+dev.off()
+
+write.csv(output.df, paste0(output.dir, "pancancer_barplot_cluster_7_normed_by_tissue.csv"))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+x <- table(pancancer.cd8@meta.data$Tissue)
+min(x)
+
+Idents(pancancer.cd8) <- pancancer.cd8@meta.data$Tissue
+temp.seurat <- subset(pancancer.cd8, downsample = 700)
+
+Idents(temp.seurat) <- temp.seurat@meta.data$seurat_clusters
+
+scCustomize::DimPlot_scCustom(temp.seurat, 
+                              pt.size = 1,
+                              num_columns = 4,
+                              split.by = "Tissue")
+
+dev.copy(pdf, paste0(output.dir, "pancancer_umap_by_tissue_downsampled.pdf"))
+dev.off()
+
+
+
+
+```
 
 

@@ -20,6 +20,10 @@ saves/archive/**/**
 # Data
 data/archive/**/**
 
+# files to large for gilt's
+data/velocity/**/**
+data/external_datasets/**/**
+
 # vignettes
 vignettes/archive/**/**
 
