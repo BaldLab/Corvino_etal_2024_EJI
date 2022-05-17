@@ -21,27 +21,6 @@ Built with R version `{r} getRversion()`
 
 ## Setup {.tabset}
 
-### Dataset information
-
-```{r Dataset_Info}
-
-# HNSCC scRNAseq/scTCRseq dataset
-# Cells are HNSCC TILs sorted on Lymphocytes/Live/CD3+/CD4-/CD8+
-# Human samples
-# Each sample is a pool of 4 patients
-# samples 1 and 2 are unstimulated 
-# samples 3 and 4 are stimulated 
-# Patients in sample 1 match patients in sample 3 and sample 2 pairs with 4
-# Data acquired was transcript expression, ADT (antibody expression), and TCRA & B sequences
-# This analysis uses just Transcript and TCR data
-
-
-# General information
-# CellRanger was used for sequence alignment/QC/counts/TCR calls - performed by Ross (QIMR, Brisbane, Aus)
-# DC was provided the output from CellRanger (counts matrix) and used this as input for analysis within this script
-
-```
-
 ### Environment
 
 ```{r setup, message = FALSE}
@@ -76,42 +55,34 @@ source("scripts/Setup.R", local = knitr::knit_global())
 # pipeline variables
 long.compute <- FALSE
 
-
-
 ```
 
 
 ### Reading data
 
 ```{r reading_data}
-
-
 # Read in CD8 only dataset
 CD8.seurat <- LoadH5Seurat("saves/CD8_seurat.h5Seurat")
 Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
 DefaultAssay(CD8.seurat) <- "RNA"
-
-
 ```
 
+### Loading R packages
 ```{r}
+library(Seurat)
+library(tidyverse)
+require(ggplot2)
+```
 
+### Setting up python environment
+```{r}
 require(reticulate) 
 use_python(python = "/home/rstudio/miniconda3/bin/python",required = T)
 reticulate::use_condaenv(condaenv = "/home/rstudio/miniconda3",
                          required = T)
-
-
 ```
 
-
-```{r,message=FALSE}
-library(Seurat)
-library(tidyverse)
-require(ggplot2)
-
-```
-
+### Loading python packages
 ```{python}
 import anndata
 import igraph
@@ -126,10 +97,7 @@ import scvelo as scv
 import sklearn
 import velocyto as vcy
 import cellrank as cr
-```
 
-
-```{python}
 from collections import Counter
 from IPython.core.display import display, HTML
 from numpy_groupies import aggregate, aggregate_np
@@ -139,15 +107,17 @@ from sklearn.neighbors import NearestNeighbors
 from scipy.spatial.distance import pdist, squareform
 ```
 
+### Figure params
 ```{python}
 sc.set_figure_params(dpi=300, dpi_save=300,figsize=(6, 4), color_map = 'viridis_r',)
 sc.settings.verbosity = 1
 sc.logging.print_header()
 ```
 
+## Prepare dataset for velocity {.tabset}
 
 
-# Prep dataset 
+# Subset dataset by condition
 
 ```{r}
 
@@ -156,7 +126,6 @@ head(CD8.seurat@meta.data)
 # untreated dataset
 US.CD8.seurat <- subset(CD8.seurat, 
                         subset = condition %in% c("US"))
-
 
 DimPlot(US.CD8.seurat,
         reduction = "umap") +
@@ -193,20 +162,7 @@ write.csv(Cells(CD8.seurat),
 
 write.csv(Embeddings(CD8.seurat, reduction = "umap"), file = paste0(output.dir, "cell_embeddings.csv"))
 
-write.csv(paste0("Cluster_",CD8.seurat@meta.data$seurat_clusters), file = paste0(output.dir, "clusters.csv"))
-
-
-
-
-
-
-
-
-
-
-
-
-
+write.csv(paste0("Cluster_",CD8.seurat@meta.data$Clusters_l1), file = paste0(output.dir, "clusters.csv"))
 
 
 # untreated
@@ -224,8 +180,7 @@ write.csv(Cells(US.CD8.seurat),
 
 write.csv(Embeddings(US.CD8.seurat, reduction = "umap"), file = paste0(output.dir, "cell_embeddings.csv"))
 
-write.csv(paste0("Cluster_",CD8.seurat@meta.data$seurat_clusters), file = paste0(output.dir, "clusters.csv"))
-
+write.csv(paste0("Cluster_",US.CD8.seurat@meta.data$Clusters_l1), file = paste0(output.dir, "clusters.csv"))
 
 
 
@@ -244,15 +199,12 @@ write.csv(Cells(Stim.CD8.seurat),
 
 write.csv(Embeddings(Stim.CD8.seurat, reduction = "umap"), file = paste0(output.dir, "cell_embeddings.csv"))
 
-write.csv(paste0("Cluster_",Stim.CD8.seurat@meta.data$seurat_clusters), file = paste0(output.dir, "clusters.csv"))
-
-
-
-
+write.csv(paste0("Cluster_",Stim.CD8.seurat@meta.data$Clusters_l1), file = paste0(output.dir, "clusters.csv"))
 
 ```
 
 
+## scVelo - unstimulated {.tabset}
 
 
 # Run scVelo - untreated dataset
@@ -264,14 +216,14 @@ cr.settings.figdir = 'results/Manuscript/Figure3/US/'
 scv.settings.set_figure_params('scvelo') 
 cr.settings.set_figure_params('scvelo') 
 
-GEX1 = anndata.read('/work_dir/results/preprocessing_velocity/kb_count/GEX1/counts_unfiltered/adata.h5ad')
-GEX2 = anndata.read('/work_dir/results/preprocessing_velocity/kb_count/GEX2/counts_unfiltered/adata.h5ad')
+GEX1 = anndata.read('data/velocity/preprocessing_velocity/kb_count/GEX1/counts_unfiltered/adata.h5ad')
+GEX2 = anndata.read('data/velocity/preprocessing_velocity/kb_count/GEX2/adata.h5ad')
 ```
 
 
 ```{python}
-scv.pl.proportions(GEX1,save="/work_dir/results/figures/untreated/scvelo_prop_gex1.png")
-scv.pl.proportions(GEX2,save="/work_dir/results/figures/untreated/scvelo_prop_gex2.png")
+scv.pl.proportions(GEX1,save="results/Manuscript/Figure3/untreated_scvelo_prop_gex1.png")
+scv.pl.proportions(GEX2,save="results/Manuscript/Figure3/untreated_scvelo_prop_gex2.png")
 
 ```
 
@@ -292,11 +244,11 @@ GEX2.obs.index = GEX2.obs['sample'] + "_" + GEX2.obs['bcs']  + "-1"
 
 sc_untreated = GEX1.concatenate(GEX2,index_unique=None)
 
-scv.pl.proportions(sc_untreated,save="/work_dir/results/figures/untreated/scvelo_prop.png")
+scv.pl.proportions(sc_untreated, save="results/Manuscript/Figure3/untreated_scvelo_prop.png")
 
 
 # filter for cell IDs from seurat 
-sample_obs_untreated = pd.read_csv("/work_dir/results/exports/seurat_untreated/cellID_obs.csv")
+sample_obs_untreated = pd.read_csv("results/Manuscript/Figure3/US/cellID_obs.csv")
 
 sc_untreated = sc_untreated[np.isin(sc_untreated.obs.index,sample_obs_untreated["x"])].copy()
 sc_untreated
@@ -306,24 +258,24 @@ sc_untreated
 
 ```{python}
 # add UMAP coordinates
-umap_untreated = pd.read_csv("/work_dir/results/exports/seurat_untreated/cell_embeddings.csv")
+umap_untreated = pd.read_csv("results/Manuscript/Figure3/US/cell_embeddings.csv")
 
 sc_untreated.obsm['X_umap'] = umap_untreated.iloc[:,1:].values
 
 # add cluster info
-cluster_untreated = pd.read_csv("/work_dir/results/exports/seurat_untreated/clusters.csv")
+cluster_untreated = pd.read_csv("results/Manuscript/Figure3/US/clusters.csv")
 sc_untreated.obs['clusters'] = cluster_untreated.iloc[:,1:].values
 
 sc.pl.embedding(sc_untreated,basis='umap',color ="clusters",save="_scvelo_clusters.png") 
-scv.pl.proportions(sc_untreated,save="/work_dir/results/figures/untreated/scvelo_prop.png")
+scv.pl.proportions(sc_untreated,save="results/Manuscript/Figure3/US/scvelo_prop.png")
 
 ```
 
 
 ```{r}
 p1 <- py$sc_untreated$obs  %>% as_tibble(rownames = "cell_ids")  %>%
-  mutate(UMAP1=py$sc_untreated$obsm$X_umap[,1],
-         UMAP2=py$sc_untreated$obsm$X_umap[,2]) %>%
+  mutate(UMAP1=py$sc_untreated$obsm["X_umap"][,1],
+         UMAP2=py$sc_untreated$obsm["X_umap"][,2]) %>%
   mutate(clusters=as.factor(py$sc_untreated$obs$clusters)) %>%
   ggplot(aes(UMAP1,UMAP2,color=clusters)) +
   geom_point(size=.5) +
@@ -331,13 +283,13 @@ p1 <- py$sc_untreated$obs  %>% as_tibble(rownames = "cell_ids")  %>%
   scale_color_manual(values = pals::cols25()) +
   guides(color = guide_legend(override.aes = list(size = 2) )) 
 
-ggsave(plot = p1,width = 10,height = 6,filename = "/work_dir/results/figures/untreated/umap_scvelo_clusters.png")
+ggsave(plot = p1,width = 10,height = 6,filename = "results/Manuscript/Figure3/US/umap_scvelo_clusters.png")
 p1
 
 
 p2 <- py$sc_untreated$obs  %>% as_tibble(rownames = "cell_ids")  %>%
-  mutate(UMAP1=py$sc_untreated$obsm$X_umap[,1],
-         UMAP2=py$sc_untreated$obsm$X_umap[,2]) %>%
+  mutate(UMAP1=py$sc_untreated$obsm["X_umap"][,1],
+         UMAP2=py$sc_untreated$obsm["X_umap"][,2]) %>%
   mutate(clusters=as.factor(py$sc_untreated$obs$clusters)) %>%
   ggplot(aes(UMAP1,UMAP2,color=sample)) +
   geom_point(size=.5) +
@@ -345,14 +297,14 @@ p2 <- py$sc_untreated$obs  %>% as_tibble(rownames = "cell_ids")  %>%
   scale_color_manual(values = pals::cols25()) +
   guides(color = guide_legend(override.aes = list(size = 2) )) 
 
-ggsave(plot = p2,width = 10,height = 6,filename = "/work_dir/results/figures/untreated/umap_scvelo_samples.png")
+ggsave(plot = p2,width = 10,height = 6,filename = "results/Manuscript/Figure3/US/umap_scvelo_samples.png")
 p2
 
 
 
 p3 <- py$sc_untreated$obs  %>% as_tibble(rownames = "cell_ids")  %>%
-  mutate(UMAP1=py$sc_untreated$obsm$X_umap[,1],
-         UMAP2=py$sc_untreated$obsm$X_umap[,2]) %>%
+  mutate(UMAP1=py$sc_untreated$obsm["X_umap"][,1],
+         UMAP2=py$sc_untreated$obsm["X_umap"][,2]) %>%
   mutate(clusters=as.factor(py$sc_untreated$obs$clusters)) %>%
   group_by(clusters,sample) %>%
   tally() %>%
@@ -362,13 +314,13 @@ p3 <- py$sc_untreated$obs  %>% as_tibble(rownames = "cell_ids")  %>%
   theme(axis.text.x = element_text(angle = 45,hjust=1)) +
   scale_fill_manual(values = pals::cols25())  
 
-ggsave(plot = p3,width = 10,height = 6,filename = "/work_dir/results/figures/untreated/clusters.png")
+ggsave(plot = p3,width = 10,height = 6,filename = "results/Manuscript/Figure3/US/clusters.png")
 p3
 
 
 p4 <- py$sc_untreated$obs  %>% as_tibble(rownames = "cell_ids")  %>%
-  mutate(UMAP1=py$sc_untreated$obsm$X_umap[,1],
-         UMAP2=py$sc_untreated$obsm$X_umap[,2]) %>%
+  mutate(UMAP1=py$sc_untreated$obsm["X_umap"][,1],
+         UMAP2=py$sc_untreated$obsm["X_umap"][,2]) %>%
   mutate(clusters=as.factor(py$sc_untreated$obs$clusters)) %>%
   group_by(clusters,sample) %>%
   tally() %>%
@@ -380,7 +332,7 @@ p4 <- py$sc_untreated$obs  %>% as_tibble(rownames = "cell_ids")  %>%
   scale_y_continuous(labels = scales::percent) +
   labs(y="Percentage of cluster")
 
-ggsave(plot = p4,width = 10,height = 6,filename = "/work_dir/results/figures/untreated/clusters_perc.png")
+ggsave(plot = p4,width = 10,height = 6,filename = "results/Manuscript/Figure3/US/clusters_perc.png")
 p4
 
 
@@ -401,14 +353,13 @@ scv.tl.recover_dynamics(sc_untreated)
 scv.tl.velocity(sc_untreated, mode = "dynamical")
 scv.tl.velocity_graph(sc_untreated)
 
-
 ```
 
 
 
 ```{python}
 # save velocity data
-sc_untreated.write('/work_dir/results/exports/seurat_untreated/sc_untreated_velocity.h5ad')
+sc_untreated.write('saves/velocity/sc_untreated_velocity.h5ad')
 #sc_untreated = anndata.read('/work_dir/results/exports/seurat_untreated/sc_untreated_velocity.h5ad')
 
 
@@ -607,6 +558,7 @@ cr.pl.circular_projection(sc_untreated, keys="clusters", legend_loc="right",save
 
 
 
+## scVelo - Stimulated {.tabset}
 
 
 # Run scVelo - treated dataset
@@ -956,13 +908,14 @@ cr.pl.circular_projection(sc_treated, keys="clusters", legend_loc="right",save="
 
 
 
+## scVelo - Complete dataset {.tabset}
 
 
 # Run scVelo - combined dataset
 ```{python}
-sc.settings.figdir = '/work_dir/results/figures/combined/'
-scv.settings.figdir = '/work_dir/results/figures/combined/'
-cr.settings.figdir = '/work_dir/results/figures/combined/'
+sc.settings.figdir = 'results/Manuscript/Figure3/'
+scv.settings.figdir = 'results/Manuscript/Figure3/'
+cr.settings.figdir = 'results/Manuscript/Figure3/'
 scv.settings.set_figure_params('scvelo') 
 cr.settings.set_figure_params('scvelo') 
 
