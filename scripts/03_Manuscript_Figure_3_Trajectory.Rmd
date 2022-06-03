@@ -117,7 +117,7 @@ sc.logging.print_header()
 ## Prepare dataset for velocity {.tabset}
 
 
-# Subset dataset by condition
+### Subset dataset by condition
 
 ```{r}
 
@@ -143,7 +143,7 @@ DimPlot(Stim.CD8.seurat,
 ```
 
 
-## Export information for velocity analysis
+### Export information for velocity analysis
 
 ```{r}
 
@@ -204,10 +204,10 @@ write.csv(paste0("Cluster_",Stim.CD8.seurat@meta.data$Clusters_l1), file = paste
 ```
 
 
-## scVelo - unstimulated {.tabset}
+## Run scVelo - unstimulated {.tabset}
 
 
-# Run scVelo - untreated dataset
+### prepare python settings
 ```{python}
 
 sc.settings.figdir = 'results/Manuscript/Figure3/US/'
@@ -216,19 +216,24 @@ cr.settings.figdir = 'results/Manuscript/Figure3/US/'
 scv.settings.set_figure_params('scvelo') 
 cr.settings.set_figure_params('scvelo') 
 
-GEX1 = anndata.read('data/velocity/preprocessing_velocity/kb_count/GEX1/counts_unfiltered/adata.h5ad')
-GEX2 = anndata.read('data/velocity/preprocessing_velocity/kb_count/GEX2/adata.h5ad')
+
 ```
 
-
+### Read in data
 ```{python}
-scv.pl.proportions(GEX1,save="results/Manuscript/Figure3/untreated_scvelo_prop_gex1.png")
-scv.pl.proportions(GEX2,save="results/Manuscript/Figure3/untreated_scvelo_prop_gex2.png")
+
+GEX1 = anndata.read('data/velocity/preprocessing_velocity/kb_count/GEX1/counts_unfiltered/adata.h5ad')
+GEX2 = anndata.read('data/velocity/preprocessing_velocity/kb_count/GEX2/counts_unfiltered/adata.h5ad')
+
+
+#scv.pl.proportions(GEX1, save="results/Manuscript/Figure3/untreated_scvelo_prop_gex1.png")
+
+#scv.pl.proportions(GEX2,save="results/Manuscript/Figure3/untreated_scvelo_prop_gex2.png")
 
 ```
 
 
-
+### Filter data to match seurat object and add metadata
 ```{python}
 import pandas as pd
 # combine untreated samples
@@ -252,11 +257,8 @@ sample_obs_untreated = pd.read_csv("results/Manuscript/Figure3/US/cellID_obs.csv
 
 sc_untreated = sc_untreated[np.isin(sc_untreated.obs.index,sample_obs_untreated["x"])].copy()
 sc_untreated
-```
 
 
-
-```{python}
 # add UMAP coordinates
 umap_untreated = pd.read_csv("results/Manuscript/Figure3/US/cell_embeddings.csv")
 
@@ -266,12 +268,23 @@ sc_untreated.obsm['X_umap'] = umap_untreated.iloc[:,1:].values
 cluster_untreated = pd.read_csv("results/Manuscript/Figure3/US/clusters.csv")
 sc_untreated.obs['clusters'] = cluster_untreated.iloc[:,1:].values
 
-sc.pl.embedding(sc_untreated,basis='umap',color ="clusters",save="_scvelo_clusters.png") 
-scv.pl.proportions(sc_untreated,save="results/Manuscript/Figure3/US/scvelo_prop.png")
+```
+
+### spliced to unspliced proportions
+```{python}
+
+sc.pl.embedding(sc_untreated,
+basis = 'umap',
+color ="clusters",
+save = "_scvelo_clusters.png") 
+
+# typically have between 10%-25% of unspliced molecules containing intronic sequences
+scv.pl.proportions(sc_untreated,
+save = "results/Manuscript/Figure3/US/scvelo_prop.png")
 
 ```
 
-
+### General overview of dataset
 ```{r}
 p1 <- py$sc_untreated$obs  %>% as_tibble(rownames = "cell_ids")  %>%
   mutate(UMAP1=py$sc_untreated$obsm["X_umap"][,1],
@@ -314,7 +327,7 @@ p3 <- py$sc_untreated$obs  %>% as_tibble(rownames = "cell_ids")  %>%
   theme(axis.text.x = element_text(angle = 45,hjust=1)) +
   scale_fill_manual(values = pals::cols25())  
 
-ggsave(plot = p3,width = 10,height = 6,filename = "results/Manuscript/Figure3/US/clusters.png")
+ggsave(plot = p3,width = 10,height = 6, filename = "results/Manuscript/Figure3/US/clusters.png")
 p3
 
 
@@ -342,16 +355,26 @@ p4
 
 
 
-
+### Preprocess data scvelo
 ```{python}
+
 # conda install pandas=1.3.5
+
+# Filter genes and normalise
 scv.pp.filter_and_normalize(sc_untreated)
 sc_untreated
+
+# calculate first and second order moments
 scv.pp.moments(sc_untreated)
 sc_untreated
-scv.tl.recover_dynamics(sc_untreated)
+
+# Estimate RNA velocity
+scv.tl.recover_dynamics(sc_untreated) # required for dynamical modeling (not for deterministic)
 scv.tl.velocity(sc_untreated, mode = "dynamical")
+
+# estimate cell-to-cell transition probabilities for projecting into lower-dim space
 scv.tl.velocity_graph(sc_untreated)
+
 
 ```
 
@@ -359,24 +382,36 @@ scv.tl.velocity_graph(sc_untreated)
 
 ```{python}
 # save velocity data
-sc_untreated.write('saves/velocity/sc_untreated_velocity.h5ad')
+sc_untreated.write('saves/sc_untreated_velocity.h5ad')
 #sc_untreated = anndata.read('/work_dir/results/exports/seurat_untreated/sc_untreated_velocity.h5ad')
 
 
 ```
 
 ```{python}
-scv.pl.velocity_embedding_stream(sc_untreated, basis = 'umap',color="clusters",
-legend_fontsize=6,min_mass=3, density=3 , save="sc_velo_umap_velocity.png")
+scv.pl.velocity_embedding_stream(sc_untreated, 
+basis = 'umap',
+color = "clusters",
+legend_fontsize = 6,
+min_mass = 3, 
+density = 3 , 
+save = "sc_velo_umap_velocity.png")
 
 
-scv.pl.velocity_embedding_stream(sc_untreated, basis = 'umap',color="clusters",
-legend_fontsize=6,save="sc_velo_umap_velocity2.png")
+scv.pl.velocity_embedding_stream(sc_untreated, 
+basis = 'umap',
+color = "clusters",
+legend_fontsize = 6,
+save = "sc_velo_umap_velocity2.png")
 
 
-scv.pl.velocity_embedding_grid(sc_untreated, basis='umap', color="clusters",
-legend_fontsize=6,min_mass=3, arrow_length =2 ,save="sc_velo_umap_velocity_grid.png")
-
+scv.pl.velocity_embedding_grid(sc_untreated,
+basis = 'umap', 
+color = "clusters",
+legend_fontsize = 6,
+min_mass = 3, 
+arrow_length = 2 ,
+save = "sc_velo_umap_velocity_grid.png")
 
 ```
 
