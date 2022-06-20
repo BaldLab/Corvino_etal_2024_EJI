@@ -76,7 +76,10 @@ source("scripts/Setup.R", local = knitr::knit_global())
 # pipeline variables
 long.compute <- FALSE
 
-
+# load required packages
+require(tidyverse)
+require(Seurat)
+library(ggplot2)
 
 ```
 
@@ -90,7 +93,6 @@ long.compute <- FALSE
 ########################
 
 # CD8 dataset
-
 CD8.seurat <- LoadH5Seurat("saves/CD8_seurat.h5Seurat")
 
 Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
@@ -143,7 +145,6 @@ if(!dir.exists(paste0(output.dir))){
 ### Visualise CD8 only UMAP
 ```{r vis_CD8_UMAP}
 
-library(ggplot2)
 
 UMAPPlot(object = CD8.seurat,
          group.by = "Clusters_l1",
@@ -269,6 +270,315 @@ write.csv(DEG.markers, paste0(output.dir, "DEG_CD8_Clusters_only.csv"))
 }
 
 ```
+
+
+
+### Subset data for Cytotoxic, IFN, Stim-1 and DEG calculation and visualisation
+```{r DEG_calculation}
+
+Idents(CD8.seurat)
+temp.seurat <- subset(CD8.seurat, idents = c("Cytotoxic", "Type_I_IFN", "Stimulated_1"))
+
+
+if(long.compute){
+# Run DEG analysis
+DEG.markers <- FindAllMarkers(temp.seurat, 
+                              slot = "data", 
+                              logfc.threshold = 0.25,
+                              test.use = "wilcox",
+                              only.pos = TRUE)
+
+# Filter for significance
+DEG.markers <- 
+  DEG.markers %>%
+  filter(p_val_adj < 0.05)
+
+
+write.csv(DEG.markers, paste0(output.dir, "DEG_Cytotoxic_IFN_Stim_1_Clusters_only.csv"))
+}
+
+DEG.markers <- read.csv(paste0(output.dir, "DEG_Cytotoxic_IFN_Stim_1_Clusters_only.csv"))
+
+small.seurat <- subset(temp.seurat, downsample = 300)
+small.seurat <- ScaleData(small.seurat)
+
+
+
+goi <- DEG.markers %>%
+  group_by(cluster) %>%
+  #filter(avg_log2FC > 1) %>%
+  top_n(10, avg_log2FC) %>%
+  pull(gene)
+
+goi <- unique(goi)
+
+
+DoHeatmap(small.seurat, 
+          features = goi)
+
+
+
+
+```
+
+
+
+### Subset data for Exhausted, Stim_exhausted and DEG calculation and visualisation
+```{r DEG_calculation}
+
+Idents(CD8.seurat)
+temp.seurat <- subset(CD8.seurat, idents = c("Exhausted_1", "Exhausted_2", "Stimulated_exhausted"))
+
+
+if(long.compute){
+# Run DEG analysis
+DEG.markers <- FindAllMarkers(temp.seurat, 
+                              slot = "data", 
+                              logfc.threshold = 0.25,
+                              test.use = "wilcox",
+                              only.pos = TRUE)
+
+# Filter for significance
+DEG.markers <- 
+  DEG.markers %>%
+  filter(p_val_adj < 0.05)
+
+
+write.csv(DEG.markers, paste0(output.dir, "DEG_Exhausted_stim_exhasted_Clusters_only.csv"))
+}
+
+
+small.seurat <- subset(temp.seurat, downsample = 300)
+
+goi <- DEG.markers %>%
+  group_by(cluster) %>%
+  #filter(avg_log2FC > 1) %>%
+  top_n(10, avg_log2FC) %>%
+  pull(gene)
+
+goi <- unique(goi)
+
+
+
+DoHeatmap(small.seurat, 
+          features = goi)
+
+
+```
+
+### DEG and vis Stim-1 vs Stim-exhausted
+```{r DEG_calculation}
+
+Idents(CD8.seurat)
+
+
+if(long.compute){
+# Run DEG analysis
+DEG.markers <- FindMarkers(CD8.seurat, 
+                           ident.1 = "Stimulated_1",
+                           ident.2 = "Stimulated_exhausted",
+                              slot = "data", 
+                              logfc.threshold = 0.25,
+                              test.use = "wilcox",
+                              only.pos = FALSE)
+
+# Filter for significance
+DEG.markers <- 
+  DEG.markers %>%
+  filter(p_val_adj < 0.05)
+
+
+write.csv(DEG.markers, paste0(output.dir, "DEG_Stim_vs_StimEx.csv"))
+}
+
+
+DEG.markers <- read.csv(paste0(output.dir, "DEG_Stim_vs_StimEx.csv"))
+DEG.markers <- as.data.frame(DEG.markers)
+
+small.seurat <- subset(CD8.seurat, idents = c("Stimulated_1", "Stimulated_exhausted"))
+small.seurat <- subset(small.seurat, downsample = 300)
+small.seurat <- ScaleData(small.seurat)
+
+goi <- DEG.markers %>%
+  mutate(abs.FC = abs(avg_log2FC)) %>%
+  filter(abs.FC > 0.5) %>%
+  arrange(desc(avg_log2FC)) %>%
+  pull(X)
+
+goi <- unique(goi)
+
+
+
+DoHeatmap(small.seurat, 
+          features = goi)
+
+goi
+
+label.var <- c("IL2", "IL7R", "XCL1", "TNF", "CD69", "GZMK", "IFNG", "CD28", "TCF7", "CD226", "TOX", "NKG7", "CTLA4", "GZMA", "PRF1", "ENTPD1", "TIGIT", "GZMB", "LAG3", "HAVCR2", "GNLY")
+
+
+# With annotated genes
+pdf(paste0(output.dir, "DEG_Stim_vs_StimEx_highlighted.pdf"))
+
+# Plot heatmap
+annotated.heatmap(small.seurat, 
+                  cluster.id = "Clusters_l1",
+                  assay.use = "RNA",
+                  average.expression = FALSE,
+                  goi = goi, 
+                  genes.to.label = label.var, 
+                  col_order = c("Stimulated_1", "Stimulated_exhausted"), 
+                  col.colours = CD8.cols[c(6,7)], 
+                  range.val = c(-2, 0, 2))
+
+dev.off()
+
+
+```
+
+
+
+### GO CD8 dataset
+```{r GO_analysis_CD8_Dataset}
+
+if(long.compute){
+
+# get a broad list of DEG markers 
+Cluster.markers <- FindAllMarkers(CD8.seurat,
+                                  assay = "RNA",
+                                  only.pos = TRUE,
+                                  min.diff.pct = 0.1,
+                                  logfc.threshold = 0,
+                                  return.thresh = 0.01)
+
+
+
+# Filter for significance
+Cluster.markers <- 
+  Cluster.markers %>%
+  filter(p_val_adj < 0.05) %>%
+  mutate(abs.FC = abs(avg_log2FC)) %>%
+  filter(abs.FC > 0.25)
+
+
+write.csv(Cluster.markers, paste0(output.dir, "DEG_CD8_clusters_for_GO.csv"))
+
+
+
+
+table(Cluster.markers$cluster) # number of genes DEG per cluster // used to justify using topn = 100
+
+# Plot Gene Ontology analysis
+# CC, BP, MF
+
+# CC 
+pdf(paste0(output.dir, "GO_Clusters_CC.pdf"), width = 20, height = 20)
+
+plot_all_cluster_go(Cluster.markers,
+                    topn = 100,
+                    org = "human", 
+                    ont = "CC")
+
+dev.off()
+
+
+# BP 
+pdf(paste0(output.dir, "GO_Clusters_BP.pdf"), width = 20, height = 20)
+
+plot_all_cluster_go(Cluster.markers,
+                    topn = 100,
+                    org = "human", 
+                    ont = "BP")
+
+dev.off()
+
+
+
+# MF 
+pdf(paste0(output.dir, "GO_Clusters_MF.pdf"), width = 20, height = 20)
+
+plot_all_cluster_go(Cluster.markers,
+                    topn = 100,
+                    org = "human", 
+                    ont = "MF")
+
+dev.off()
+
+
+# Specifically plot Stim-1 and StimEx clusters
+# To plot graph for a specific cluster use below code
+
+
+# Stimulated-1 CC
+pdf(paste0(output.dir, "GO_Stimulated_1_CC.pdf"), width = 20, height = 20)
+
+plot_cluster_go(Cluster.markers, 
+                cluster_name = "Stimulated_1",
+                org = "human",
+                ont = "CC")
+
+dev.off()
+
+# Stimulated-1 BP
+pdf(paste0(output.dir, "GO_Stimulated_1_BP.pdf"), width = 20, height = 20)
+
+plot_cluster_go(Cluster.markers, 
+                cluster_name = "Stimulated_1",
+                org = "human",
+                ont = "BP")
+
+dev.off()
+
+# Stimulated-1 MF
+pdf(paste0(output.dir, "GO_Stimulated_1_MF.pdf"), width = 20, height = 20)
+
+plot_cluster_go(Cluster.markers, 
+                cluster_name = "Stimulated_1", #"Stimulated_exhausted"
+                org = "human",
+                ont = "MF")
+
+dev.off()
+
+
+# Stimulated_exhausted CC
+pdf(paste0(output.dir, "GO_Stimulated_Exhausted_CC.pdf"), width = 20, height = 20)
+
+plot_cluster_go(Cluster.markers, 
+                cluster_name = "Stimulated_exhausted",
+                org = "human",
+                ont = "CC")
+
+dev.off()
+
+# Stimulated_exhausted BP
+pdf(paste0(output.dir, "GO_Stimulated_Exhausted_BP.pdf"), width = 20, height = 20)
+
+plot_cluster_go(Cluster.markers, 
+                cluster_name = "Stimulated_exhausted",
+                org = "human",
+                ont = "BP")
+
+dev.off()
+
+# Stimulated_exhausted MF
+pdf(paste0(output.dir, "GO_Stimulated_Exhausted_MF.pdf"), width = 20, height = 20)
+
+plot_cluster_go(Cluster.markers, 
+                cluster_name = "Stimulated_exhausted",
+                org = "human",
+                ont = "MF")
+
+dev.off()
+
+}
+```
+
+
+
+
+
+
+
 
 
  
@@ -854,13 +1164,13 @@ col.palette <- colorRampPalette(brewer.pal(8, "RdYlBu"))(600)
 clonotype.data <- table(CD8.seurat.tcr@meta.data$CTaa, CD8.seurat.tcr@meta.data$Clusters_l1)
 
 
-# Plot the top 10 clonotypes
+# Plot the top 50 clonotypes
 aa.keep <- sort(rowSums(clonotype.data), decreasing = TRUE)[1:50]
 
 keep.vec <- rownames(clonotype.data) %in% names(aa.keep)
 
 plot.data <- clonotype.data[keep.vec, ]
-
+dim(plot.data)
 
 heatmap.2(as.matrix(log2(plot.data+1)), 
           scale = "none",
@@ -921,11 +1231,28 @@ for(i in seq_along(colnames(clonotype.data))){
 
 
 
-
 ```
 
 
+```{r remedy001}
 
+# CD8 dataset
+  Trex.seurat <- LoadH5Seurat("data/TREX_.h5Seurat")
+
+Trex.seurat
+
+Idents(Trex.seurat) <- Trex.seurat@meta.data$Clusters_l1
+DefaultAssay(Trex.seurat) <- "RNA"
+
+seuratObj <- Trex::quietTCRgenes(seuratObj)
+seuratObj <- RunPCA(seuratObj)
+
+DimPlot(Trex.seurat, 
+        reduction = "umap")
+
+
+
+```
 
 
 

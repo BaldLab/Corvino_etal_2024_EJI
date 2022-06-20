@@ -209,6 +209,102 @@ signature.names <- paste0(names(Signature.list), "_UCell")
 ```
 
 
+### Type 1 or Type 2 IFN
+```{r TypeI_or_II_IFN}
+
+
+#https://www.nature.com/articles/nri1604
+
+# Prepare dataset for heatmap
+Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
+DefaultAssay(CD8.seurat) <- "RNA"
+
+average.seurat <- AverageExpression(CD8.seurat, return.seurat = T)
+
+DoHeatmap(average.seurat, 
+          draw.lines = F,
+          raster = FALSE,
+          features = c("STAT1", "STAT2", "IRF9", "OAS1"), 
+          group.colors = CD8.cols)
+
+dev.copy(pdf, paste0(output.dir, "Heatmap_Type1_vs_Type2_IFN.pdf"))
+dev.off()
+
+
+#c("STAT1", "STAT2", "STAT3", "TYK2", "IRF9", "JAK1", "JAK2", "IFNAR1", "IFNAR2", "IFNGR1", "IFNGR2", "SOCS1", "SOCS3", "OAS1")
+#c("OAS1", "OAS2", "OAS3", "OASL")
+
+#goi <- grep("STAT.*", rownames(average.seurat), value = T)
+
+
+```
+
+
+ 
+### Visualise Type I IFN cluster 
+```{r heatmap_gene_expression}
+
+
+ #extract hallmark pathways
+ x <- msigdbr::msigdbr(species = "Homo sapiens",
+                       category = "H")
+ 
+ Hallmark.IFNa.response <- x[x$gs_name == "HALLMARK_INTERFERON_ALPHA_RESPONSE", ]$gene_symbol
+ Hallmark.IFNa.response <- unique(Hallmark.IFNa.response)
+ 
+ 
+ Hallmark.IFNg.response <- x[x$gs_name == "HALLMARK_INTERFERON_GAMMA_RESPONSE", ]$gene_symbol
+ Hallmark.IFNg.response <- unique(Hallmark.IFNg.response)
+
+ Hallmark.IFN.both <- unique(c(Hallmark.IFNa.response, Hallmark.IFNg.response))
+ 
+ # Prepare dataset for heatmap
+Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
+DefaultAssay(CD8.seurat) <- "RNA"
+
+average.seurat <- AverageExpression(CD8.seurat, return.seurat = T)
+
+DoHeatmap(average.seurat, 
+          draw.lines = F,
+          raster = FALSE,
+          features = Hallmark.IFNa.response, 
+          group.colors = CD8.cols)
+
+dev.copy(pdf, paste0(output.dir, "HNSCC_Hallmark_IFNa_Averaged.pdf"))
+dev.off()
+
+
+
+# Heatmap of IFN cluster DEGs
+IFN.clust.DEGs <- read.csv(paste0(output.dir, "IFN_clust_DEGs.csv"))
+
+DEGs.UP <- IFN.clust.DEGs %>%
+  filter(p_val_adj <= 0.05) %>%
+  filter(DE == "up") %>%
+  pull(gene_symbol)
+
+
+
+grep("IFN.*", DEGs.UP, value = T)
+
+
+annotated.heatmap(CD8.seurat, 
+                  cluster.id = "Clusters_l1",
+                              assay.use = "RNA",
+                              average.expression = TRUE,
+                              goi = DEGs.UP, 
+                              genes.to.label = c("ISG15", "IFI6", "ISG20", "IRF7", "IRF2", "IRF9", "IRF2", "IFI35", "IFI44"), 
+                              col_order = names(CD8.cols), 
+                              col.colours = CD8.cols, 
+                              range.val = c(-2, 0, 2))
+
+dev.copy(pdf, paste0(output.dir, "HNSCC_IFN_cluster_DEGs_highlighted_average.pdf"))
+dev.off()
+
+
+```
+
+
 ### UCell HNSCC dataset
 ```{r Ucell_HNSCC_dataset}
 
@@ -307,13 +403,36 @@ Cillo.CD8.Seurat <- LoadH5Seurat("data/external_datasets/Cillo_TIL_CD8_only.h5Se
 
 
 head(Cillo.CD8.Seurat@meta.data)
-
+Idents(Cillo.CD8.Seurat) <- Cillo.CD8.Seurat@meta.data$cd8_cells_clusterID
 
 DimPlot(Cillo.CD8.Seurat, 
         reduction = "tsne", 
         group.by = "Pt_ID")
 
 
+
+# Recreate Cillo figure 2C
+averaged.seurat <- AverageExpression(Cillo.CD8.Seurat, return.seurat = TRUE)
+
+goi <- c("KLRG1", "JUNB", "IL7R", "CD69", "FOSB", "CCR7", "CD27", "EOMES", "KLRD1", "GZMH", "KLRC2", "GZMB", 
+         "HIST1H4C", "TUBA1B", "STMN1", "MKI67", "TIGIT", "HAVCR2", "CTLA4", "ENTPD1", "TNFRSF4", "PDCD1", "TNFRSF18", "IFI6", "ISG15", "IFI27", "IFIT3", "IFIT1")
+
+Idents(averaged.seurat) <- factor(averaged.seurat@active.ident, levels = c(1:8))
+
+DoHeatmap(averaged.seurat, 
+          features = goi, 
+          draw.lines = F)
+
+# Plot where cluster 2 which is cillo identified IFN-driven cluster
+library(scCustomize)
+
+scCustomize::Cluster_Highlight_Plot(Cillo.CD8.Seurat, 
+                                    reduction = "umap",
+                                    pt.size = 1,
+                                    cluster_name = "2")
+
+dev.copy(pdf, paste0(output.dir, "Cillo_UMAP_cluster_2_highlighted.pdf"))
+dev.off()
 
 ```
  
@@ -438,12 +557,19 @@ SaveH5Seurat(pancancer.cd8,
 
 }
 
+pancancer.cd8 <- LoadH5Seurat("data/external_datasets/pancancer_cd8_tumor_normal_harmonised.h5Seurat")
+pancancer.seurat <- LoadH5Seurat("data/external_datasets/Utility_dataset.h5Seurat")
+
+
+
+
+colnames(pancancer.cd8@meta.data)
 
 # Visualise results
 VlnPlot(pancancer.cd8,
         pt.size = 0, 
         same.y.lims = T,
-        features = signature.names[1],
+        features = "Top_10_UCell",
         group.by = "seurat_clusters") + 
   NoLegend()
 
@@ -453,7 +579,7 @@ dev.off()
 
  
 Plot_Density_Custom(pancancer.cd8, 
-                    features =  signature.names[1],
+                    features =  "Top_10_UCell",
                     custom_palette = batlow.pal,
                     joint = FALSE, 
                     pt.size = 1, 
@@ -461,6 +587,36 @@ Plot_Density_Custom(pancancer.cd8,
 
 dev.copy(pdf, paste0(output.dir, "pancancer_Nebulosa_top10.pdf"))
 dev.off()
+
+small.seurat <- subset(pancancer.cd8, downsample = 200)
+colnames(small.seurat@meta.data)
+
+
+UMAPPlot(small.seurat, 
+         #cols = temp.cols,
+         group.by = "consensus.major")
+
+
+
+
+
+
+
+temp.cols <- c(rep("Gray", 17))
+temp.cols[8] <- "Red"
+length(unique(small.seurat@meta.data$seurat_clusters))
+
+
+
+
+UMAPPlot(small.seurat, 
+         cols = temp.cols,
+         group.by = "seurat_clusters",
+         split.by = "cloneType")
+
+
+
+
 
 
 

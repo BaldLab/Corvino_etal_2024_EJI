@@ -50,24 +50,6 @@ library("rstudioapi")
 setwd(dirname(getActiveDocumentContext()$path))
 setwd("..")
 
-# Load packages
-source("R/Load_packages.R", local = knitr::knit_global())
-
-# Create output directories & load custom functions & colour scheme
-source("R/Setup.R", local = knitr::knit_global())
-
-# pipeline variables
-quick.load <- TRUE
-long.compute <- TRUE
-do.plot <- TRUE
-
-# load saved seurat object with cluster annotations and imputation performed
-if(quick.load){
-
-  seurat.tcr.filt <- readRDS("Exported_RDS_files/seurat_tcr_filt.rds")
-  DefaultAssay(seurat.tcr.filt) <- "integrated"
-  
-}
 
 ```
 
@@ -78,121 +60,25 @@ if(quick.load){
 ### TREX
 ```{r TREX}
 
+library(keras)
 
-# Install packages for Trex analysis 
-devtools::install_github("manlius/muxViz")
-
-##Install keras
+# Install keras
 install.packages("keras")
 
 ##Setting up Tensor Flow
 library(reticulate)
-
-
-
+conda_create("r-reticulate") ##If first time using reticulate
 use_condaenv(condaenv = "r-reticulate", required = TRUE)
-
-install.packages("tensorflow")
-
-
 library(tensorflow)
-install_tensorflow()
+install_tensorflow(version = "2.8.0")
 
-
-
-install_tensorflow(method = 'conda', envname = 'r-reticulate', system = T)
-
-
-
-conda_create(
-  envname = ""
-)
-
-conda_install(
-  envname = NULL,
-  packages,
-
-)
-
-
-use_condaenv("Tensorflow_R")
-
-
-
-library(reticulate)
-py_install("pandas", envname = "Tensorflow_R")
-
-py_install("pandas", envname = "Tensorflow_R")
-
-
-install_tensorflow(method = 'conda', envname = 'Tensorflow_R')
-
-
-
-tf$constant("Hellow Tensorflow")
-
-
-Tensorflow_R$constant("Hellow Tensorflow")
-
-Sys.setenv(RETICULATE_PYTHON="/opt/anaconda3/envs/r-reticulate/bin/python")
-use_condaenv("/opt/anaconda3/envs/r-reticulate")
-
-
-
-library(tensorflow)
-use_python("/usr/bin/python")
-use_condaenv("Tensorflow_R")
-
-
-
-
-
-?py_install
-
-reticulate::use_python("/opt/anaconda3/envs/r-reticulate/bin/python")
-
-library(tensorflow)
-
-
-install_tensorflow(method = 'conda', envname = '/opt/anaconda3/envs/r-reticulate/')
-
-py_install("tensorflow")
-
-
-
-devtools::install_github("ncborcherding/Trex", force = T)
-
-library(Trex)
-
-BiocManager::install("DelayedArray", force = TRUE)
-
-
-
-Trex_vectors <- maTrex(seurat.tcr.filt, 
-                       AA.method = "mean", 
-                    AA.properties = "KF", 
-                    nearest.method = "threshold")
+devtools::install_github("ncborcherding/Trex")
 
 
 
 
 
 
-
-
-
-
-tflow <- import("tensorflow")
-
-install_tens
-
-
-
-
-Trex_vectors <- maTrex(SeuratObj, 
-                       AA.method = "mean", 
-                    AA.properties = "KF", 
-                    nearest.method = "threshold")
 
 # Create output directories
 if(!dir.exists("output_tcr/figures/TREX")){

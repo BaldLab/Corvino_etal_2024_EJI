@@ -73,6 +73,8 @@ setwd("..")
 # Create output directories & load custom functions & colour scheme
 source("scripts/Setup.R", local = knitr::knit_global())
 
+# pipeline variables 
+long.compute <- FALSE
 ```
 
 
@@ -85,7 +87,7 @@ source("scripts/Setup.R", local = knitr::knit_global())
 ########################
 
 # complete dataset
-  seurat.combined <- LoadH5Seurat("saves/seurat_combined.h5Seurat")
+seurat.combined <- LoadH5Seurat("saves/seurat_combined.h5Seurat")
 
 # set idents and assay to use
 Idents(seurat.combined) <- seurat.combined@meta.data$Clusters_l1
@@ -293,24 +295,31 @@ dev.off()
 ## Supplementary Figure 1 Innate clusters overview {.tabset}
 
 
-### Set up for fig 1
-```{r Fig_2_setup}
+### Set up for sup Figure 1
+```{r Sup_Fig_1_setup}
 
 # Create output directory
-output.fig2 <- "output/figures/Manuscript/Figure2"
+output.Supfig1 <- "results/Manuscript/Sup_Figure1"
 
 
-if(!dir.exists(paste0(output.fig2))){
-  dir.create(paste0(output.fig2), 
+if(!dir.exists(paste0(output.Supfig1))){
+  dir.create(paste0(output.Supfig1), 
              recursive = T)
 }
 
 
 
+# Load innate dataset
+Innate.seurat <- LoadH5Seurat("saves/Innate_seurat.h5Seurat")
+
+# set idents and assay to use
+Idents(Innate.seurat) <- Innate.seurat@meta.data$Clusters_l1
+DefaultAssay(Innate.seurat) <- "RNA"
+
+
+
 # MAIT rearrangment 
 # TRAV1-2/TRAJ33
-
-
 
 ```
 
@@ -322,7 +331,6 @@ if(!dir.exists(paste0(output.fig2))){
 
 
 # Plot UMAP projection
-
 UMAPPlot(object = Innate.seurat,
          group.by = "Clusters_l1",
          cols = innate.cols,
@@ -330,10 +338,8 @@ UMAPPlot(object = Innate.seurat,
          pt.size = 1,
          label.size = 6)  + NoLegend()
 
-dev.copy(pdf, paste0(output.fig2, "/UMAP_innate_clusters_named.pdf"))
+dev.copy(pdf, paste0(output.Supfig1, "/UMAP_innate_clusters_named.pdf"))
 dev.off()
-
-
 
 
 UMAPPlot(object = Innate.seurat,
@@ -344,12 +350,150 @@ UMAPPlot(object = Innate.seurat,
          pt.size = 1,
          label.size = 6)  + NoLegend()
 
-dev.copy(pdf, paste0(output.fig2, "/UMAP_innate_clusters_named_condition_split.pdf"))
+dev.copy(pdf, paste0(output.Supfig1, "/UMAP_innate_clusters_named_condition_split.pdf"))
+dev.off()
+
+```
+
+
+### Innate cell DEG and heatmap
+```{r Innate_cell_DEG_and_Heatmap}
+
+
+if(long.compute){
+
+# Run DEG analysis
+DEG.markers <- FindAllMarkers(Innate.seurat, 
+                              slot = "data", 
+                              logfc.threshold = 0.25,
+                              test.use = "wilcox",
+                              only.pos = TRUE)
+
+# Filter for significance
+DEG.markers <- 
+  DEG.markers %>%
+  filter(p_val_adj < 0.05)
+
+
+write.csv(DEG.markers, paste0(output.Supfig1, "/DEG_Innate_Clusters_only.csv"))
+
+}
+
+DEG.markers <- read.csv(paste0(output.Supfig1, "/DEG_Innate_Clusters_only.csv"))
+rownames(DEG.markers) <- DEG.markers$X
+
+
+# Get top DEGs
+goi <- DEG.markers %>%
+  dplyr::group_by(cluster) %>%
+  dplyr::filter(avg_log2FC > 1) %>%
+  dplyr::pull(gene)
+
+
+goi <- unique(goi)
+
+DefaultAssay(Innate.seurat) <- "RNA"
+
+# Plot heatmap
+DoHeatmap(Innate.seurat, 
+          features = goi,
+          raster = FALSE)
+
+dev.copy(pdf, paste0(output.Supfig1, "/Heatmap_DEGs_innate_clusters.pdf"))
 dev.off()
 
 
 
+# Specifically annotate genes
+
+small.seurat <- subset(Innate.seurat, downsample = 300)
+
+genes.id <- c("GZMH", "NKG7", "GZMB", "PRF1", "GZMM", "GZMA", "XCL1", "TCF7", "SELL", "CD69", "BATF", "CCR6", "CXCR6", "GPR65", "GPR183")
+
+# Plot heatmap downsampled single cell values
+annotated.heatmap(small.seurat, 
+                  cluster.id = "Clusters_l1",
+                  assay.use = "RNA",
+                  average.expression = FALSE,
+                  goi = goi, 
+                  genes.to.label = genes.id, 
+                  col_order = names(innate.cols), 
+                  col.colours = innate.cols, 
+                  range.val = c(-2, 0, 2))
+
+dev.copy(pdf, paste0(output.Supfig1, "/Heatmap_DEGs_innate_clusters_annotated.pdf"))
+dev.off()
+
+#
+
+if(long.compute){
+  
+  Idents(Innate.seurat) <- Innate.seurat@meta.data$condition_clust
+  
+ DEG.var <- FindMarkers(Innate.seurat,
+                         ident.1 = "US_gd_T_g9d2", 
+                         ident.2 = "Stim_gd_T_g9d2",
+                         test.use = "wilcox",
+                         logfc.threshold = 0.25,
+                         min.pct = 0.1,
+                         only.pos = FALSE,
+                         verbose = FALSE)
+  
+
+
+ 
+ 
+ }
+
+
+
+
+  # Set idents to cluster ID
+  Idents(Innate.seurat) <- Innate.seurat@meta.data$Clusters_l1
+  
+  # Subset for cluster ID
+  subset.seurat <- subset(Innate.seurat, idents = "gd_T_g9d2")
+  
+  # Set idents to condition var
+  Idents(subset.seurat) <- subset.seurat@meta.data$condition
+  
+  # Get top 10 genes
+  sig.genes <- DEG.var %>%
+    #filter(p_val_adj < 0.05) %>%
+    mutate(abs.FC = abs(avg_log2FC)) %>%
+    top_n(10, abs.FC)
+  
+  genes.to.label <- rownames(sig.genes)
+  
+  
+  
+  # Average expression
+  avg.subset.seurat <- log1p(AverageExpression(subset.seurat, verbose = FALSE)$RNA)
+  avg.subset.seurat <- as.data.frame(avg.subset.seurat)
+  
+  
+  # Generate plot
+  p1 <- ggplot(avg.subset.seurat, 
+               aes(US, Stim)) + 
+    geom_point() + 
+    ggtitle(paste0("Cluster "))
+  
+  p1 <-  LabelPoints(plot = p1,
+                     points = genes.to.label,
+                     repel = TRUE)
+  
+  print(plot(p1))
+  
+  
+  
+  dev.copy(pdf, paste0(fig.dir, "ScatterPlot_Stim_vs_US_cluster_", clust.var[i], ".pdf"))
+  dev.off()
+  
+
+
 ```
+
+
 
 
 ### Getting TCR data for Innate clusters
@@ -522,114 +666,6 @@ rm(MAIT.TCR)
 
 ```
 
-
-### Innate cell DEG and heatmap
-```{r Innate_cell_DEG_and_Heatmap}
-
-
-# Run DEG analysis
-DEG.markers <- FindAllMarkers(Innate.seurat, 
-                              slot = "data", 
-                              logfc.threshold = 0.25,
-                              test.use = "wilcox",
-                              only.pos = TRUE)
-
-# Filter for significance
-DEG.markers <- 
-  DEG.markers %>%
-  filter(p_val_adj < 0.05)
-
-
-write.csv(DEG.markers, paste0(output.fig2, "/DEG_Innate_Clusters_only.csv"))
-
-
-
-# Get top DEGs
-goi <- DEG.markers %>%
-  dplyr::group_by(cluster) %>%
-  dplyr::filter(avg_log2FC > 1) %>%
-  dplyr::pull(gene)
-
-
-goi <- unique(goi)
-
-DefaultAssay(Innate.seurat) <- "RNA"
-
-# Plot heatmap
-DoHeatmap(Innate.seurat, 
-          features = goi,
-          raster = FALSE)
-
-dev.copy(pdf, paste0(output.fig2, "/Heatmap_DEGs.pdf"))
-dev.off()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-########################################################
-# Plot TF heatmap but only annotate specific genes 
-########################################################
-
-# Source custom function // loaded in custom functions chunk 
-#source("R/annotate_seurat_heatmap.R")
-
-# Colour annotation for column labels 
-names(clust.cols) <- clust.names
-
-genes.id <- c("BACH2", "EOMES", "KLF2", "ZEB2", "IRF4", "TCF7", "JUNB", "ATF4", "IRF7", "STAT1")
-
-# Plot heatmap averaged values
-annotated.heatmap(seurat.combined, 
-                  cluster.id = "seurat_clusters",
-                  assay.use = "integrated",
-                  average.expression = TRUE,
-                  goi = TF.DEG, 
-                  genes.to.label = genes.id, 
-                  col_order = clust.names, 
-                  col.colours = clust.cols, 
-                  range.val = c(-2, 0, 2))
-
-dev.copy(pdf, "output/figures/Large_Summary_heatmaps/Heatmap_top_up_genes_bycluster_highlighted_geneIDs_averaged.pdf")
-dev.off()
-
-
-# Plot heatmap downsampled single cell values
-annotated.heatmap(seurat.combined, 
-                  cluster.id = "seurat_clusters",
-                  assay.use = "integrated",
-                  average.expression = FALSE,
-                  goi = TF.DEG, 
-                  genes.to.label = genes.id, 
-                  col_order = clust.names, 
-                  col.colours = clust.cols, 
-                  range.val = c(-2, 0, 2))
-
-dev.copy(pdf, "output/figures/Large_Summary_heatmaps/Heatmap_top_up_genes_bycluster_highlighted_geneIDs.pdf")
-dev.off()
-
-
-```
 
 
 ### Innate cell TF analysis 
