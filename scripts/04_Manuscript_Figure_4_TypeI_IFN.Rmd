@@ -162,25 +162,22 @@ if(long.compute){
 
 
 # create signatures
-IFN.clust.DEGs <- read.csv(paste0(output.dir, "IFN_clust_DEGs.csv"))
+#IFN.clust.DEGs <- read.csv(paste0(output.dir, "IFN_clust_DEGs.csv"))
 
-Sig.10 <- IFN.clust.DEGs %>%
-  filter(p_val_adj <= 0.05) %>%
-  top_n(10, avg_log2FC) %>%
-  pull(gene_symbol)
+#Sig.10 <- IFN.clust.DEGs %>%
+#  filter(p_val_adj <= 0.05) %>%
+#  top_n(10, avg_log2FC) %>%
+#  pull(gene_symbol)
 
-Sig.10.down <- IFN.clust.DEGs %>%
-  filter(p_val_adj <= 0.05) %>%
-  top_n(-10, avg_log2FC) %>%
-  pull(gene_symbol)
 
-Sig.10.down <- paste0(Sig.10.down, "-")
+# Hard code the signature to prevent any alternations with statistical drift 
+Sig.10 <- c("IFI6", "ISG15", "IFIT3", "MX1", "ISG20", "IFITM1", "LY6E", "IFIT1", "MX2", "OAS1")
+
 Sig.10 <- paste0(Sig.10, "+")
 
 
 
-Signature.list <- list(Top_10 = Sig.10,
-                       Top10_bot10 = c(Sig.10, Sig.10.down))
+Signature.list <- list(Top_10 = Sig.10)
 
 signature.names <- paste0(names(Signature.list), "_UCell")
 
@@ -491,17 +488,36 @@ dev.off()
 if(long.compute){
 pancancer.seurat <- LoadH5Seurat("data/external_datasets/Utility_dataset.h5Seurat")
 
-Idents(pancancer.seurat) <- pancancer.seurat@meta.data$consensus.Tcell
-pancancer.cd8 <- subset(pancancer.seurat, idents = "CD8")
+Idents(pancancer.seurat) <- pancancer.seurat@meta.data$functional.cluster
+pancancer.cd8 <- subset(pancancer.seurat, idents = c("CD8_EffectorMemory", "CD8_NaiveLike", "CD8_EarlyActiv", "CD8_Tex", "CD8_Tpex"))
 
-# 1 cell of mixed annoation and 2 other cells remain - remove these
+# still many cells of mixed annotation by consensus.major ID
 Idents(pancancer.cd8) <- pancancer.cd8@meta.data$consensus.major
 pancancer.cd8 <- subset(pancancer.cd8, idents = "T_cell")
+
+# further filtering for CD8 T cell annotation
+Idents(pancancer.cd8) <- pancancer.cd8@meta.data$consensus.Tcell
+pancancer.cd8 <- subset(pancancer.cd8, idents = "CD8")
+
+# further filtering for annotation
+Idents(pancancer.cd8) <- pancancer.cd8@meta.data$HPCA.pruned.labels
+keep.var <- grep(".*CD8.*", unique(Idents(pancancer.cd8)), value =T)
+
+pancancer.cd8 <- subset(pancancer.cd8, idents = keep.var)
+
+
+# save filtered dataset
 
 SaveH5Seurat(pancancer.cd8, 
              "data/external_datasets/pancancer_cd8.h5Seurat")
 
-# 
+
+###################################
+# Edited code up to here
+###################################
+
+
+
 Idents(pancancer.cd8) <- pancancer.cd8@meta.data$Type
 pancancer.cd8 <- subset(pancancer.cd8, idents = c("Tumor", "Normal"))
 
@@ -532,6 +548,28 @@ SaveH5Seurat(pancancer.cd8,
              overwrite = TRUE)
 
 }
+
+colnames(pancancer.cd8@meta.data)
+
+
+UMAPPlot(pancancer.cd8, 
+         group.by = "HPCA.pruned.labels")
+
+table(pancancer.cd8@meta.data$HPCA.pruned.labels, pancancer.cd8@meta.data$functional.cluster)
+table(pancancer.cd8@meta.data$consensus.Tcell, pancancer.cd8@meta.data$functional.cluster)
+table(pancancer.cd8@meta.data$HPCA.pruned.labels, pancancer.cd8@meta.data$consensus.Tcell)
+table(pancancer.cd8@meta.data$HPCA.first.labels, pancancer.cd8@meta.data$functional.cluster)
+
+ 
+Plot_Density_Custom(pancancer.seurat, 
+                    features =  "T1_Interferon_UCell",
+                    custom_palette = batlow.pal,
+                    joint = FALSE, 
+                    pt.size = 1, 
+                    reduction = "umap")
+
+
+
 
 ```
  
@@ -578,7 +616,11 @@ dev.off()
 
 
  
+<<<<<<< Updated upstream
 Plot_Density_Custom(pancancer.cd8, 
+=======
+Plot_Density_Custom(pancancer.seurat, 
+>>>>>>> Stashed changes
                     features =  "Top_10_UCell",
                     custom_palette = batlow.pal,
                     joint = FALSE, 
