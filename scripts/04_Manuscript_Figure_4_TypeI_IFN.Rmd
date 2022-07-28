@@ -162,25 +162,22 @@ if(long.compute){
 
 
 # create signatures
-IFN.clust.DEGs <- read.csv(paste0(output.dir, "IFN_clust_DEGs.csv"))
+#IFN.clust.DEGs <- read.csv(paste0(output.dir, "IFN_clust_DEGs.csv"))
 
-Sig.10 <- IFN.clust.DEGs %>%
-  filter(p_val_adj <= 0.05) %>%
-  top_n(10, avg_log2FC) %>%
-  pull(gene_symbol)
+#Sig.10 <- IFN.clust.DEGs %>%
+#  filter(p_val_adj <= 0.05) %>%
+#  top_n(10, avg_log2FC) %>%
+#  pull(gene_symbol)
 
-Sig.10.down <- IFN.clust.DEGs %>%
-  filter(p_val_adj <= 0.05) %>%
-  top_n(-10, avg_log2FC) %>%
-  pull(gene_symbol)
 
-Sig.10.down <- paste0(Sig.10.down, "-")
+# Hard code the signature to prevent any alternations with statistical drift 
+Sig.10 <- c("IFI6", "ISG15", "IFIT3", "MX1", "ISG20", "IFITM1", "LY6E", "IFIT1", "MX2", "OAS1")
+
 Sig.10 <- paste0(Sig.10, "+")
 
 
 
-Signature.list <- list(Top_10 = Sig.10,
-                       Top10_bot10 = c(Sig.10, Sig.10.down))
+Signature.list <- list(Top_10 = Sig.10)
 
 signature.names <- paste0(names(Signature.list), "_UCell")
 
@@ -484,29 +481,43 @@ dev.off()
 
 ## Type I IFN score pancancer dataset {.tabset}
 
-### Prepare dataset / read and filter for CD8
+### Prepare dataset / read and filter for CD8 / or load dataset
 
 ```{r read_dataset_pancancer}
 
 if(long.compute){
 pancancer.seurat <- LoadH5Seurat("data/external_datasets/Utility_dataset.h5Seurat")
 
-Idents(pancancer.seurat) <- pancancer.seurat@meta.data$consensus.Tcell
-pancancer.cd8 <- subset(pancancer.seurat, idents = "CD8")
+Idents(pancancer.seurat) <- pancancer.seurat@meta.data$functional.cluster
+pancancer.cd8 <- subset(pancancer.seurat, idents = c("CD8_EffectorMemory", "CD8_NaiveLike", "CD8_EarlyActiv", "CD8_Tex", "CD8_Tpex"))
 
-# 1 cell of mixed annoation and 2 other cells remain - remove these
+# still many cells of mixed annotation by consensus.major ID
 Idents(pancancer.cd8) <- pancancer.cd8@meta.data$consensus.major
 pancancer.cd8 <- subset(pancancer.cd8, idents = "T_cell")
 
-SaveH5Seurat(pancancer.cd8, 
-             "data/external_datasets/pancancer_cd8.h5Seurat")
+# further filtering for CD8 T cell annotation
+Idents(pancancer.cd8) <- pancancer.cd8@meta.data$consensus.Tcell
+pancancer.cd8 <- subset(pancancer.cd8, idents = "CD8")
 
-# 
+# further filtering for annotation
+Idents(pancancer.cd8) <- pancancer.cd8@meta.data$HPCA.pruned.labels
+keep.var <- grep(".*CD8.*", unique(Idents(pancancer.cd8)), value =T)
+
+pancancer.cd8 <- subset(pancancer.cd8, idents = keep.var)
+
+# Type annotation
+table(pancancer.cd8@meta.data$Type)/1000
+# Juxta = 262 cells only
+# Blood = 12.993K
+# LN = 23.25K
+# Met = 5.711K
+# Normal = 41.119K
+# Tumor = 173.74K
+
+# Therefore remove Juxta cells 
+
 Idents(pancancer.cd8) <- pancancer.cd8@meta.data$Type
-pancancer.cd8 <- subset(pancancer.cd8, idents = c("Tumor", "Normal"))
-
-SaveH5Seurat(pancancer.cd8, 
-             "data/external_datasets/pancancer_cd8_tumor_normal.h5Seurat")
+pancancer.cd8 <- subset(pancancer.cd8, idents = c("Tumor", "Normal", "Blood", "Met", "LN"))
 
 
 # Normalise and harmonize dataset and calculate umap projection
@@ -526,12 +537,29 @@ pancancer.cd8 <-
                 dims = 1:20) %>%
   FindClusters(resolution = 0.5)
 
-# Export harmony corrected object
+
+# save filtered dataset
 SaveH5Seurat(pancancer.cd8, 
-             "data/external_datasets/pancancer_cd8_tumor_normal_harmonised.h5Seurat", 
+             "data/external_datasets/pancancer_cd8_normed.h5Seurat",
              overwrite = TRUE)
 
+
+}else{
+  
+  pancancer.cd8 <- LoadH5Seurat("data/external_datasets/pancancer_cd8_normed.h5Seurat")
+
 }
+
+# quick visualisation of the normed and subseted CD8 dataset
+
+UMAPPlot(pancancer.cd8, 
+         group.by = "HPCA.pruned.labels")
+
+UMAPPlot(pancancer.cd8, 
+         group.by = "seurat_clusters")
+
+
+
 
 ```
  
@@ -540,32 +568,69 @@ SaveH5Seurat(pancancer.cd8,
 ```{r ucell_pancancer}
 
 
+if(!exists("pancancer.cd8")){
+  
+    pancancer.cd8 <- LoadH5Seurat("data/external_datasets/pancancer_cd8_normed.h5Seurat")
+
+}
+
 if(long.compute){
 
-pancancer.cd8 <- LoadH5Seurat("data/external_datasets/pancancer_cd8_tumor_normal_harmonised.h5Seurat")
+ cores <- parallel::detectCores(all.tests = FALSE, logical = TRUE)
 
 # Calculate Ucell scores for signatures
 DefaultAssay(pancancer.cd8) <- "RNA"
 pancancer.cd8 <- UCell::AddModuleScore_UCell(pancancer.cd8,
                                              features = Signature.list,
-                                             ncores = 4)
+                                             ncores = cores)
 
-# Export harmony corrected object
+# Export object with UCell score
 SaveH5Seurat(pancancer.cd8, 
-             "data/external_datasets/pancancer_cd8_tumor_normal_harmonised.h5Seurat", 
+             "data/external_datasets/pancancer_cd8_normed.h5Seurat", 
              overwrite = TRUE)
 
 }
 
-pancancer.cd8 <- LoadH5Seurat("data/external_datasets/pancancer_cd8_tumor_normal_harmonised.h5Seurat")
-pancancer.seurat <- LoadH5Seurat("data/external_datasets/Utility_dataset.h5Seurat")
-
-
-
 
 colnames(pancancer.cd8@meta.data)
 
-# Visualise results
+# Visualise the results
+
+
+# Density plots 
+Plot_Density_Custom(pancancer.cd8, 
+                    features =  "Top_10_UCell",
+                    custom_palette = batlow.pal,
+                    joint = FALSE, 
+                    pt.size = 1, 
+                    reduction = "umap")
+
+dev.copy(pdf, paste0(output.dir, "Pancancer_Nebulosa_UCell_scores_top10.pdf"))
+dev.off()
+
+# Cluster distribution
+
+UMAPPlot(pancancer.cd8, 
+         group.by = "seurat_clusters")
+
+dev.copy(pdf, paste0(output.dir, "Pancancer_UMAP_clusters.pdf"))
+dev.off()
+
+
+temp.cols <- c(rep("Gray", length(unique(pancancer.cd8@meta.data$seurat_clusters))))
+temp.cols[10] <- "Red"
+
+UMAPPlot(pancancer.cd8, 
+         cols = temp.cols,
+         group.by = "seurat_clusters")
+
+dev.copy(pdf, paste0(output.dir, "Pancancer_UMAP_clusters_highlighted.pdf"))
+dev.off()
+
+
+
+
+# VlnPlots
 VlnPlot(pancancer.cd8,
         pt.size = 0, 
         same.y.lims = T,
@@ -576,115 +641,138 @@ VlnPlot(pancancer.cd8,
 dev.copy(pdf, paste0(output.dir, "Pancancer_VlnPlot_UCell_scores_top10.pdf"))
 dev.off()
 
+# Cluster number 9 = IFN cluster
 
- 
-Plot_Density_Custom(pancancer.cd8, 
-                    features =  "Top_10_UCell",
-                    custom_palette = batlow.pal,
-                    joint = FALSE, 
-                    pt.size = 1, 
-                    reduction = "umap")
-
-dev.copy(pdf, paste0(output.dir, "pancancer_Nebulosa_top10.pdf"))
-dev.off()
-
-small.seurat <- subset(pancancer.cd8, downsample = 200)
-colnames(small.seurat@meta.data)
-
-
-UMAPPlot(small.seurat, 
-         #cols = temp.cols,
-         group.by = "consensus.major")
-
-
-
-
-
-
-
-temp.cols <- c(rep("Gray", 17))
-temp.cols[8] <- "Red"
-length(unique(small.seurat@meta.data$seurat_clusters))
-
-
-
-
-UMAPPlot(small.seurat, 
-         cols = temp.cols,
-         group.by = "seurat_clusters",
-         split.by = "cloneType")
-
-
-
-
-
-
-
-
-
-
+#########################
+# Get statistics
+#########################
+#HPCA.pruned.labels
+#Type
+#Tissue
+#cloneType
+#functional.cluster
 
 
 # extract normed values 
 
-var.by.cluster <- table(pancancer.cd8@meta.data$Type,
+
+# Function for getting normed values
+get.norm <- function(input.var, cluster.ID = 9){
+  
+var.by.cluster <- table(pancancer.cd8@meta.data[, input.var],
                         pancancer.cd8@meta.data$seurat_clusters)
 
-total.cells.type <- rowSums(var.by.cluster)
+total.cells.var <- rowSums(var.by.cluster)
 
-output.df <- var.by.cluster*NA
 
-# normalise along row
-for(i in 1:length(total.cells.type)){
-output.df[i,] <- (var.by.cluster[i,]/total.cells.type[i]) * 100
+normed.vals <- sweep(var.by.cluster, 
+                     MARGIN = 1, # margin 1 = by row, margin 2 = by column
+                     STATS = total.cells.var,
+                     FUN = '/')
+
+normed.vals <- normed.vals*100
+print(normed.vals)
+IFN.clust.vals <- normed.vals[,paste0(cluster.ID)]
+
+return(IFN.clust.vals)
+
 }
 
 
-output.df[,8]
+# set up output variables
+file.name <- "pancancer_CD8_barplot_Normalised_cluster_9_"
 
-# Plot freq of IFN cluster
-barplot(output.df[,8], 
+# By Type
+variable.val <- "Type"
+
+x <- get.norm(variable.val)
+
+barplot(x, 
         las = 2,
         col = c("gray", "blue"), 
         cex.names = 0.6, 
         ylim = c(0, 5))
 
-dev.copy(pdf, paste0(output.dir, "pancancer_barplot_cluster_7_normed_type.pdf"))
+dev.copy(pdf, paste0(output.dir, file.name, variable.val, ".pdf"))
 dev.off()
 
-write.csv(output.df, paste0(output.dir, "pancancer_barplot_cluster_7_normed_by_type.csv"))
+# Export stats
+write.csv(x,  paste0(output.dir, file.name, variable.val, ".csv"))
 
 
 
+# By Tissue
+variable.val <- "Tissue"
 
+x <- get.norm(variable.val)
 
-
-var.by.cluster <- table(pancancer.cd8@meta.data$Tissue,
-                        pancancer.cd8@meta.data$seurat_clusters)
-
-total.cells <- rowSums(var.by.cluster)
-
-output.df <- var.by.cluster*NA
-
-# normalise along row
-for(i in 1:length(total.cells)){
-output.df[i,] <- (var.by.cluster[i,]/total.cells[i]) * 100
-}
-
-
-output.df[,8]
-
-# Plot freq of IFN cluster
-barplot(output.df[,8], 
+barplot(x, 
         las = 2,
         col = c("gray", "blue"), 
         cex.names = 0.6, 
-        ylim = c(0, 30))
+        ylim = c(0, 25))
 
-dev.copy(pdf, paste0(output.dir, "pancancer_barplot_cluster_7_normed_by_tissue.pdf"))
+dev.copy(pdf, paste0(output.dir, file.name, variable.val, ".pdf"))
 dev.off()
 
-write.csv(output.df, paste0(output.dir, "pancancer_barplot_cluster_7_normed_by_tissue.csv"))
+# Export stats
+write.csv(x,  paste0(output.dir, file.name, variable.val, ".csv"))
+
+
+# By cloneType
+variable.val <- "cloneType"
+
+x <- get.norm(variable.val)
+
+barplot(x, 
+        las = 2,
+        col = c("gray", "blue"), 
+        cex.names = 0.6, 
+        ylim = c(0, 10))
+
+dev.copy(pdf, paste0(output.dir, file.name, variable.val, ".pdf"))
+dev.off()
+
+# Export stats
+write.csv(x,  paste0(output.dir, file.name, variable.val, ".csv"))
+
+
+
+# By functional.cluster
+variable.val <- "functional.cluster"
+
+x <- get.norm(variable.val)
+
+barplot(x, 
+        las = 2,
+        col = c("gray", "blue"), 
+        cex.names = 0.6, 
+        ylim = c(0, 10))
+
+dev.copy(pdf, paste0(output.dir, file.name, variable.val, ".pdf"))
+dev.off()
+
+# Export stats
+write.csv(x,  paste0(output.dir, file.name, variable.val, ".csv"))
+
+
+
+# By HPCA.pruned.labels
+variable.val <- "HPCA.pruned.labels"
+
+x <- get.norm(variable.val)
+
+barplot(x, 
+        las = 2,
+        col = c("gray", "blue"), 
+        cex.names = 0.6, 
+        ylim = c(0, 15))
+
+dev.copy(pdf, paste0(output.dir, file.name, variable.val, ".pdf"))
+dev.off()
+
+# Export stats
+write.csv(x,  paste0(output.dir, file.name, variable.val, ".csv"))
 
 
 
@@ -696,37 +784,182 @@ write.csv(output.df, paste0(output.dir, "pancancer_barplot_cluster_7_normed_by_t
 
 
 
+###############################
+# Cluster-wise normalisation
+###############################
+
+# Function for getting normed values with cluster-wise normalisation
+get.norm.bycluster <- function(input.var, cluster.ID = 9){
+  
+var.by.cluster <- table(pancancer.cd8@meta.data[, input.var],
+                        pancancer.cd8@meta.data$seurat_clusters)
+
+total.cells.clust <- colSums(var.by.cluster)
+
+
+normed.vals <- sweep(var.by.cluster, 
+                     MARGIN = 2, # margin 1 = by row, margin 2 = by column
+                     STATS = total.cells.clust,
+                     FUN = '/')
+
+normed.vals <- normed.vals*100
+print(normed.vals)
+
+return(normed.vals)
+
+}
+
+
+
+# set up output variables
+file.name <- "pancancer_CD8_barplot_Normalised_by_cluster_"
+
+
+# By cloneType
+variable.val <- "cloneType"
+
+x <- get.norm.bycluster(variable.val)
+
+barplot(x, 
+        las = 2,
+        col = c("gray", "blue", "red", "orange", "Green"), 
+        cex.names = 0.6, 
+        legend = T,
+        ylim = c(0, 100))
+
+
+
+dev.copy(pdf, paste0(output.dir, file.name, variable.val, ".pdf"))
+dev.off()
+
+# Export stats
+write.csv(x,  paste0(output.dir, file.name, variable.val, ".csv"))
 
 
 
 
+# By HPCA.pruned.labels
+variable.val <- "HPCA.pruned.labels"
+
+x <- get.norm.bycluster(variable.val)
+
+barplot(x, 
+        las = 2,
+        col = c("gray", "blue", "red", "orange", "Green"), 
+        cex.names = 0.6, 
+        legend = T,
+        ylim = c(0, 100))
 
 
 
+dev.copy(pdf, paste0(output.dir, file.name, variable.val, ".pdf"))
+dev.off()
+
+# Export stats
+write.csv(x,  paste0(output.dir, file.name, variable.val, ".csv"))
+
+# By functional.cluster
+variable.val <- "functional.cluster"
+
+x <- get.norm.bycluster(variable.val)
+
+barplot(x, 
+        las = 2,
+        col = c("gray", "blue", "red", "orange", "Green"), 
+        cex.names = 0.6, 
+        legend = T,
+        ylim = c(0, 100))
 
 
 
+dev.copy(pdf, paste0(output.dir, file.name, variable.val, ".pdf"))
+dev.off()
+
+# Export stats
+write.csv(x,  paste0(output.dir, file.name, variable.val, ".csv"))
 
 
 
+# By Tissue
+variable.val <- "Tissue"
 
+x <- get.norm.bycluster(variable.val)
+
+barplot(x, 
+        las = 2,
+        col = c("gray", "blue", "red", "orange", "Green"), 
+        cex.names = 0.6, 
+        legend = T,
+        ylim = c(0, 100))
+
+
+
+dev.copy(pdf, paste0(output.dir, file.name, variable.val, ".pdf"))
+dev.off()
+
+# Export stats
+write.csv(x,  paste0(output.dir, file.name, variable.val, ".csv"))
+
+# By Type
+variable.val <- "Type"
+
+x <- get.norm.bycluster(variable.val)
+
+barplot(x, 
+        las = 2,
+        col = c("gray", "blue", "red", "orange", "Green"), 
+        cex.names = 0.6, 
+        legend = T,
+        ylim = c(0, 100))
+
+
+
+dev.copy(pdf, paste0(output.dir, file.name, variable.val, ".pdf"))
+dev.off()
+
+# Export stats
+write.csv(x,  paste0(output.dir, file.name, variable.val, ".csv"))
+
+
+###################################
+# Umap overview plots of clusters
+###################################
+
+# By tissue type, downsampled 
 x <- table(pancancer.cd8@meta.data$Tissue)
 min(x)
 
 Idents(pancancer.cd8) <- pancancer.cd8@meta.data$Tissue
-temp.seurat <- subset(pancancer.cd8, downsample = 700)
+temp.seurat <- subset(pancancer.cd8, downsample = 4000)
 
 Idents(temp.seurat) <- temp.seurat@meta.data$seurat_clusters
 
 scCustomize::DimPlot_scCustom(temp.seurat, 
                               pt.size = 1,
                               num_columns = 4,
+                              split_seurat = T,
                               split.by = "Tissue")
 
-dev.copy(pdf, paste0(output.dir, "pancancer_umap_by_tissue_downsampled.pdf"))
+dev.copy(pdf, paste0(output.dir, "pancancer_umap_by_tissue_downsampled_bytissue_4K_cells_all_except_colorectal_remove_this.pdf"))
 dev.off()
 
+# By disease/sample type downsampled
+x <- table(pancancer.cd8@meta.data$Type)
+min(x)
 
+Idents(pancancer.cd8) <- pancancer.cd8@meta.data$Type
+temp.seurat <- subset(pancancer.cd8, downsample = 5000)
+
+Idents(temp.seurat) <- temp.seurat@meta.data$seurat_clusters
+
+scCustomize::DimPlot_scCustom(temp.seurat, 
+                              pt.size = 1,
+                              num_columns = 4,
+                              split_seurat = T,
+                              split.by = "Type")
+
+dev.copy(pdf, paste0(output.dir, "pancancer_umap_by_type_downsampled_by_type.pdf"))
+dev.off()
 
 
 ```
