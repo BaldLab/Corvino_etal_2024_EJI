@@ -94,6 +94,7 @@ annotated.heatmap <- function(input.seurat,
   # Heatmap colour scheme
   col_fun <- colorRamp2(range.val, c("#FF00FF", "black", "#FFFF00"))
   
+ 
  # Colour scheme copied from seurat DoHeatmap which uses = PurpleAndYellow()
   
   
@@ -128,5 +129,6 @@ annotated.heatmap <- function(input.seurat,
                 col = col_fun,
                 column_split = col.split.var,
                 use_raster = TRUE))
+
   
 }

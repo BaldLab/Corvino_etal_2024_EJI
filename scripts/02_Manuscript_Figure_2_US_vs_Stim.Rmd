@@ -81,6 +81,16 @@ require(tidyverse)
 require(Seurat)
 library(ggplot2)
 
+
+
+# Create output directory
+output.dir <- "results/Manuscript/Figure2/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
+             recursive = T)
+}
+
 ```
 
 
@@ -115,32 +125,7 @@ DefaultAssay(CD8.seurat.tcr.filt) <- "RNA"
 ```
 
 
-
-
-
-
-## Figure 2 Stimulation effect {.tabset}
-
-
-### Set up for fig 2 output
-```{r Fig_2_output}
-
-# Create output directory
-
-output.dir <- "results/Manuscript/Figure2/"
-
-
-if(!dir.exists(paste0(output.dir))){
-  dir.create(paste0(output.dir), 
-             recursive = T)
-}
-
-
-
-```
-
-
-
+## Figure 2 {.tabset}
 
 ### Visualise CD8 only UMAP
 ```{r vis_CD8_UMAP}
@@ -248,6 +233,98 @@ library(RColorBrewer)
 ```
 
 
+### Visualise key gene expression
+```{r vis_key_genes}
+
+# set object defaults 
+DefaultAssay(CD8.seurat) <- "RNA"
+Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
+
+
+
+# Functional markers
+goi <- c("GZMA", "GZMB", "GZMM", "GZMH", "GZMK")
+
+Stacked_VlnPlot(CD8.seurat, 
+                features = goi, 
+                colors_use = CD8.cols, 
+                x_lab_rotate = TRUE)
+
+dev.copy(pdf, paste0(output.dir, "Stacked_VlnPlot_Functional_markers_1.pdf"))
+dev.off()
+
+goi <- c("PRF1", "GNLY", "IFNG", "TNF", "XCL1")
+
+Stacked_VlnPlot(CD8.seurat, 
+                features = goi, 
+                colors_use = CD8.cols, 
+                x_lab_rotate = TRUE)
+
+dev.copy(pdf, paste0(output.dir, "Stacked_VlnPlot_Functional_markers_2.pdf"))
+dev.off()
+
+# Exhaustion markers
+goi <- c("TCF7", "TOX", "HAVCR2", "CTLA4", "PDCD1", "ENTPD1")
+
+Stacked_VlnPlot(CD8.seurat, 
+                features = goi, 
+                colors_use = CD8.cols, 
+                x_lab_rotate = TRUE)
+
+dev.copy(pdf, paste0(output.dir, "Stacked_VlnPlot_Exhaustion_markers_1.pdf"))
+dev.off()
+
+goi <- c("EOMES", "TBX21")
+
+Stacked_VlnPlot(CD8.seurat, 
+                features = goi, 
+                colors_use = CD8.cols, 
+                x_lab_rotate = TRUE)
+
+dev.copy(pdf, paste0(output.dir, "Stacked_VlnPlot_Exhaustion_markers_2.pdf"))
+dev.off()
+
+
+# Activation markers
+goi <- c("CD226", "ICOS", "TNFRSF9", "CD28",  "CD69")
+
+Stacked_VlnPlot(CD8.seurat, 
+                features = goi, 
+                colors_use = CD8.cols, 
+                x_lab_rotate = TRUE)
+
+dev.copy(pdf, paste0(output.dir, "Stacked_VlnPlot_Activation_markers.pdf"))
+dev.off()
+
+
+```
+
+### Dotplot of chemokine receptors
+```{r chemokine_dotplot}
+
+# Set dataset defaults 
+Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
+DefaultAssay(CD8.seurat) <- "RNA"
+
+# identify chemokine genes 
+#pattern.var <- c("CCL.*", "CXCR.*", "CXCL.*", "CCR")
+#goi <- grep(paste0(pattern.var, collapse = "|"), rownames(CD8.seurat), value = T)
+# used as a unbised method to check expression of all chemokine genes and then select the ones that showed expression 
+
+goi <- c("CCL3", "CCL4", "CCL4L2", "CCR7", "CXCR4", "CXCR3", "CXCR6", "CXCL13")
+
+scCustomize::DotPlot_scCustom(CD8.seurat, 
+                              colors_use = batlow.pal,
+                              x_lab_rotate = T,
+                              features = goi)
+
+dev.copy(pdf, paste0(output.dir, "DotPlot_Chemokine_genes.pdf"))
+dev.off()
+
+
+```
+
+
 
 ### Calculate DEGs without innate clusters
 ```{r DEG_calculation}
@@ -320,8 +397,6 @@ DoHeatmap(small.seurat,
 
 
 ```
-
-
 
 ### Subset data for Exhausted, Stim_exhausted and DEG calculation and visualisation
 ```{r DEG_calculation}
@@ -412,9 +487,14 @@ goi <- unique(goi)
 DoHeatmap(small.seurat, 
           features = goi)
 
-goi
 
-label.var <- c("IL2", "IL7R", "XCL1", "TNF", "CD69", "GZMK", "IFNG", "CD28", "TCF7", "CD226", "TOX", "NKG7", "CTLA4", "GZMA", "PRF1", "ENTPD1", "TIGIT", "GZMB", "LAG3", "HAVCR2", "GNLY")
+
+label.var <- c("IL2", "IL7R", "XCL1", 
+               "TNF", "CD69", "GZMK", "IFNG",
+               "CD28", "TCF7", "CD226", "TOX",
+               "NKG7", "CTLA4", "GZMA", "PRF1", 
+               "ENTPD1", "TIGIT", "GZMB", "LAG3", 
+               "HAVCR2", "GNLY")
 
 
 # With annotated genes
@@ -433,6 +513,11 @@ annotated.heatmap(small.seurat,
 
 dev.off()
 
+
+ #library("scico")
+  #  col_fun <- scico::scale_fill_scico(palette = "batlow", 
+   #                                    direction = 1, 
+    #                                   na.value = "white")
 
 ```
 
@@ -583,7 +668,6 @@ dev.off()
 
  
 ### Annotated_heatmaps
-
 ```{r annotated_heatmap}
 
 
@@ -728,8 +812,6 @@ dev.off()
 ```
 
 
-
-
 ### Distribution of cells across stimulation condition
 ```{r stim_condition_distribution}
 
@@ -770,8 +852,70 @@ dev.off()
 
 ```
 
+### Transcription factor analysis
+```{r TF_analysis}
+
+# Searching for TFs
+TF.ref.list <- read.delim("data/TFCheckpoint.txt") # http://www.tfcheckpoint.org
+
+dim(TF.ref.list) # 3479, 36
+colnames(TF.ref.list)
+head(TF.ref.list)
+
+unique(TF.ref.list$evidence.type)
+
+# subset for transcription factors 
+TF.ref.list <- TF.ref.list %>%
+  dplyr::filter(DbTF == "yes") %>%
+  dplyr::filter(evidence.type == "Experimental")
+
+dim(TF.ref.list) # 825, 36
+
+Cluster.markers <- read.csv(paste0(output.dir, "DEG_CD8_Clusters_only.csv"), row.names = 1)
+
+# annotate genes as TF or not
+tf.logic <- Cluster.markers$gene %in% TF.ref.list$gene_symbol
+Cluster.markers$TF <- tf.logic
 
 
+# Up-regulated TFs
+sig.genes <- Cluster.markers %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::filter(avg_log2FC > 0.5) %>%
+  dplyr::filter(TF == TRUE) %>%
+  dplyr::group_by(cluster) %>%
+  dplyr::top_n(10, avg_log2FC) %>%
+  dplyr::select(gene)
+  
+TF.DEG <- unique(sig.genes$gene)
+TF.DEG
+
+
+########################################
+# Plot TFs differentially regulated 
+########################################
+
+Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
+DefaultAssay(CD8.seurat) <- "RNA"
+
+average.seurat <- AverageExpression(CD8.seurat,
+                                    assay = "RNA",
+                                    slot = "data",
+                                    verbose = TRUE,
+                                    return.seurat = TRUE)
+DoHeatmap(average.seurat, 
+          features = TF.DEG, 
+          draw.lines = FALSE, 
+          group.colors = CD8.cols,
+          raster = FALSE) + scico::scale_fill_scico(palette = "batlow", 
+                                       direction = 1, 
+                                       na.value = "white")
+
+dev.copy(pdf, paste0(output.dir, "Heatmap_of_TF_diff_expressed.pdf"))
+dev.off()
+
+
+```
 
 
 ### CD8 seurat TCR data analysis
