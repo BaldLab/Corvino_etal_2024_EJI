@@ -520,9 +520,15 @@ table(pancancer.cd8@meta.data$Type)/1000
 # Therefore remove Juxta cells 
 # also remove Met and LN as these are a bit complicated to include in analysise.
 # i.e the biological interpretation of Met tissue is highly dependent on each manuscript and what they mean by met and if LN is healthy or diseased
+# also remove blood to keep it simple, normal and tumor tissue
+
 
 Idents(pancancer.cd8) <- pancancer.cd8@meta.data$Type
-pancancer.cd8 <- subset(pancancer.cd8, idents = c("Tumor", "Normal", "Blood"))
+pancancer.cd8 <- subset(pancancer.cd8, idents = c("Tumor", "Normal"))
+
+
+table(pancancer.cd8@meta.data$Type, pancancer.cd8@meta.data$Tissue)
+
 
 library(harmony)
 # Normalise and harmonize dataset and calculate umap projection
@@ -562,6 +568,7 @@ UMAPPlot(pancancer.cd8,
 
 UMAPPlot(pancancer.cd8, 
          group.by = "seurat_clusters")
+
 
 
 
