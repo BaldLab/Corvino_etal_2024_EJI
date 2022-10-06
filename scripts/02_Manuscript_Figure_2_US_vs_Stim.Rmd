@@ -983,7 +983,7 @@ Idents(Stim.seurat) <- Stim.seurat@meta.data$Clusters_l1
 # First show the clonal overlap between clusters 
 clonalOverlap(US.seurat, 
               cloneCall = "aa",
-              chain = "both",
+              #chain = "both",
               method = "overlap")
 
 dev.copy(pdf, paste0(output.dir, "Clonal_overlap_US_only.pdf"))
@@ -999,11 +999,46 @@ dev.off()
 
 clonalOverlap(CD8.seurat.tcr.filt,
               cloneCall = "aa",
-              chain = "both",
+              #chain = "both",
               method = "overlap")
 
 dev.copy(pdf, paste0(output.dir, "Clonal_overlap.pdf"))
 dev.off()
+
+
+
+scRepertoire::clonalOverlay(CD8.seurat.tcr.filt, reduction = "umap", facet = "Clusters_l1")
+
+
+# Modified function, original was not subsetting correctly
+expression2List.mod <- function(sc, group){
+  meta <- sc@meta.data
+  unique.var <- str_sort(as.character(unique(meta[,group])), numeric = TRUE)
+  df <- NULL
+  for (i in seq_along(unique.var)) {
+    subset.var <- meta[meta[,group] == unique.var[i],]
+    df[[i]] <- subset.var
+  }
+  names(df) <- unique.var
+  
+  return(df)
+}
+
+tcr.clusters <- expression2List.mod(CD8.seurat.tcr.filt, group = "Clusters_l1")
+
+####################
+# Clonal Diversity 
+####################
+
+clonalDiversity(tcr.clusters, 
+                cloneCall = "aa")
+
+
+
+clonalOverlap(tcr.clusters,
+              cloneCall = "aa",
+              #chain = "both",
+              method = "overlap")
 
 
 
