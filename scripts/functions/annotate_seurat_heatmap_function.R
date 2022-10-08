@@ -7,7 +7,7 @@ annotated.heatmap <- function(input.seurat,
                               genes.to.label, 
                               col_order, 
                               col.colours, 
-                              range.val = c(-2, 0, 2)){
+                              range.val = c(-2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2)){
   
   #browser()
   
@@ -92,9 +92,9 @@ annotated.heatmap <- function(input.seurat,
                                col = list(clusterID = col.colours))
   
   # Heatmap colour scheme
-  col_fun <- colorRamp2(range.val, c("#FF00FF", "black", "#FFFF00"))
+  col_fun <- colorRamp2(range.val, c(scico::scico(n= length(range.val), palette = "batlow")))
   
- 
+
  # Colour scheme copied from seurat DoHeatmap which uses = PurpleAndYellow()
   
   
@@ -128,7 +128,7 @@ annotated.heatmap <- function(input.seurat,
                 right_annotation = row.anno.var, 
                 col = col_fun,
                 column_split = col.split.var,
-                use_raster = TRUE))
+                use_raster = TRUE)) 
 
   
 }

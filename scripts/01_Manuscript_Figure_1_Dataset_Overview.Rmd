@@ -267,8 +267,14 @@ barplot(output.df,
 dev.copy(pdf, paste0(output.dir, "Freq_of_sample_per_cluster.pdf"))
 dev.off()
 
+# ggplot version 
+output.df <- as.data.frame(output.df)
 
-
+ggplot(output.df) +
+  aes(x = Var2, fill = Var1, weight = Freq) +
+  geom_bar() +
+  scale_fill_manual(sample.cols) +
+  theme_minimal()
 
 # freq of cells per cluster
 
@@ -397,7 +403,14 @@ DefaultAssay(Innate.seurat) <- "RNA"
 # Plot heatmap
 DoHeatmap(Innate.seurat, 
           features = goi,
-          raster = FALSE)
+          raster = FALSE,
+          group.colors = innate.cols,
+          angle = 0,
+          hjust = 0.50,
+          draw.lines = T,
+          ) + scico::scale_fill_scico(palette = "batlow", 
+                                                    direction = 1, 
+                                                    na.value = "white")
 
 dev.copy(pdf, paste0(output.Supfig1, "/Heatmap_DEGs_innate_clusters.pdf"))
 dev.off()
@@ -419,7 +432,7 @@ annotated.heatmap(small.seurat,
                   genes.to.label = genes.id, 
                   col_order = names(innate.cols), 
                   col.colours = innate.cols, 
-                  range.val = c(-2, 0, 2))
+                  range.val = c(-2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2)) # The batlow palette looks odd if you have                                                                             just three colors...
 
 dev.copy(pdf, paste0(output.Supfig1, "/Heatmap_DEGs_innate_clusters_annotated.pdf"))
 dev.off()
