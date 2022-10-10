@@ -486,10 +486,13 @@ dev.off()
 ```{r read_dataset_pancancer}
 
 if(long.compute){
-pancancer.seurat <- LoadH5Seurat("data/external_datasets/Utility_dataset.h5Seurat")
+  
+  # Due to memory limits, the dataset is written in as pancancer.cd8 rather than subsetting for cd8 and creating a new variable. 
+  #i.e use only one variable to limit the memory requirments 
+pancancer.cd8 <- LoadH5Seurat("data/external_datasets/Utility_dataset.h5Seurat")
 
-Idents(pancancer.seurat) <- pancancer.seurat@meta.data$functional.cluster
-pancancer.cd8 <- subset(pancancer.seurat, idents = c("CD8_EffectorMemory", "CD8_NaiveLike", "CD8_EarlyActiv", "CD8_Tex", "CD8_Tpex"))
+Idents(pancancer.cd8) <- pancancer.cd8@meta.data$functional.cluster
+pancancer.cd8 <- subset(pancancer.cd8, idents = c("CD8_EffectorMemory", "CD8_NaiveLike", "CD8_EarlyActiv", "CD8_Tex", "CD8_Tpex"))
 
 # still many cells of mixed annotation by consensus.major ID
 Idents(pancancer.cd8) <- pancancer.cd8@meta.data$consensus.major
@@ -515,11 +518,19 @@ table(pancancer.cd8@meta.data$Type)/1000
 # Tumor = 173.74K
 
 # Therefore remove Juxta cells 
+# also remove Met and LN as these are a bit complicated to include in analysise.
+# i.e the biological interpretation of Met tissue is highly dependent on each manuscript and what they mean by met and if LN is healthy or diseased
+# also remove blood to keep it simple, normal and tumor tissue
+
 
 Idents(pancancer.cd8) <- pancancer.cd8@meta.data$Type
-pancancer.cd8 <- subset(pancancer.cd8, idents = c("Tumor", "Normal", "Blood", "Met", "LN"))
+pancancer.cd8 <- subset(pancancer.cd8, idents = c("Tumor", "Normal"))
 
 
+table(pancancer.cd8@meta.data$Type, pancancer.cd8@meta.data$Tissue)
+
+
+library(harmony)
 # Normalise and harmonize dataset and calculate umap projection
 pancancer.cd8 <- 
   pancancer.cd8 %>%
@@ -557,6 +568,7 @@ UMAPPlot(pancancer.cd8,
 
 UMAPPlot(pancancer.cd8, 
          group.by = "seurat_clusters")
+
 
 
 
