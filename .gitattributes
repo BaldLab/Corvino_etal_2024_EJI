@@ -108,3 +108,4 @@ data/velocity/preprocessing_velocity/kb_count/GEX1/counts_unfiltered/spliced.gen
 data/velocity filter=lfs diff=lfs merge=lfs -text
 data/velocity/preprocessing_velocity/kb_count/GEX1/counts_filtered/unspliced.barcodes.txt filter=lfs diff=lfs merge=lfs -text
 data/velocity/preprocessing_velocity/kb_count/GEX1/counts_filtered/unspliced.mtx filter=lfs diff=lfs merge=lfs -text
+saves/seurat_tcr.rds filter=lfs diff=lfs merge=lfs -text
