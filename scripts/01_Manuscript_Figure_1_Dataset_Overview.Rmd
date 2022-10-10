@@ -273,7 +273,12 @@ output.df <- as.data.frame(output.df)
 ggplot(output.df) +
   aes(x = Var2, fill = Var1, weight = Freq) +
   geom_bar() +
-  scale_fill_manual(sample.cols) +
+  scale_fill_manual(
+    values = c(S1 = "lightcyan",
+    S2 = "lightblue2",
+    S3 = "lightsalmon",
+    S4 = "lightsalmon3")
+  ) +
   theme_minimal()
 
 # freq of cells per cluster
@@ -433,7 +438,6 @@ annotated.heatmap(small.seurat,
                   col_order = names(innate.cols), 
                   col.colours = innate.cols, 
                   range.val = c(-2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2)) # The batlow palette looks odd if you have                                                                             just three colors...
-
 dev.copy(pdf, paste0(output.Supfig1, "/Heatmap_DEGs_innate_clusters_annotated.pdf"))
 dev.off()
 

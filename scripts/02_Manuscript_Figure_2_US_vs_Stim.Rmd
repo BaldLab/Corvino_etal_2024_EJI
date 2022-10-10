@@ -391,7 +391,9 @@ goi <- unique(goi)
 
 
 DoHeatmap(small.seurat, 
-          features = goi)
+          features = goi) + scico::scale_fill_scico(palette = "batlow", 
+                                                    direction = 1, 
+                                                    na.value = "white")
 
 
 
@@ -436,7 +438,9 @@ goi <- unique(goi)
 
 
 DoHeatmap(small.seurat, 
-          features = goi)
+          features = goi) + scico::scale_fill_scico(palette = "batlow", 
+                                                    direction = 1, 
+                                                    na.value = "white")
 
 
 ```
@@ -485,7 +489,9 @@ goi <- unique(goi)
 
 
 DoHeatmap(small.seurat, 
-          features = goi)
+          features = goi) + scico::scale_fill_scico(palette = "batlow", 
+                                                    direction = 1, 
+                                                    na.value = "white")
 
 
 
@@ -711,7 +717,9 @@ genes.to.plot <- unique(c(genes.stim, genes.exh))
 
 
 
-DoHeatmap(small.seurat, genes.to.plot)
+DoHeatmap(small.seurat, genes.to.plot) + scico::scale_fill_scico(palette = "batlow", 
+                                                    direction = 1, 
+                                                    na.value = "white")
 
 
 
@@ -731,7 +739,7 @@ annotated.heatmap(small.seurat,
                   genes.to.label = goi, 
                   col_order = names(CD8.cols), 
                   col.colours = CD8.cols, 
-                  range.val = c(-2, 0, 2))
+                  range.val = c(-2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2))
 
 dev.off()
 
@@ -766,7 +774,7 @@ annotated.heatmap(CD8.seurat,
                   genes.to.label = goi, 
                   col_order = names(CD8.cols), 
                   col.colours = CD8.cols, 
-                  range.val = c(-2, 0, 2))
+                  range.val = c(-2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2))
 
 dev.off()
 
@@ -804,7 +812,7 @@ annotated.heatmap(CD8.seurat,
                   genes.to.label = goi, 
                   col_order = names(CD8.cols), 
                   col.colours = CD8.cols, 
-                  range.val = c(-2, 0, 2))
+                  range.val = c(-2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2))
 
 dev.off()
 
@@ -846,9 +854,6 @@ barplot(output.df,
 
 dev.copy(pdf, paste0(output.dir, "Freq_of_condition_per_cluster.pdf"))
 dev.off()
-
-
-
 
 ```
 
@@ -983,7 +988,7 @@ Idents(Stim.seurat) <- Stim.seurat@meta.data$Clusters_l1
 # First show the clonal overlap between clusters 
 clonalOverlap(US.seurat, 
               cloneCall = "aa",
-              #chain = "both",
+              chain = "both",
               method = "overlap")
 
 dev.copy(pdf, paste0(output.dir, "Clonal_overlap_US_only.pdf"))
@@ -999,46 +1004,11 @@ dev.off()
 
 clonalOverlap(CD8.seurat.tcr.filt,
               cloneCall = "aa",
-              #chain = "both",
+              chain = "both",
               method = "overlap")
 
 dev.copy(pdf, paste0(output.dir, "Clonal_overlap.pdf"))
 dev.off()
-
-
-
-scRepertoire::clonalOverlay(CD8.seurat.tcr.filt, reduction = "umap", facet = "Clusters_l1")
-
-
-# Modified function, original was not subsetting correctly
-expression2List.mod <- function(sc, group){
-  meta <- sc@meta.data
-  unique.var <- str_sort(as.character(unique(meta[,group])), numeric = TRUE)
-  df <- NULL
-  for (i in seq_along(unique.var)) {
-    subset.var <- meta[meta[,group] == unique.var[i],]
-    df[[i]] <- subset.var
-  }
-  names(df) <- unique.var
-  
-  return(df)
-}
-
-tcr.clusters <- expression2List.mod(CD8.seurat.tcr.filt, group = "Clusters_l1")
-
-####################
-# Clonal Diversity 
-####################
-
-clonalDiversity(tcr.clusters, 
-                cloneCall = "aa")
-
-
-
-clonalOverlap(tcr.clusters,
-              cloneCall = "aa",
-              #chain = "both",
-              method = "overlap")
 
 
 
@@ -1129,32 +1099,6 @@ scRepertoire::clonalNetwork(temp.seurat,
 
 dev.copy(pdf, "temp.pdf")
 dev.off()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 seurat.list <- expression2List(CD8.seurat.tcr.filt, split.by = "Clusters_l1")
