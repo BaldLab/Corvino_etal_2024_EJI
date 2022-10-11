@@ -173,10 +173,24 @@ barplot(output.df,
 dev.copy(pdf, paste0(output.dir, "Freq_of_clonetype_per_cluster.pdf"))
 dev.off()
 
+# ggplot version 
 
+output.df.gg <- as.data.frame(output.df)
 
+ggplot(output.df.gg) +
+  aes(x = Var2, y = Freq, fill = Var1) +
+  geom_col() +
+  scale_fill_manual(
+    values = c(`Hyperexpanded (20 < X <= 150)` = "salmon4",
+    `Large (10 < X <= 20)` = "salmon",
+    `Medium (5 < X <= 10)` = "orange",
+    `Small (1 < X <= 5)` = "cyan3",
+    `Single (1)` = "Lightblue")
+  ) +
+  labs(x = " ", y = "Frequency [%]") +
+  theme_minimal()
 
-
+ggsave(paste0(output.dir, "Freq_of_clonetype_per_cluster_ggversion.pdf"))
 
 # convert seurat object to list in order to use functions 
 seurat.list <- expression2List(CD8.seurat.tcr.filt, split.by = "Clusters_l1")
@@ -250,6 +264,102 @@ for(i in seq_along(overlap.status)){
   dev.copy(pdf, paste0(output.dir, "UMAP_highlighted_clonotype_", overlap.status[i], ".pdf"))
   dev.off()
 }
+
+
+
+
+##########
+
+## clonotype overlap venn
+# Load library
+# install.packages("VennDiagram")
+library(VennDiagram)
+library(grDevices)
+
+
+extract_list_clonotypes <- function(seurat_object = CD8.seurat.tcr, overlap_var = "") {
+
+# Subset for overlap_var  
+seurat_subset <- subset(x = seurat_object, subset = condition == overlap_var)
+
+# get metadata 
+seurat_subset_meta <- seurat_subset[[]]
+
+# get vector with clonotypes
+clonotype <- unique(seurat_subset_meta$CTaa)
+return(clonotype)
+}
+
+# Generate 3 sets 
+Stim <- extract_list_clonotypes (seurat_object = CD8.seurat.tcr, overlap_var = "Stim")
+US <- extract_list_clonotypes (seurat_object = CD8.seurat.tcr, overlap_var = "US")
+
+# For filtered result
+Stim_filt <- extract_list_clonotypes (seurat_object = CD8.seurat.tcr.filt, overlap_var = "Stim")
+US_filt <- extract_list_clonotypes (seurat_object = CD8.seurat.tcr.filt, overlap_var = "US")
+
+# Chart non filt
+venn <- venn.diagram(
+        x = list(US, Stim),
+        category.names = c("US", "Stim" ),
+        filename = paste0(output.dir,"venn_condition_CTaa_overlap.tiff"),
+        output=F,
+
+        # Output features
+        type="tiff" , 
+        height = 1200 , 
+        width = 1200 , 
+        resolution = 300,
+        compression = "lzw",
+        
+        # Circles
+        lwd = 2,
+        lty = 'blank',
+        fill = condition.cols,
+        
+        # Numbers
+        cex = .6,
+        fontface = "bold",
+        fontfamily = "sans",
+        
+        # Set names
+        cat.cex = 0.6,
+        cat.fontface = "bold",
+        cat.default.pos = "outer",
+        cat.fontfamily = "sans")
+
+# Chart filt
+venn_filt <- venn.diagram(
+        x = list(US_filt, Stim_filt),
+        category.names = c("US", "Stim" ),
+        filename = paste0(output.dir,"venn_condition_CTaa_overlap_filt.tiff"),
+        output=F,
+
+        # Output features
+        type="tiff" , 
+        height = 1200 , 
+        width = 1200 , 
+        resolution = 300,
+        compression = "lzw",
+        
+        # Circles
+        lwd = 2,
+        lty = 'blank',
+        fill = condition.cols,
+        
+        # Numbers
+        cex = .6,
+        fontface = "bold",
+        fontfamily = "sans",
+        
+        # Set names
+        cat.cex = 0.6,
+        cat.fontface = "bold",
+        cat.default.pos = "outer",
+        cat.fontfamily = "sans")
+
+
+##########
 
 
 
