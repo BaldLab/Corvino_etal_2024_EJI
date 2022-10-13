@@ -391,7 +391,9 @@ goi <- unique(goi)
 
 
 DoHeatmap(small.seurat, 
-          features = goi)
+          features = goi) + scico::scale_fill_scico(palette = "batlow", 
+                                                    direction = 1, 
+                                                    na.value = "white")
 
 
 
@@ -436,7 +438,9 @@ goi <- unique(goi)
 
 
 DoHeatmap(small.seurat, 
-          features = goi)
+          features = goi) + scico::scale_fill_scico(palette = "batlow", 
+                                                    direction = 1, 
+                                                    na.value = "white")
 
 
 ```
@@ -485,7 +489,9 @@ goi <- unique(goi)
 
 
 DoHeatmap(small.seurat, 
-          features = goi)
+          features = goi) + scico::scale_fill_scico(palette = "batlow", 
+                                                    direction = 1, 
+                                                    na.value = "white")
 
 
 
@@ -711,7 +717,9 @@ genes.to.plot <- unique(c(genes.stim, genes.exh))
 
 
 
-DoHeatmap(small.seurat, genes.to.plot)
+DoHeatmap(small.seurat, genes.to.plot) + scico::scale_fill_scico(palette = "batlow", 
+                                                    direction = 1, 
+                                                    na.value = "white")
 
 
 
@@ -731,7 +739,7 @@ annotated.heatmap(small.seurat,
                   genes.to.label = goi, 
                   col_order = names(CD8.cols), 
                   col.colours = CD8.cols, 
-                  range.val = c(-2, 0, 2))
+                  range.val = c(-2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2))
 
 dev.off()
 
@@ -766,7 +774,7 @@ annotated.heatmap(CD8.seurat,
                   genes.to.label = goi, 
                   col_order = names(CD8.cols), 
                   col.colours = CD8.cols, 
-                  range.val = c(-2, 0, 2))
+                  range.val = c(-2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2))
 
 dev.off()
 
@@ -804,7 +812,7 @@ annotated.heatmap(CD8.seurat,
                   genes.to.label = goi, 
                   col_order = names(CD8.cols), 
                   col.colours = CD8.cols, 
-                  range.val = c(-2, 0, 2))
+                  range.val = c(-2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2))
 
 dev.off()
 
@@ -846,9 +854,6 @@ barplot(output.df,
 
 dev.copy(pdf, paste0(output.dir, "Freq_of_condition_per_cluster.pdf"))
 dev.off()
-
-
-
 
 ```
 
@@ -1094,32 +1099,6 @@ scRepertoire::clonalNetwork(temp.seurat,
 
 dev.copy(pdf, "temp.pdf")
 dev.off()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 seurat.list <- expression2List(CD8.seurat.tcr.filt, split.by = "Clusters_l1")

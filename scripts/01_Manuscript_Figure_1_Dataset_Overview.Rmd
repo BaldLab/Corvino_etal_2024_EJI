@@ -74,7 +74,7 @@ setwd("..")
 source("scripts/Setup.R", local = knitr::knit_global())
 
 # pipeline variables 
-long.compute <- FALSE
+long.compute <- TRUE
 ```
 
 
@@ -267,8 +267,19 @@ barplot(output.df,
 dev.copy(pdf, paste0(output.dir, "Freq_of_sample_per_cluster.pdf"))
 dev.off()
 
+# ggplot version 
+output.df <- as.data.frame(output.df)
 
-
+ggplot(output.df) +
+  aes(x = Var2, fill = Var1, weight = Freq) +
+  geom_bar() +
+  scale_fill_manual(
+    values = c(S1 = "lightcyan",
+    S2 = "lightblue2",
+    S3 = "lightsalmon",
+    S4 = "lightsalmon3")
+  ) +
+  theme_minimal()
 
 # freq of cells per cluster
 
@@ -276,6 +287,8 @@ total.cells <- sum(cells.cluster)
 freq.clust <- (cells.cluster/total.cells)*100
 
 z <- order(freq.clust, decreasing = T)
+
+
 
 barplot(freq.clust[z], 
         las = 2,
@@ -286,7 +299,31 @@ barplot(freq.clust[z],
 dev.copy(pdf, paste0(output.dir, "Freq_of_cells_per_cluster.pdf"))
 dev.off()
 
+# ggplot version
 
+z.df <- as.data.frame(freq.clust[z])
+z.df$names <- rownames(z.df)
+
+ggplot(z.df) +
+  aes(x = names, fill = names, weight = `freq.clust[z]`) +
+  geom_bar() +
+  scale_fill_manual(
+    values = c(Cytotoxic = "#A6CEE3",
+    Exhausted_1 = "#3385BB",
+    Exhausted_2 = "#84BF96",
+    gd_T_g9d2 = "#6DBD57",
+    gd_T_non_g9d2 = "#7F9D55",
+    MAIT = "#F57C7C",
+    Naive_like_1_CM = "#E42622",
+    Naive_like_2_SC = "#FBB268",
+    Naive_like_3 = "#FE8D19",
+    Proliferative = "#DE9E83",
+    Stimulated_1 = "#9D7BBA",
+    Stimulated_exhausted = "#977899",
+    TRM = "#F3E587",
+    Type_I_IFN = "#B15928")
+  ) +
+  theme_minimal()
 ```
 
 
@@ -315,7 +352,6 @@ Innate.seurat <- LoadH5Seurat("saves/Innate_seurat.h5Seurat")
 # set idents and assay to use
 Idents(Innate.seurat) <- Innate.seurat@meta.data$Clusters_l1
 DefaultAssay(Innate.seurat) <- "RNA"
-
 
 
 # MAIT rearrangment 
@@ -397,7 +433,14 @@ DefaultAssay(Innate.seurat) <- "RNA"
 # Plot heatmap
 DoHeatmap(Innate.seurat, 
           features = goi,
-          raster = FALSE)
+          raster = FALSE,
+          group.colors = innate.cols,
+          angle = 0,
+          hjust = 0.50,
+          draw.lines = T,
+          ) + scico::scale_fill_scico(palette = "batlow", 
+                                                    direction = 1, 
+                                                    na.value = "white")
 
 dev.copy(pdf, paste0(output.Supfig1, "/Heatmap_DEGs_innate_clusters.pdf"))
 dev.off()
@@ -419,8 +462,7 @@ annotated.heatmap(small.seurat,
                   genes.to.label = genes.id, 
                   col_order = names(innate.cols), 
                   col.colours = innate.cols, 
-                  range.val = c(-2, 0, 2))
-
+                  range.val = c(-2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2)) # The batlow palette looks odd if you have                                                                             just three colors...
 dev.copy(pdf, paste0(output.Supfig1, "/Heatmap_DEGs_innate_clusters_annotated.pdf"))
 dev.off()
 
@@ -476,7 +518,8 @@ if(long.compute){
   p1 <- ggplot(avg.subset.seurat, 
                aes(US, Stim)) + 
     geom_point() + 
-    ggtitle(paste0("Cluster "))
+    ggtitle(paste0("Cluster "))+
+  theme_minimal()
   
   p1 <-  LabelPoints(plot = p1,
                      points = genes.to.label,
@@ -503,7 +546,7 @@ if(long.compute){
 library(gplots)
 
 # read in unfiltered TCR data, as most MAIT cells are low abundance clones lost in filtering
-seurat.tcr <- readRDS("Exported_RDS_files/seurat_tcr.rds")
+seurat.tcr <- readRDS("saves/seurat_tcr.rds")
 
 unique(seurat.tcr@meta.data$seurat_clusters) # Gamma/delta T-cells are not found in the filtered tcr dataset
 
@@ -544,7 +587,6 @@ col.palette <- colorRampPalette(brewer.pal(8, "RdYlBu"))(600)
 # CTaa
 
 x <- table(MAIT.TCR@meta.data$CTaa, MAIT.TCR@meta.data$condition_clust)
-
 
 heatmap.2(as.matrix(log2(x+1)), 
           scale = "none",
@@ -680,8 +722,7 @@ dim(TF.ref.list) # 1020, 11
 colnames(TF.ref.list)
 head(TF.ref.list)
 
-Cluster.markers <- read.csv(paste0(output.fig2, "/DEG_Innate_Clusters_only.csv"), row.names = 1)
-
+Cluster.markers <- read.csv("results/Manuscript/Sup_Figure1/DEG_Innate_Clusters_only.csv", row.names = 1)
 
 
 # Up-regulated TFs
@@ -691,6 +732,7 @@ sig.genes <- Cluster.markers %>%
   dplyr::select(gene)
 
 sig.genes <- unique(sig.genes$gene)
+
 TF.logic <- sig.genes %in% TF.ref.list$Gene_symbol
 
 TF.DEG <- sig.genes[TF.logic]
@@ -701,6 +743,8 @@ TF.DEG <- sig.genes[TF.logic]
 ########################################
 # Plot TFs differentially regulated 
 ########################################
+
+Innate.seurat <- SeuratDisk::LoadH5Seurat("saves/Innate_seurat.h5Seurat")
 
 Idents(Innate.seurat) <- Innate.seurat@meta.data$Clusters_l1
 DefaultAssay(Innate.seurat) <- "RNA"

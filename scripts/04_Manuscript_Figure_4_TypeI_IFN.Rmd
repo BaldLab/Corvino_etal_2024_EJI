@@ -222,7 +222,9 @@ DoHeatmap(average.seurat,
           draw.lines = F,
           raster = FALSE,
           features = c("STAT1", "STAT2", "IRF9", "OAS1"), 
-          group.colors = CD8.cols)
+          group.colors = CD8.cols) + scico::scale_fill_scico(palette = "batlow", 
+                                                    direction = 1, 
+                                                    na.value = "white")
 
 dev.copy(pdf, paste0(output.dir, "Heatmap_Type1_vs_Type2_IFN.pdf"))
 dev.off()
@@ -236,6 +238,32 @@ dev.off()
 
 ```
 
+### Heatmap of IFN genes across clusters 
+```{r IFN gene expression}
+
+genes <- unique(rownames(CD8.seurat@assays[["RNA"]]))
+
+IFN_genes <- genes[grepl("^IFN", genes)]
+IFN_genes_no_receptors <- c("IFNG-AS1", "IFNG", "IFNL1")
+
+# Prepare dataset for heatmap
+Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
+DefaultAssay(CD8.seurat) <- "RNA"
+
+average.seurat <- AverageExpression(CD8.seurat, return.seurat = T)
+
+DoHeatmap(average.seurat, 
+          draw.lines = F,
+          raster = FALSE,
+          features = c(IFN_genes_no_receptors), 
+          group.colors = CD8.cols) + scico::scale_fill_scico(palette = "batlow", 
+                                                    direction = 1, 
+                                                    na.value = "white")
+
+dev.copy(pdf, paste0(output.dir, "Heatmap_IFN_genes.pdf"))
+dev.off()
+
+```
 
  
 ### Visualise Type I IFN cluster 
@@ -265,7 +293,9 @@ DoHeatmap(average.seurat,
           draw.lines = F,
           raster = FALSE,
           features = Hallmark.IFNa.response, 
-          group.colors = CD8.cols)
+          group.colors = CD8.cols) + scico::scale_fill_scico(palette = "batlow", 
+                                                    direction = 1, 
+                                                    na.value = "white")
 
 dev.copy(pdf, paste0(output.dir, "HNSCC_Hallmark_IFNa_Averaged.pdf"))
 dev.off()
@@ -293,7 +323,7 @@ annotated.heatmap(CD8.seurat,
                               genes.to.label = c("ISG15", "IFI6", "ISG20", "IRF7", "IRF2", "IRF9", "IRF2", "IFI35", "IFI44"), 
                               col_order = names(CD8.cols), 
                               col.colours = CD8.cols, 
-                              range.val = c(-2, 0, 2))
+                              range.val = c(-2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2))
 
 dev.copy(pdf, paste0(output.dir, "HNSCC_IFN_cluster_DEGs_highlighted_average.pdf"))
 dev.off()
@@ -377,10 +407,6 @@ Plot_Density_Custom(temp.seurat,
                     joint = FALSE, 
                     pt.size = 1, 
                     reduction = "umap")
-
-dev.copy(pdf, paste0(output.dir, "HNSCC_Nebulosa_top10_no_IFN.pdf"))
-dev.off()
-
 
 dev.copy(pdf, paste0(output.dir, "HNSCC_Nebulosa_top10_no_IFN.pdf"))
 dev.off()
