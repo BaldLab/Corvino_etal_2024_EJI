@@ -295,8 +295,8 @@ Stim <- extract_list_clonotypes (seurat_object = CD8.seurat.tcr, overlap_var = "
 US <- extract_list_clonotypes (seurat_object = CD8.seurat.tcr, overlap_var = "US")
 
 # For filtered result
-Stim_filt <- extract_list_clonotypes (seurat_object = CD8.seurat.tcr.filt, overlap_var = "Stim")
-US_filt <- extract_list_clonotypes (seurat_object = CD8.seurat.tcr.filt, overlap_var = "US")
+Stim_filt <- extract_list_clonotypes (seurat_object = CD8.seurat.tcr_filt, overlap_var = "Stim")
+US_filt <- extract_list_clonotypes (seurat_object = CD8.seurat.tcr_filt, overlap_var = "US")
 
 # Chart non filt
 venn <- venn.diagram(
