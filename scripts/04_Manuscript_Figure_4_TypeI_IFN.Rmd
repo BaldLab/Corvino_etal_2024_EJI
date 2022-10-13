@@ -630,7 +630,7 @@ dev.off()
 
 
 temp.cols <- c(rep("Gray", length(unique(pancancer.cd8@meta.data$seurat_clusters))))
-temp.cols[10] <- "Red"
+temp.cols[8] <- "Red"
 
 UMAPPlot(pancancer.cd8, 
          cols = temp.cols,
@@ -653,7 +653,7 @@ VlnPlot(pancancer.cd8,
 dev.copy(pdf, paste0(output.dir, "Pancancer_VlnPlot_UCell_scores_top10.pdf"))
 dev.off()
 
-# Cluster number 9 = IFN cluster
+# Cluster number 7 = IFN cluster
 
 #########################
 # Get statistics
@@ -669,7 +669,7 @@ dev.off()
 
 
 # Function for getting normed values
-get.norm <- function(input.var, cluster.ID = 9){
+get.norm <- function(input.var, cluster.ID = 7){
   
 var.by.cluster <- table(pancancer.cd8@meta.data[, input.var],
                         pancancer.cd8@meta.data$seurat_clusters)
@@ -692,7 +692,7 @@ return(IFN.clust.vals)
 
 
 # set up output variables
-file.name <- "pancancer_CD8_barplot_Normalised_cluster_9_"
+file.name <- "pancancer_CD8_barplot_Normalised_cluster_7_"
 
 # By Type
 variable.val <- "Type"
