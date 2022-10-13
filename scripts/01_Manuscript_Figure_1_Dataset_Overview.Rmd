@@ -326,6 +326,444 @@ ggplot(z.df) +
   theme_minimal()
 ```
 
+## DEG analysis 
+
+```{r}
+# DEG calculation clusters
+if(long.compute){
+  
+  
+  Idents(seurat.combined) <- seurat.combined@meta.data$Clusters_l1
+  DefaultAssay(seurat.combined) <- "RNA"
+  
+  DEG.wilcox <- FindAllMarkers(seurat.combined,
+                               logfc.threshold = 0.25,
+                               min.pct = 0.1,
+                               test.use = "wilcox", 
+                               only.pos = FALSE)
+  
+
+  write.csv(DEG.wilcox, paste0(output.dir, "DEG_RNA_clusters_wilcox.csv"))
+  
+  print(paste0("Number of sig differentially expressed genes = ", sum(DEG.wilcox$p_val_adj < 0.05)))
+}
+
+# load data
+DEG.wilcox <- read.csv(paste0(output.dir, "DEG_RNA_clusters_wilcox.csv"))
+DEG.wilcox <- DEG.wilcox[,-1]
+
+# prepare dataset
+Idents(seurat.combined) <- seurat.combined@meta.data$Clusters_l1
+DefaultAssay(seurat.combined) <- "RNA"
+
+# Subset data
+small.seurat <- subset(seurat.combined, downsample = 300)
+
+# Average dataset
+average.seurat <- AverageExpression(seurat.combined, return.seurat = TRUE)
+
+
+# Top DEGs
+
+# DEGs > 0.5 log2FC
+x <- DEG.wilcox %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::filter(avg_log2FC > 0.5) %>%
+  dplyr::select(gene) 
+
+x <- unique(x$gene)
+x
+
+# Single cell expression
+DoHeatmap(tri.subset, 
+          group.colors = clust.cols,
+          features = x,
+          assay = "RNA",
+          draw.lines = TRUE,
+          raster = FALSE) + scico::scale_fill_scico(palette = "batlow", 
+                                                    direction = 1, 
+                                                    na.value = "white")
+
+dev.copy(pdf, 
+         paste0(output.dir, "Top_log2fc_DEGs_ADT_clusters_heatmap.pdf"))
+dev.off()
+
+
+# Average expression
+DoHeatmap(average.seurat, 
+          features = x,
+          group.colors = clust.cols,
+          assay = "RNA",
+          raster = FALSE,
+          draw.lines = FALSE) + scico::scale_fill_scico(palette = "batlow", 
+                                                        direction = 1, 
+                                                        na.value = "white")
+
+dev.copy(pdf, 
+         paste0(output.dir, "Top_log2fc_DEGs_ADT_clusters_heatmap_average.pdf"))
+dev.off()
+
+
+# Top 10 DEGs per cluster
+
+x <- DEG.wilcox %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::group_by(cluster) %>%
+  dplyr::top_n(10, avg_log2FC) %>%
+  dplyr::select(gene) 
+
+x <- unique(x$gene)
+x
+
+# Single cell expression
+DoHeatmap(seurat.combined, 
+          features = x,
+          group.colors = clust.cols,
+          assay = "RNA",
+          draw.lines = TRUE,
+          raster = FALSE) + scico::scale_fill_scico(palette = "batlow", 
+                                                    direction = 1, 
+                                                    na.value = "white")
+
+dev.copy(pdf, 
+         paste0(output.dir, "Top_10_DEGs_ADT_clusters_heatmap.pdf"))
+dev.off()
+
+
+# Average expression
+DoHeatmap(average.seurat, 
+                    group.colors = clust.cols,
+          features = x,
+          assay = "RNA",
+          raster = FALSE,
+          draw.lines = FALSE) + scico::scale_fill_scico(palette = "batlow", 
+                                                                     direction = 1, 
+                                                                     na.value = "white") 
+
+dev.copy(pdf, 
+         paste0(output.dir, "Top_10_DEGs_ADT_clusters_heatmap_average.pdf"), )
+dev.off()
+```
+
+
+### ComplexHeatmap
+```{r}
+ 
+  mat<- average.seurat@assays$RNA@data
+  mat<- as.matrix(mat)
+  mat<- mat[unique.cluster.5, ]
+  ## scale the rows
+  mat <- t(scale(t(mat)))
+  mat <- na.omit(mat)
+  
+  cluster_anno<- average.seurat@meta.data$ADT_clusters
+  cluster_anno<- average.seurat@active.ident
+  
+  # what's the value range in the matrix
+  quants <- quantile(mat, c(0.1, 0.95))
+  print(quants)
+  
+  ## make the black color map to 0. the yellow map to highest and the purle map to the lowest
+  col_fun = circlize::colorRamp2(seq(-1, 2, by = 0.1), scico(31, palette = 'batlow'))
+  
+  
+  Heatmap <- ComplexHeatmap::Heatmap(mat, name = "Expression",  
+                     row_title = "Gene",
+                     column_dend_height = ggplot2::unit(2, "cm"), 
+                     column_split = factor(cluster_anno),
+                     cluster_columns = F,
+                     show_column_dend = TRUE,
+                     cluster_column_slices = TRUE,
+                     column_title_gp = grid::gpar(fontsize = 10),
+                     column_gap = ggplot2::unit(2, "mm"),
+                     cluster_rows = T,
+                     show_row_dend = T,
+                     col = col_fun,
+                     row_names_gp = grid::gpar(fontsize = 8),
+                     column_title_rot = 90,
+                     top_annotation = ComplexHeatmap::HeatmapAnnotation(foo = ComplexHeatmap::anno_block(gp = grid::gpar(fill = scales::hue_pal()(9)))),
+                     show_column_names = FALSE,
+                     use_raster = TRUE,
+                     raster_quality = 4) 
+  
+  print(Heatmap)
+  
+  # save heatmap to output folder
+  
+  tidyHeatmap::save_pdf(Heatmap, paste0(output.dir, filename),
+           width = 29.7,
+           height = 21,
+           units = c("cm"))
+
+```
+
+### Plot GOIs
+```{r Density_plot_GOI}
+
+
+# load data
+DEG.wilcox <- read.csv(paste0(output.dir.tables, "DEG_ADT_clusters_wilcox.csv"))
+DEG.wilcox <- DEG.wilcox[,-1]
+
+DefaultAssay(ADT_seurat) <- "RNA"
+
+cytotoxicity <- c("GZMA", "GZMB",  "GZMM", "GZMH", "GZMK", "GNLY", "IFNG")
+exhaustion <- c("TCF7", "TOX", "HAVCR2", "LAG3", "PDCD1", "TIGIT")
+differentiation <- c("IL7R", "CCR7", "SELL", "CD27", "ITGA1")
+cytokine <- c("IL2RA", "IFNG", "XCL1", "XCL2", "TNFSF14")
+chemokine <- c("CXCL13", "CCL3", "CCL4", "CCL5")
+
+goi <- list(goi.1 = cytotoxicity,
+            goi.2 = exhaustion,
+            goi.3 = differentiation,
+            goi.4 = cytokine,
+            goi.5 = chemokine)
+
+for(i in seq_along(goi)){
+print(scCustomize::Stacked_VlnPlot(ADT_seurat, 
+                             features = goi[[i]],
+                             pt.size = 0))
+  dev.copy(pdf, paste0(output.dir, "VlnPlot_", i, ".pdf"))
+  dev.off()
+  
+}
+
+
+
+
+
+
+
+
+
+
+
+
+ADT_seurat <- CellCycleScoring(object = ADT_seurat,
+                               g2m.features = cc.genes$g2m.genes,
+                               s.features = cc.genes$s.genes)
+
+
+ADT_seurat@meta.data$Phase
+
+goi <- c("S.Score", "G2M.Score")
+
+scCustomize::Stacked_VlnPlot(ADT_seurat, 
+                             features = goi,
+                             pt.size = 0)
+
+
+DimPlot(ADT_seurat, 
+        reduction = "adt.umap",
+        group.by = "ADT_clusters", 
+        split.by = "Phase")
+
+
+
+
+
+
+```
+
+### Transcription factor analysis
+```{r TF_analysis}
+
+# Searching for TFs
+TF.ref.list <- read.delim("data/TFCheckpoint.txt") # http://www.tfcheckpoint.org
+
+dim(TF.ref.list) # 3479, 36
+colnames(TF.ref.list)
+head(TF.ref.list)
+
+unique(TF.ref.list$evidence.type)
+
+# subset for transcription factors 
+TF.ref.list <- TF.ref.list %>%
+  dplyr::filter(DbTF == "yes") %>%
+  dplyr::filter(evidence.type == "Experimental")
+
+dim(TF.ref.list) # 825, 36
+
+Cluster.markers <- read.csv(paste0(output.dir.tables, "DEG_ADT_clusters_wilcox.csv"))
+Cluster.markers <- Cluster.markers[,-1]
+
+# annotate genes as TF or not
+tf.logic <- Cluster.markers$gene %in% TF.ref.list$gene_symbol
+Cluster.markers$TF <- tf.logic
+
+
+# Up-regulated TFs
+sig.genes <- Cluster.markers %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::filter(avg_log2FC > 0.5) %>%
+  dplyr::filter(TF == TRUE) %>%
+  dplyr::group_by(cluster) %>%
+  dplyr::top_n(10, avg_log2FC) %>%
+  dplyr::select(gene)
+  
+TF.DEG <- unique(sig.genes$gene)
+TF.DEG
+
+
+########################################
+# Plot TFs differentially regulated 
+########################################
+
+Idents(ADT_seurat) <- ADT_seurat@meta.data$ADT_clusters
+DefaultAssay(ADT_seurat) <- "RNA"
+
+average.seurat <- AverageExpression(ADT_seurat,
+                                    assay = "RNA",
+                                    slot = "data",
+                                    verbose = TRUE,
+                                    return.seurat = TRUE)
+DoHeatmap(average.seurat, 
+          features = TF.DEG, 
+          draw.lines = FALSE, 
+          group.colors = ADT.cols,
+          raster = FALSE) + scico::scale_fill_scico(palette = "batlow", 
+                                       direction = 1, 
+                                       na.value = "white")
+
+dev.copy(pdf, paste0(output.dir, "Heatmap_of_TF_diff_expressed.pdf"))
+dev.off()
+
+```
+
+# GO analysis
+```{r}
+# Analysis for one cluster 
+
+DefaultAssay(ADT_seurat) <- "RNA"
+
+ADT_Seurat_cluster_x <- subset(x = ADT_seurat, subset = ADT_clusters == "1")
+
+if(!dir.exists("results/figures/GO_analysis")){
+  dir.create("results/figures/GO_analysis",
+             recursive = TRUE)}
+
+
+Idents(ADT_Seurat_cluster_x) <- ADT_Seurat_cluster_x@meta.data[ , meta.names[1]]
+
+# BP 
+
+DEenrichRPlot(
+  ADT_Seurat_cluster_x,
+ident.1 = "High",
+ident.2 = "Low",
+balanced = TRUE,
+assay = "RNA",
+logfc.threshold = 0.25,
+max.genes = 100000,
+test.use = "wilcox",
+p.val.cutoff = 0.05,
+cols = c("black", "blue"),
+enrich.database = "GO_Biological_Process_2021",
+num.pathway = 10,
+return.gene.list = FALSE
+  )
+
+ggsave(filename = paste0("results/figures/GO_analysis/GO_","GO_Biological_Process_2021", ADT.vec[1], "_High_vs_Neg_wilcox_impute.pdf"),  height = 9, width = 16)
+
+
+# Sequence of clusters 
+
+if(!dir.exists("results/figures/GO_analysis_new")){
+  dir.create("results/figures/GO_analysis_new",
+             recursive = TRUE)}
+
+ADT_Clust_IDs <- c("0","1", "2","3","4","5", "6", "7")
+
+i = "0"
+
+ADT_Seurat_cluster_x <- subset(x = ADT_seurat, subset = ADT_clusters == i)
+
+for(i in 1:length(ADT_Clust_IDs)){
+  ADT_Seurat_cluster_x <- subset(x = ADT_seurat, subset = ADT_clusters == i)
+
+
+
+for (n in 1:length(meta.names)) {
+ Idents(ADT_Seurat_cluster_x) <- ADT_Seurat_cluster_x@meta.data[ , meta.names[n]]
+
+# BP 
+
+DEenrichRPlot(
+  ADT_Seurat_cluster_x,
+ident.1 = "High",
+ident.2 = "Low",
+balanced = TRUE,
+assay = "RNA",
+logfc.threshold = 0.25,
+max.genes = 100000,
+test.use = "wilcox",
+p.val.cutoff = 0.05,
+cols = c("black", "blue"),
+enrich.database = "GO_Biological_Process_2021",
+num.pathway = 10,
+return.gene.list = FALSE
+  )
+
+ggsave(filename = paste0("results/figures/GO_analysis_new/GO_","GO_Biological_Process_2021","_Cluster_", ADT_Clust_IDs[i],"_", ADT.vec[n], "_High_vs_Neg_wilcox_impute.pdf"),  height = 9, width = 16) 
+
+
+DEenrichRPlot(
+  ADT_Seurat_cluster_x,
+ident.1 = "High",
+ident.2 = "Low",
+balanced = TRUE,
+assay = "RNA",
+logfc.threshold = 0.25,
+max.genes = 100000,
+test.use = "wilcox",
+p.val.cutoff = 0.05,
+cols = c("black", "blue"),
+enrich.database = "GO_Cellular_Component_2021",
+num.pathway = 10,
+return.gene.list = FALSE
+  )
+
+ggsave(filename = paste0("results/figures/GO_analysis_new/GO_","GO_Cellular_Component_2021","_Cluster_", ADT_Clust_IDs[i],"_", ADT.vec[n], "_High_vs_Neg_wilcox_impute.pdf"),  height = 9, width = 16) 
+
+DEenrichRPlot(
+  ADT_Seurat_cluster_x,
+ident.1 = "High",
+ident.2 = "Low",
+balanced = TRUE,
+assay = "RNA",
+logfc.threshold = 0.25,
+max.genes = 100000,
+test.use = "wilcox",
+p.val.cutoff = 0.05,
+cols = c("black", "blue"),
+enrich.database = "GO_Molecular_Function_2021",
+num.pathway = 10,
+return.gene.list = FALSE
+  )
+
+ggsave(filename = paste0("results/figures/GO_analysis_new/GO_","GO_Molecular_Function_2021","_Cluster_", ADT_Clust_IDs[i],"_", ADT.vec[n], "_High_vs_Neg_wilcox_impute.pdf"),  height = 9, width = 16) 
+
+
+DEenrichRPlot(
+  ADT_Seurat_cluster_x,
+ident.1 = "High",
+ident.2 = "Low",
+balanced = TRUE,
+assay = "RNA",
+logfc.threshold = 0.25,
+max.genes = 100000,
+test.use = "wilcox",
+p.val.cutoff = 0.05,
+cols = c("black", "blue"),
+enrich.database = "OMIM_Disease",
+num.pathway = 10,
+return.gene.list = FALSE
+  )
+
+ggsave(filename = paste0("results/figures/GO_analysis_new/GO_","OMIM_Disease","_Cluster_", ADT_Clust_IDs[i],"_", ADT.vec[n], "_High_vs_Neg_wilcox_impute.pdf"),  height = 9, width = 16) 
+}
+
+}
 
 ## NOT MODIFIED FOR DOCKER ENVIRO
 

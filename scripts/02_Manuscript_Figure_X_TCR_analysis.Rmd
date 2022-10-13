@@ -290,13 +290,13 @@ clonotype <- unique(seurat_subset_meta$CTaa)
 return(clonotype)
 }
 
-# Generate 3 sets 
+# Generate 2 sets 
 Stim <- extract_list_clonotypes (seurat_object = CD8.seurat.tcr, overlap_var = "Stim")
 US <- extract_list_clonotypes (seurat_object = CD8.seurat.tcr, overlap_var = "US")
 
 # For filtered result
-Stim_filt <- extract_list_clonotypes (seurat_object = CD8.seurat.tcr_filt, overlap_var = "Stim")
-US_filt <- extract_list_clonotypes (seurat_object = CD8.seurat.tcr_filt, overlap_var = "US")
+Stim_filt <- extract_list_clonotypes (seurat_object = CD8.seurat.tcr.filt, overlap_var = "Stim")
+US_filt <- extract_list_clonotypes (seurat_object = CD8.seurat.tcr.filt, overlap_var = "US")
 
 # Chart non filt
 venn <- venn.diagram(
@@ -329,10 +329,14 @@ venn <- venn.diagram(
         cat.fontfamily = "sans")
 
 # Chart filt
+
+dir.create(paste0(output.dir, "Venn_filt"))
+setwd(paste0(output.dir, "Venn_filt"))
+
 venn_filt <- venn.diagram(
         x = list(US_filt, Stim_filt),
         category.names = c("US", "Stim" ),
-        filename = paste0(output.dir,"venn_condition_CTaa_overlap_filt.tiff"),
+        filename = paste0(output.dir,"/Venn_filt/","venn_condition_CTaa_overlap_filt.tiff"),
         output=F,
 
         # Output features
@@ -358,6 +362,7 @@ venn_filt <- venn.diagram(
         cat.default.pos = "outer",
         cat.fontfamily = "sans")
 
+setwd(working.dir)
 
 ##########
 
