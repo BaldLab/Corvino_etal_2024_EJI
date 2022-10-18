@@ -1378,6 +1378,100 @@ DimPlot(Trex.seurat,
 ```
 
 
+## DEG analysis 
+```{r}
+# DEG calculation clusters
+if(long.compute){
+  
+  
+  Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
+  DefaultAssay(CD8.seurat) <- "RNA"
+  
+  CD8.seurat <- FindVariableFeatures(CD8.seurat)
+  
+  CD8.seurat <- ScaleData(CD8.seurat)
+  
+  DEG.wilcox <- FindAllMarkers(CD8.seurat,
+                               logfc.threshold = 0.25,
+                               min.pct = 0.1,
+                               test.use = "wilcox", 
+                               only.pos = FALSE)
+  
+
+  write.csv(DEG.wilcox, paste0(output.dir, "DEG_RNA_clusters_wilcox.csv"))
+  
+  print(paste0("Number of sig differentially expressed genes = ", sum(DEG.wilcox$p_val_adj < 0.05)))
+}
+
+# load data
+DEG.wilcox <- read.csv(paste0(output.dir, "DEG_RNA_clusters_wilcox.csv"))
+DEG.wilcox <- DEG.wilcox[,-1]
+
+# prepare dataset
+Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
+DefaultAssay(CD8.seurat) <- "RNA"
+
+
+
+# Subset data
+small.seurat <- subset(CD8.seurat, downsample = 300)
+
+# Average dataset
+average.seurat <- AverageExpression(CD8.seurat, return.seurat = TRUE)
+
+
+# Top DEGs
+
+# DEGs > 0.5 log2FC
+x <- DEG.wilcox %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::filter(avg_log2FC > 0.5) %>%
+  dplyr::select(gene) 
+
+x <- unique(x$gene)
+x
+
+# Average expression
+DoHeatmap(average.seurat, 
+          features = x,
+          group.colors = clust.cols,
+          assay = "RNA",
+          raster = FALSE,
+          draw.lines = FALSE) + scico::scale_fill_scico(palette = "batlow", 
+                                                        direction = 1, 
+                                                        na.value = "white")
+
+dev.copy(pdf, 
+         paste0(output.dir, "Top_log2fc_DEGs_RNA_clusters_l1_heatmap_average.pdf"))
+dev.off()
+
+
+# Top 10 DEGs per cluster
+
+x <- DEG.wilcox %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::group_by(cluster) %>%
+  dplyr::top_n(10, avg_log2FC) %>%
+  dplyr::select(gene) 
+
+x <- unique(x$gene)
+x
+
+
+# Average expression
+DoHeatmap(average.seurat, 
+                    group.colors = clust.cols,
+          features = x,
+          assay = "RNA",
+          raster = FALSE,
+          draw.lines = FALSE) + scico::scale_fill_scico(palette = "batlow", 
+                                                                     direction = 1, 
+                                                                     na.value = "white") 
+
+dev.copy(pdf, 
+         paste0(output.dir, "Top_10_DEGs_RNA_clusters_l1_heatmap_average.pdf"), )
+dev.off()
+```
 
 
 
