@@ -1,0 +1,575 @@
+---
+title: "HNSCC_Trajectory_analysis"
+author: "Dillon Corvino"
+date: "03/02/2020"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: united
+    highlight: tango
+    df_print: paged
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+  markdown: 
+    wrap: 72
+---
+
+Built with R version `{r} getRversion()`
+
+## Setup {.tabset}
+
+### Environment
+
+```{r setup, message = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,  
+  eval = TRUE, 
+  tidy = TRUE
+)
+
+knitr::opts_knit$set(
+  root.dir = "../"
+)
+
+# Environment Set up
+rm(list = ls()) #Clean workspace
+cat("\014")     #Clean Console
+gc() # Free memory
+
+
+# Establish working directory
+library("rstudioapi")
+
+# Set working directory to source file location
+setwd(dirname(getActiveDocumentContext()$path))
+setwd("..")
+
+# Load packages
+source("R/Load_packages.R", local = knitr::knit_global())
+
+# Create output directories & load custom functions & colour scheme
+source("R/Setup.R", local = knitr::knit_global())
+
+
+# pipeline variables
+quick.load <- TRUE
+long.compute <- FALSE
+
+# load saved seurat object with cluster annotations and imputation performed
+if(quick.load){
+  seurat.combined <- readRDS("Exported_RDS_files/seurat_combined.rds")
+}
+
+```
+
+## Trajectory analysis {.tabset}
+
+## Need to amend root node settings etc
+
+### Preparing data for trajectory analysis
+
+```{r Trajectory_data_prep, eval = TRUE}
+
+library(dyno)
+library(dynplot)
+library(dynmethods)
+library(dynutils)
+library(dynwrap)
+library(tidyverse)
+dynwrap::test_docker_installation(detailed = TRUE)
+
+############################
+# Read in and prepare data
+############################
+
+# Read in dataframes
+raw.data <- as.data.frame(seurat.combined@assays$RNA@counts)
+normed.data <- as.data.frame(seurat.combined@assays$RNA@data)
+
+
+# data is organized cols = cells and rows = genes
+head(raw.data[1:10, 1:10])
+head(normed.data[1:10, 1:10])
+
+# Need to inverse data for input into dyno package
+raw.data <- t(raw.data)
+head(raw.data[1:10, 1:10])
+
+normed.data <- t(normed.data)
+head(normed.data[1:10, 1:10])
+
+# Check data structure
+dim(raw.data) # 11,658 cells and 16,295 genes
+dim(normed.data) # 11,658 cells and 16,295 genes
+
+
+if(long.compute){  
+  ##########################################
+  # Creating Dyno formatted data structure
+  ##########################################
+  
+  Dyno.data <- wrap_expression(counts = raw.data,
+                               expression = normed.data)
+  
+  # Add grouping info
+  metadata.df <- seurat.combined@meta.data
+  
+  group.vect <- metadata.df$seurat_clusters
+  names(group.vect) <- rownames(metadata.df)
+  
+  Dyno.data <- add_grouping(Dyno.data,
+                            grouping = group.vect)
+  
+  
+  # Add dim reduction
+  logic.vect <- grepl("*UMAP", colnames(metadata.df))
+  
+  UMAP.dims <- metadata.df[ , logic.vect]
+  UMAP.dims <- as.matrix(UMAP.dims)
+  
+  Dyno.data <- add_dimred(Dyno.data,
+                          dimred = UMAP.dims)
+  
+  
+  
+}else{
+  
+  
+  
+  # Create vectors and matrix needed for visualisation of pre-calculated trajectories
+  
+  # Create grouping vector
+  metadata.df <- seurat.combined@meta.data
+  
+  group.vect <- metadata.df$seurat_clusters
+  names(group.vect) <- rownames(metadata.df)
+  
+  # Create dim reduction matrix
+  logic.vect <- grepl("*UMAP", colnames(metadata.df))
+  
+  UMAP.dims <- metadata.df[ , logic.vect]
+  UMAP.dims <- as.matrix(UMAP.dims)
+  
+  
+}
+
+
+
+
+```
+
+### Running trajectory analysis
+
+```{r trajectory_analysis, eval = FALSE}
+
+if(long.compute){
+  
+  
+  
+  ################################################
+  # selecting best trajectory method for dataset
+  ################################################
+  # Using shiny app to get guidelines
+  # guidelines <- guidelines_shiny(Dyno.total.data)
+  
+  
+  answers <- dynguidelines::answer_questions(multiple_disconnected = NULL, 
+                                             expect_topology = NULL, 
+                                             expected_topology = NULL, 
+                                             n_cells = 11658, 
+                                             n_features = 18295, 
+                                             memory = "16GB", 
+                                             prior_information = NULL, 
+                                             docker = TRUE)
+  
+  guidelines.vals <- dynguidelines::guidelines(answers = answers) 
+  
+  methods.selected <- guidelines.vals$methods_selected
+  
+  print(methods.selected)
+  
+  
+  #####################
+  # Infer Trajectory
+  #####################
+  
+  ##############
+  # Slingshot
+  ##############
+  
+  slingshot <- infer_trajectory(Dyno.data, 
+                                method = "dynverse/ti_slingshot:v0.9.9.01", 
+                                parameters = NULL, 
+                                give_priors = NULL, 
+                                seed = set.seed(42),
+                                verbose = TRUE)
+  
+  saveRDS(slingshot, file = "Exported_RDS_files/combined_slingshot.rds")
+  rm(slingshot)
+  
+  
+  ##############
+  # Scorpius
+  ##############
+  
+  scorpius <- infer_trajectory(Dyno.data, 
+                               method = ti_scorpius(), 
+                               parameters = NULL, 
+                               give_priors = NULL, 
+                               seed = set.seed(42),
+                               verbose = TRUE)
+  
+  saveRDS(scorpius, file = "Exported_RDS_files/combined_scorpius.rds")
+  rm(scorpius)
+  
+  
+  ##############
+  # Angle
+  ##############
+  
+  angle <- infer_trajectory(Dyno.data, 
+                            method = ti_angle(), 
+                            parameters = NULL, 
+                            give_priors = NULL, 
+                            seed = set.seed(42),
+                            verbose = TRUE)
+  
+  saveRDS(angle, file = "Exported_RDS_files/combined_angle.rds")
+  rm(angle)
+  
+}
+
+
+```
+
+### Visualisation trajectory analysis
+
+```{r Visualisation_trajectory, eval = TRUE}
+
+####################################
+# Visualise exported trajectories 
+####################################
+
+
+# Create output directory
+if(!dir.exists("output/figures/Trajectories")){
+  dir.create("output/figures/Trajectories",
+             recursive = T)}
+
+
+
+###############
+# Slingshot
+###############
+
+# Create output directory
+if(!dir.exists("output/figures/Trajectories/Slingshot")){
+  dir.create("output/figures/Trajectories/Slingshot",
+             recursive = T)}
+
+
+# Read data
+slingshot <- readRDS("Exported_RDS_files/combined_slingshot.rds")
+
+# Modify variables
+
+# Set root milestone
+slingshot <- add_root(trajectory = slingshot, 
+                        root_milestone_id = "1")
+
+dynplot::plot_dimred(slingshot, 
+                     dimred = UMAP.dims,
+                     hex_cells = TRUE, 
+                     label_milestones = TRUE,
+                     color_cells = "pseudotime")
+
+dev.copy(pdf, "output/figures/Trajectories/Slingshot/Combined_plot_pseudotime.pdf")
+dev.off()
+
+
+dynplot::plot_dimred(slingshot, 
+                     dimred = UMAP.dims,
+                     hex_cells = TRUE, 
+                     grouping = group.vect,
+                     label_milestones = TRUE,
+                     color_cells = "grouping")
+
+dev.copy(pdf, "output/figures/Trajectories/Slingshot/Combined_plot_clusters.pdf")
+dev.off()
+
+
+# Rename milestone labels
+milestone.labels <- c("Naive_memory", "Cytotoxic", "Stem-like", "Exhausted")
+names(milestone.labels) <- c(1, 2, 3, 4)
+
+slingshot <- label_milestones(slingshot, 
+                                 labelling = milestone.labels)
+
+dynplot::plot_dimred(slingshot, 
+                     dimred = UMAP.dims,
+                     hex_cells = TRUE, 
+                     grouping = group.vect,
+                     label_milestones = TRUE,
+                     color_cells = "grouping")
+
+dev.copy(pdf, "output/figures/Trajectories/Slingshot/Slingshot_named_milestones.pdf")
+dev.off()
+
+
+# Cacluate trajectory feature importance
+
+overall_feature_importances <- dynfeature::calculate_overall_feature_importance(slingshot, 
+                                                                                expression_source = normed.data)
+
+top.features <- overall_feature_importances %>% 
+  top_n(50, importance) %>% 
+  pull(feature_id)
+
+
+plot_heatmap(slingshot, 
+             expression_source = normed.data, 
+             features_oi = top.features)
+
+dev.copy(pdf, "output/figures/Trajectories/Slingshot/Combined_heatmap_top50_important_features.pdf")
+dev.off()
+
+
+# Calculate milestone importance
+for(i in 1:length(slingshot$milestone_ids)){
+  
+  # Because milestone ids are not in order get the corresponding ID name for each milestone #
+  logic.var <- names(slingshot$milestone_labelling) == i
+  milestone.name <- paste0(slingshot$milestone_labelling[logic.var])
+  
+  
+  milestone.feature.importance <- calculate_milestone_feature_importance(slingshot,
+                                                                         expression_source = normed.data, 
+                                                                         milestones_oi = i, 
+                                                                         verbose = TRUE)
+  
+  
+  top.features <- milestone.feature.importance %>% 
+    top_n(25, importance) %>% 
+    pull(feature_id)
+  
+  print(plot_heatmap(slingshot, 
+                     expression_source = normed.data, 
+                     features_oi = top.features))
+  
+  dev.copy(pdf, paste0("output/figures/Trajectories/Slingshot/Combined_heatmap_top25_milestone_", milestone.name, "_important_features.pdf"))
+  dev.off()
+  
+  
+}
+
+
+
+################################################
+# Base plots of other trajectories calculated
+################################################
+
+
+# Generate list of exported trajectories 
+trajectories_master <- list.files("Exported_RDS_files/", ".rds")
+
+print(trajectories_master)
+
+for(i in 1:length(trajectories_master)){
+  
+  print(paste0("Plotting ", trajectories_master[i]))
+  
+  trajectory.val <- readRDS(paste0("Exported_RDS_files/", trajectories_master[i]))
+  trajectory.name <- gsub(".rds", "", trajectories_master[i])
+  
+  
+  #####################
+  # Plot trajectory
+  #####################
+  
+  # Vis pseudotime
+  print(dynplot::plot_dimred(trajectory.val, 
+                             dimred = UMAP.dims,
+                             hex_cells = TRUE, 
+                             label_milestones = TRUE,
+                             color_cells = "pseudotime"))
+  
+  dev.copy(pdf, paste0("output/figures/Trajectories/Pseudotime_", trajectory.name, ".pdf"))
+  dev.off()
+  
+  # Overlay clusters
+  print(dynplot::plot_dimred(trajectory.val, 
+                             dimred = UMAP.dims,
+                             hex_cells = TRUE, 
+                             grouping = group.vect,
+                             label_milestones = TRUE,
+                             color_cells = "grouping"))
+  
+  dev.copy(pdf, paste0("output/figures/Trajectories/Clusters_", trajectory.name, ".pdf"))
+  dev.off()
+  
+  # Group clusters
+  print(dynplot::plot_dimred(trajectory.val, 
+                             color_cells = "grouping",
+                             color_density = "grouping",
+                             dimred = UMAP.dims,
+                             hex_cells = TRUE,
+                             grouping = group.vect))
+  
+  dev.copy(pdf, paste0("output/figures/Trajectories/Clusters_grouped_", trajectory.name, ".pdf"))
+  dev.off()
+  
+}
+
+
+rm(trajectory.val)
+
+
+
+
+```
+
+### Monocle trajectory
+
+```{r Monocle_analysis}
+
+# Create output directory
+if(!dir.exists("output/figures/Trajectories/monocle")){
+  dir.create("output/figures/Trajectories/monocle",
+             recursive = T)}
+
+# Load library
+library("monocle")
+
+# Set assay and idents
+DefaultAssay(seurat.combined) <- "integrated"
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+unique(Idents(seurat.combined))
+
+# convert seurat object to a cell data set
+cds <- SeuratWrappers::as.cell_data_set(seurat.combined, 
+                                        group.by = "seurat_clusters")
+
+# Cluster cells
+cds <- monocle3::cluster_cells(cds, 
+                               reduction_method = "UMAP")
+
+# Plot cell partition
+p1 <- monocle3::plot_cells(cds, show_trajectory_graph = FALSE)
+p2 <- monocle3::plot_cells(cds, color_cells_by = "partition", show_trajectory_graph = FALSE)
+
+p1|p2
+
+# Learn graph
+cds <- monocle3::learn_graph(cds)
+
+# Plot monocle trajectory
+monocle3::plot_cells(cds,
+                     label_groups_by_cluster = FALSE, 
+                     label_leaves = FALSE, 
+                     label_branch_points = FALSE)
+
+dev.copy(pdf, "output/figures/Trajectories/monocle/Monocle_trajectory.pdf")
+dev.off()
+
+
+# Plot monocle trajectory with leaves and branch points labelled
+monocle3::plot_cells(cds, 
+                     label_groups_by_cluster = FALSE,
+                     label_leaves = TRUE, 
+                     label_branch_points = TRUE)
+
+dev.copy(pdf, "output/figures/Trajectories/monocle/Monocle_trajectory_branchpoints_labelled.pdf")
+dev.off()
+
+
+
+
+
+
+
+####### WORK in progress ################
+cds <- monocle3::order_cells(cds)
+
+
+monocle3::plot_cells(cds, 
+                     color_cells_by = "pseudotime", 
+                     label_cell_groups = FALSE,
+                     label_leaves = FALSE, 
+                     label_branch_points = FALSE)
+
+
+gene_module_df <- monocle3::find_gene_modules(cds, resolution = 1e-2)
+
+unique(gene_module_df$module)
+
+goi <- gene_module_df %>% 
+  filter(module %in% c(7)) %>%
+  dplyr::select(id)
+
+
+
+
+monocle3::plot_cells(cds, 
+           genes= goi$id,
+           group_cells_by="partition",
+           color_cells_by="partition",
+           show_trajectory_graph=FALSE)
+
+monocle3::plot_cells(cds,
+           color_cells_by = "cluster",
+           label_groups_by_cluster=FALSE,
+           label_leaves=FALSE,
+           label_branch_points=FALSE)
+
+
+
+AFD_genes <- c("ICOS", "PDCD1", "IFNG")
+AFD_lineage_cds <- cds[rowData(cds) %in% AFD_genes, ]
+
+my_genes <- row.names(subset(fData(cds), gene_short_name %in% goi$id)) 
+cds_subset <- HSMM[my_genes,]
+
+monocle3::plot_genes_in_pseudotime(cds,
+                         color_cells_by="cluster",
+                         label_by_short_name = F,
+                         min_expr=0.5)
+
+?plot_genes_in_pseudotime
+
+ciliated_cds_pr_test_res <- monocle3::graph_test(cds, neighbor_graph="principal_graph", cores=4)
+pr_deg_ids <- row.names(subset(ciliated_cds_pr_test_res, q_value < 0.05))
+
+
+```
+
+### Exporting metadata for velocity analysis
+
+```{r exporting_metadata}
+# export metadata for velocity analysis 
+meta.data <- seurat.combined@meta.data
+
+colnames(meta.data)
+head(meta.data)
+
+# Remove non-necessary columns 
+meta.data <- meta.data %>%
+  dplyr::select(group, condition, seurat_clusters, UMAP_1, UMAP_2, PCA_1, PCA_2, Module, condition_clust, condition_module)
+
+# Create new barcode columns 
+meta.data$uniq_barcode <- rownames(meta.data)
+
+meta.data$barcode <- gsub(".*_", "", rownames(meta.data))
+
+write.table(meta.data, "output/tables/Meta_data.txt", sep = "\t", row.names = F, quote = F)
+
+
+
+```
+
+
