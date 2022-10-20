@@ -184,26 +184,207 @@ signature.names <- paste0(names(Signature.list), "_UCell")
 
 
 
-# extract hallmark pathways
-# x <- msigdbr::msigdbr(species = "Homo sapiens",
-#                       category = "H")
-# 
-# Hallmark.IFNa.response <- x[x$gs_name == "HALLMARK_INTERFERON_ALPHA_RESPONSE", ]$gene_symbol
-# Hallmark.IFNa.response <- unique(Hallmark.IFNa.response)
-# 
-# 
-# Hallmark.IFNg.response <- x[x$gs_name == "HALLMARK_INTERFERON_GAMMA_RESPONSE", ]$gene_symbol
-# Hallmark.IFNg.response <- unique(Hallmark.IFNg.response)
-# 
-# 
-# # create list of signatures
-# Signature.list <- list(Positive_sig = IFN.sig, 
-#                        IFNa_Hallmark = Hallmark.IFNa.response,
-#                        IFNg_Hallmark = Hallmark.IFNg.response)
-# 
-# signature.names <- paste0(names(Signature.list), "_UCell")
 
 ```
+
+
+### visualise IFN cluster DEG enrichment terms
+```{r IFN_cluster_enrichment_terms}
+
+
+# load packages
+library("enrichR")
+#install.packages("SCpubr")
+library("SCpubr")
+ 
+# set serach to human genes
+enrichR::setEnrichrSite(site = "Enrichr")
+
+dbs <- enrichR::listEnrichrDbs()
+dbs <- sort(dbs$libraryName)
+
+# Choose the dataset to query against.
+dbs_use <- c("GO_Biological_Process_2021", 
+             "GO_Cellular_Component_2021",
+             "GO_Molecular_Function_2021", 
+             "KEGG_2021_Human",
+             "MSigDB_Hallmark_2020",
+             "Reactome_2022",
+             "WikiPathway_2021_Human",
+             "Azimuth_Cell_Types_2021")
+
+
+
+# read in IFN clust DEGS
+IFN.clust.DEGs <- read.csv(paste0(output.dir, "IFN_clust_DEGs.csv"))
+
+# filter DEGs for sig up genes 
+IFN.sig.up <- IFN.clust.DEGs %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::filter(DE == "up") 
+
+# filter DEGs for sig down genes 
+IFN.sig.dn <- IFN.clust.DEGs %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::filter(DE == "down") 
+
+
+
+
+############################################################
+# Perform enrichment analysis for Upregulated genes 
+############################################################
+
+# List of genes to use as input.
+up.genes <- unique(IFN.sig.up$gene_symbol)
+
+# Retrieve the enriched terms.
+up.enriched.terms <- enrichR::enrichr(up.genes, dbs_use)
+
+# Plot enriched terms 
+upregulated.plots <- SCpubr::do_TermEnrichmentPlot(enriched_terms = up.enriched.terms, 
+                                                   nchar_wrap = 20,
+                                                   font.size = 5, 
+                                                   font.type = "sans", 
+                                                   text_labels_size = 1,
+                                                   colors.use = c("salmon2", "gray"),
+                                                   nterms = 10)
+
+
+
+
+
+
+############################################################
+# Perform enrichment analysis for Downregulated genes 
+############################################################
+
+# List of genes to use as input.
+dn.genes <- unique(IFN.sig.dn$gene_symbol)
+
+# Retrieve the enriched terms.
+dn.enriched.terms <- enrichR::enrichr(dn.genes, dbs_use)
+
+# Plot enriched terms 
+downregulated.plots <- SCpubr::do_TermEnrichmentPlot(enriched_terms = dn.enriched.terms, 
+                                                   nchar_wrap = 20,
+                                                   font.size = 5, 
+                                                   font.type = "sans", 
+                                                   text_labels_size = 1,
+                                                   colors.use = c("royalblue", "gray"),
+                                                   nterms = 10)
+
+# Plot and save all plots generated 
+for(i in seq_len(length(upregulated.plots))){
+  
+  
+  # upregulated plots
+  name.var <- names(upregulated.plots)[i]
+  
+  ggsave(filename = paste0(output.dir, "Upregulated_",  name.var, ".pdf"),
+         plot = upregulated.plots[[i]], 
+         width = 20, 
+         height = 20, 
+         units = "in",
+         device = "pdf")
+  
+  # downregulated plots
+  name.var <- names(downregulated.plots)[i]
+  
+  ggsave(filename = paste0(output.dir, "Downregulated_",  name.var, ".pdf"),
+         plot = downregulated.plots[[i]], 
+         width = 20, 
+         height = 20, 
+         units = "in",
+         device = "pdf")
+  
+}
+
+
+
+
+
+
+
+
+```
+
+
+### IFN cluster pathway activity inference analysis 
+```{r IFN_cluster_pathway_inference}
+
+# install required packages
+#BiocManager::install("decoupleR") 
+#BiocManager::install("OmnipathR") 
+BiocManager::install("ComplexHeatmap")
+
+library("decoupleR")
+
+# Retrieve prior knowledge network.
+network <- decoupleR::get_progeny(organism = "human")
+
+
+# Run weighted means algorithm.
+activities <- decoupleR::run_wmean(mat = as.matrix(CD8.seurat@assays$RNA@data),
+                                   network = network,
+                                   .source = "source",
+                                   .targe = "target",
+                                   .mor = "weight",
+                                   times = 100,
+                                   minsize = 5)
+
+
+# General heatmap.
+out <- SCpubr::do_PathwayActivityPlot(sample = CD8.seurat,
+                                      activities = activities)
+p <- out$heatmaps$average_scores
+p
+dev.copy(pdf, paste0(output.dir, "Pathway_activity_heatmap.pdf"))
+dev.off()
+
+# Feature plots function from SCpubr didn't work. used a work around to get a similar result
+
+
+# Add progeny data to seurat object
+CD8.seurat[["progeny"]] <- activities %>% 
+  dplyr::filter(.data$statistic == "norm_wmean") %>% 
+  tidyr::pivot_wider(id_cols = "source", names_from = "condition", values_from = "score") %>% 
+  tibble::column_to_rownames("source") %>% 
+  Seurat::CreateAssayObject()
+
+Seurat::DefaultAssay(CD8.seurat) <- "progeny"
+
+CD8.seurat <- Seurat::ScaleData(object = CD8.seurat, 
+                                 verbose = FALSE)
+
+
+for(i in seq_along(rownames(CD8.seurat))){
+
+# Density plots 
+  print(
+Plot_Density_Custom(CD8.seurat, 
+                    features =  rownames(CD8.seurat)[i],
+                    custom_palette = batlow.pal,
+                    joint = FALSE, 
+                    pt.size = 1, 
+                    reduction = "umap")
+)
+  
+dev.copy(pdf, paste0(output.dir, "Density_", rownames(CD8.seurat)[i], "_pathway_activity.pdf"))
+dev.off()
+
+}
+
+
+
+
+
+
+```
+
+
+
+
 
 
 ### Type 1 or Type 2 IFN
@@ -243,8 +424,12 @@ dev.off()
 
 genes <- unique(rownames(CD8.seurat@assays[["RNA"]]))
 
-IFN_genes <- genes[grepl("^IFN", genes)]
-IFN_genes_no_receptors <- c("IFNG-AS1", "IFNG", "IFNL1")
+IFN_genes <- genes[grepl("^IFN.*", genes)]
+
+
+# manual reorder of genes 
+IFN_genes <- c("IFNAR1", "IFNAR2", "IFNGR1", "IFNGR2", "IFNLR1", "IFNG-AS1", "IFNG", "IFNL1")
+
 
 # Prepare dataset for heatmap
 Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
@@ -255,13 +440,15 @@ average.seurat <- AverageExpression(CD8.seurat, return.seurat = T)
 DoHeatmap(average.seurat, 
           draw.lines = F,
           raster = FALSE,
-          features = c(IFN_genes_no_receptors), 
+          features = c(IFN_genes), 
           group.colors = CD8.cols) + scico::scale_fill_scico(palette = "batlow", 
                                                     direction = 1, 
                                                     na.value = "white")
 
 dev.copy(pdf, paste0(output.dir, "Heatmap_IFN_genes.pdf"))
 dev.off()
+
+
 
 ```
 
@@ -312,7 +499,7 @@ DEGs.UP <- IFN.clust.DEGs %>%
 
 
 
-grep("IFN.*", DEGs.UP, value = T)
+grep("I.*", DEGs.UP, value = T)
 
 
 annotated.heatmap(CD8.seurat, 
@@ -327,6 +514,8 @@ annotated.heatmap(CD8.seurat,
 
 dev.copy(pdf, paste0(output.dir, "HNSCC_IFN_cluster_DEGs_highlighted_average.pdf"))
 dev.off()
+
+
 
 
 ```
