@@ -112,6 +112,17 @@ if(!dir.exists(paste0(output.dir))){
              recursive = T)
 }
 
+
+output.Supfig1 <- "results/Manuscript/Sup_Figure1/"
+
+if(!dir.exists(paste0(output.Supfig1))){
+  dir.create(paste0(output.Supfig1), 
+             recursive = T)
+}
+
+
+
+
 # load required packages
 library("Nebulosa")
 
@@ -328,7 +339,7 @@ ggplot(z.df) +
 
 ## DEG analysis 
 
-```{r}
+```{r DEG_analysis}
 # DEG calculation clusters
 if(long.compute){
   
@@ -422,10 +433,24 @@ dev.copy(pdf,
 dev.off()
 ```
 
+
+
+### read in innate dataset
+
+```{r read_innate_dataset}
+
+# Load innate dataset
+Innate.seurat <- SeuratDisk::LoadH5Seurat("saves/Innate_seurat.h5Seurat")
+
+Idents(Innate.seurat) <- Innate.seurat@meta.data$Clusters_l1
+DefaultAssay(Innate.seurat) <- "RNA"
+
+```
+
+
+
 ### Visualise Innate-only UMAP
 ```{r vis_Innate_UMAP}
-
-
 
 # Plot UMAP projection
 UMAPPlot(object = Innate.seurat,
@@ -480,6 +505,19 @@ DEG.markers <- read.csv(paste0(output.Supfig1, "/DEG_Innate_Clusters_only.csv"))
 rownames(DEG.markers) <- DEG.markers$X
 
 
+
+
+# Downsample seurat object for heatmap plots
+DefaultAssay(Innate.seurat) <- "RNA"
+# 970 cells
+Idents(Innate.seurat) <- Innate.seurat@meta.data$Clusters_l1
+
+small.seurat <- subset(Innate.seurat, downsample = 200)
+
+
+
+
+
 # Get top DEGs
 goi <- DEG.markers %>%
   dplyr::group_by(cluster) %>%
@@ -489,10 +527,9 @@ goi <- DEG.markers %>%
 
 goi <- unique(goi)
 
-DefaultAssay(Innate.seurat) <- "RNA"
 
 # Plot heatmap
-DoHeatmap(Innate.seurat, 
+DoHeatmap(small.seurat, 
           features = goi,
           raster = FALSE,
           group.colors = innate.cols,
@@ -507,12 +544,9 @@ dev.copy(pdf, paste0(output.Supfig1, "/Heatmap_DEGs_innate_clusters.pdf"))
 dev.off()
 
 
-
 # Specifically annotate genes
 
-small.seurat <- subset(Innate.seurat, downsample = 300)
-
-genes.id <- c("GZMH", "NKG7", "GZMB", "PRF1", "GZMM", "GZMA", "XCL1", "TCF7", "SELL", "CD69", "BATF", "CCR6", "CXCR6", "GPR65", "GPR183")
+genes.id <- c("GZMH", "NKG7", "GZMB", "PRF1", "GZMM", "GZMA", "XCL1", "XCL2", "KLRD1", "CD27", "BACH2", "TIGIT", "ZNF683", "TCF7", "SELL", "CD69", "BATF", "CCR6", "CXCR6", "GPR65", "GPR183", "CDKN1A","NFKBIA", "MYC")
 
 # Plot heatmap downsampled single cell values
 annotated.heatmap(small.seurat, 
@@ -529,75 +563,60 @@ dev.off()
 
 #
 
-if(long.compute){
-  
-  Idents(Innate.seurat) <- Innate.seurat@meta.data$condition_clust
-  
- DEG.var <- FindMarkers(Innate.seurat,
-                         ident.1 = "US_gd_T_g9d2", 
-                         ident.2 = "Stim_gd_T_g9d2",
-                         test.use = "wilcox",
-                         logfc.threshold = 0.25,
-                         min.pct = 0.1,
-                         only.pos = FALSE,
-                         verbose = FALSE)
-  
 
 
- 
- 
- }
+VlnPlot(Innate.seurat,
+        features = "NKG7",
+        pt.size = 0)
 
 
 
+# genes of ineterest
+goi <- c("TCF7", "BACH2", "BATF")
 
-  # Set idents to cluster ID
-  Idents(Innate.seurat) <- Innate.seurat@meta.data$Clusters_l1
+for(i in 1:length(goi)){
   
-  # Subset for cluster ID
-  subset.seurat <- subset(Innate.seurat, idents = "gd_T_g9d2")
+  print(Plot_Density_Custom(Innate.seurat, 
+                            features = goi[i],
+                            custom_palette = batlow.pal,
+                            joint = FALSE, 
+                            pt.size = 1, 
+                            reduction = "umap"))
   
-  # Set idents to condition var
-  Idents(subset.seurat) <- subset.seurat@meta.data$condition
+  #dev.copy(pdf, paste0(output.nebulosa, "Nebulosa_RNA_", goi[i], ".pdf"))
+  #dev.off()
   
-  # Get top 10 genes
-  sig.genes <- DEG.var %>%
-    #filter(p_val_adj < 0.05) %>%
-    mutate(abs.FC = abs(avg_log2FC)) %>%
-    top_n(10, abs.FC)
-  
-  genes.to.label <- rownames(sig.genes)
-  
-  
-  
-  # Average expression
-  avg.subset.seurat <- log1p(AverageExpression(subset.seurat, verbose = FALSE)$RNA)
-  avg.subset.seurat <- as.data.frame(avg.subset.seurat)
-  
-  
-  # Generate plot
-  p1 <- ggplot(avg.subset.seurat, 
-               aes(US, Stim)) + 
-    geom_point() + 
-    ggtitle(paste0("Cluster "))+
-  theme_minimal()
-  
-  p1 <-  LabelPoints(plot = p1,
-                     points = genes.to.label,
-                     repel = TRUE)
-  
-  print(plot(p1))
-  
-  
-  
-  dev.copy(pdf, paste0(fig.dir, "ScatterPlot_Stim_vs_US_cluster_", clust.var[i], ".pdf"))
-  dev.off()
-  
+    
+}
+
+
+
+
+
+
+# plot gene expression of tcr genes 
+average.seurat <- AverageExpression(Innate.seurat,
+                                    assay = "RNA",
+                                    slot = "data",
+                                    verbose = TRUE,
+                                    return.seurat = TRUE)
+
+
+goi <- c("TRGV9", "TRDV2", "TRGC1", "TRGC2", "TRDC", "TRAV1-2", "KLRB1")
+DoHeatmap(average.seurat, 
+          features = goi, 
+          group.colors = innate.cols,
+          draw.lines = FALSE, 
+          raster = FALSE)+ scico::scale_fill_scico(palette = "batlow", 
+                                                   direction = 1, 
+                                                   na.value = "white")
+
+dev.copy(pdf, paste0(output.Supfig1, "/Heatmap_of_TCR_genes_expressed.pdf"))
+dev.off()
+
 
 
 ```
-
-
 
 
 ### Getting TCR data for Innate clusters
@@ -783,7 +802,9 @@ dim(TF.ref.list) # 1020, 11
 colnames(TF.ref.list)
 head(TF.ref.list)
 
-Cluster.markers <- read.csv("results/Manuscript/Sup_Figure1/DEG_Innate_Clusters_only.csv", row.names = 1)
+
+Cluster.markers <- read.csv(paste0(output.Supfig1, "/DEG_Innate_Clusters_only.csv"))
+rownames(Cluster.markers) <- Cluster.markers$X
 
 
 # Up-regulated TFs
@@ -794,7 +815,7 @@ sig.genes <- Cluster.markers %>%
 
 sig.genes <- unique(sig.genes$gene)
 
-TF.logic <- sig.genes %in% TF.ref.list$Gene_symbol
+TF.logic <- sig.genes %in% TF.ref.list$gene_symbol
 
 TF.DEG <- sig.genes[TF.logic]
 
@@ -804,8 +825,6 @@ TF.DEG <- sig.genes[TF.logic]
 ########################################
 # Plot TFs differentially regulated 
 ########################################
-
-Innate.seurat <- SeuratDisk::LoadH5Seurat("saves/Innate_seurat.h5Seurat")
 
 Idents(Innate.seurat) <- Innate.seurat@meta.data$Clusters_l1
 DefaultAssay(Innate.seurat) <- "RNA"
@@ -820,10 +839,40 @@ average.seurat <- AverageExpression(Innate.seurat,
 
 DoHeatmap(average.seurat, 
           features = TF.DEG, 
+          group.colors = innate.cols,
           draw.lines = FALSE, 
-          raster = FALSE)
+          raster = FALSE)+ scico::scale_fill_scico(palette = "batlow", 
+                                                   direction = 1, 
+                                                   na.value = "white")
 
-dev.copy(pdf, paste0(output.fig2, "/Heatmap_of_TF_diff_expressed.pdf"))
+dev.copy(pdf, paste0(output.Supfig1, "/Heatmap_of_TF_diff_expressed.pdf"))
+dev.off()
+
+
+
+
+# Retrieve prior knowledge network.
+network <- decoupleR::get_dorothea(organism = "human",
+                                   levels = c("A", "B", "C"))
+
+# Run weighted means algorithm.
+activities <- decoupleR::run_wmean(mat = as.matrix(Innate.seurat@assays$RNA@data),
+                                   network = network,
+                                   .source = "source",
+                                   .targe = "target",
+                                   .mor = "mor",
+                                   times = 100,
+                                   minsize = 5)
+
+# General heatmap.
+out <- SCpubr::do_TFActivityPlot(sample = Innate.seurat,
+                                 activities = activities, 
+                                 n_tfs = 10)
+p <- out$heatmaps$average_scores
+p
+
+
+dev.copy(pdf, paste0(output.Supfig1, "/Heatmap_of_TF_activity_top10.pdf"))
 dev.off()
 
 
