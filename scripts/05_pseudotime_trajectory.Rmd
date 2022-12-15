@@ -49,11 +49,8 @@ library("rstudioapi")
 setwd(dirname(getActiveDocumentContext()$path))
 setwd("..")
 
-# Load packages
-source("R/Load_packages.R", local = knitr::knit_global())
-
 # Create output directories & load custom functions & colour scheme
-source("R/Setup.R", local = knitr::knit_global())
+source("scripts/Setup.R", local = knitr::knit_global())
 
 
 # pipeline variables
@@ -62,7 +59,10 @@ long.compute <- FALSE
 
 # load saved seurat object with cluster annotations and imputation performed
 if(quick.load){
-  seurat.combined <- readRDS("Exported_RDS_files/seurat_combined.rds")
+  # Read in CD8 only dataset
+  CD8.seurat <- LoadH5Seurat("saves/CD8_seurat.h5Seurat")
+  Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
+  DefaultAssay(CD8.seurat) <- "RNA"
 }
 
 ```
@@ -87,9 +87,15 @@ dynwrap::test_docker_installation(detailed = TRUE)
 # Read in and prepare data
 ############################
 
+# perform pseudotime on just naive,isg, effector axis of dataset 
+
+Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
+pesudotime.input.data <- subset(CD8.seurat, idents = c("Cytotoxic", "Type_I_IFN", "Stimulated_1"))
+
+
 # Read in dataframes
-raw.data <- as.data.frame(seurat.combined@assays$RNA@counts)
-normed.data <- as.data.frame(seurat.combined@assays$RNA@data)
+raw.data <- as.data.frame(pesudotime.input.data@assays$RNA@counts)
+normed.data <- as.data.frame(pesudotime.input.data@assays$RNA@data)
 
 
 # data is organized cols = cells and rows = genes
@@ -117,9 +123,9 @@ if(long.compute){
                                expression = normed.data)
   
   # Add grouping info
-  metadata.df <- seurat.combined@meta.data
+  metadata.df <- pesudotime.input.data@meta.data
   
-  group.vect <- metadata.df$seurat_clusters
+  group.vect <- metadata.df$Clusters_l1
   names(group.vect) <- rownames(metadata.df)
   
   Dyno.data <- add_grouping(Dyno.data,
@@ -144,9 +150,9 @@ if(long.compute){
   # Create vectors and matrix needed for visualisation of pre-calculated trajectories
   
   # Create grouping vector
-  metadata.df <- seurat.combined@meta.data
+  metadata.df <- pesudotime.input.data@meta.data
   
-  group.vect <- metadata.df$seurat_clusters
+  group.vect <- metadata.df$Clusters_l1
   names(group.vect) <- rownames(metadata.df)
   
   # Create dim reduction matrix
@@ -167,8 +173,16 @@ if(long.compute){
 
 ```{r trajectory_analysis, eval = FALSE}
 
-if(long.compute){
+
+save.dir <- "saves/Trajectory/"
   
+  if(!dir.exists(paste0(save.dir))){
+    dir.create(paste0(save.dir), 
+               recursive = T)
+  }
+  
+
+if(long.compute){
   
   
   ################################################
@@ -181,8 +195,8 @@ if(long.compute){
   answers <- dynguidelines::answer_questions(multiple_disconnected = NULL, 
                                              expect_topology = NULL, 
                                              expected_topology = NULL, 
-                                             n_cells = 11658, 
-                                             n_features = 18295, 
+                                             n_cells = 4102, 
+                                             n_features = 20295, 
                                              memory = "16GB", 
                                              prior_information = NULL, 
                                              docker = TRUE)
@@ -209,9 +223,9 @@ if(long.compute){
                                 seed = set.seed(42),
                                 verbose = TRUE)
   
-  saveRDS(slingshot, file = "Exported_RDS_files/combined_slingshot.rds")
+  saveRDS(slingshot, file = paste0(save.dir, "slingshot.rds"))
   rm(slingshot)
-  
+
   
   ##############
   # Scorpius
@@ -224,7 +238,7 @@ if(long.compute){
                                seed = set.seed(42),
                                verbose = TRUE)
   
-  saveRDS(scorpius, file = "Exported_RDS_files/combined_scorpius.rds")
+  saveRDS(scorpius, file = paste0(save.dir, "scorpius.rds"))
   rm(scorpius)
   
   
@@ -239,7 +253,7 @@ if(long.compute){
                             seed = set.seed(42),
                             verbose = TRUE)
   
-  saveRDS(angle, file = "Exported_RDS_files/combined_angle.rds")
+  saveRDS(angle, file = paste0(save.dir, "angle.rds"))
   rm(angle)
   
 }
@@ -254,18 +268,23 @@ if(long.compute){
 ####################################
 # Visualise exported trajectories 
 ####################################
+ 
 
-
-# Create output directory
-if(!dir.exists("output/figures/Trajectories")){
-  dir.create("output/figures/Trajectories",
-             recursive = T)}
+output.dir <- "results/Pseudotime/"
+  
+  if(!dir.exists(paste0(output.dir))){
+    dir.create(paste0(output.dir), 
+               recursive = T)
+  }
+  
 
 
 
 ###############
 # Slingshot
 ###############
+
+
 
 # Create output directory
 if(!dir.exists("output/figures/Trajectories/Slingshot")){
@@ -274,7 +293,7 @@ if(!dir.exists("output/figures/Trajectories/Slingshot")){
 
 
 # Read data
-slingshot <- readRDS("Exported_RDS_files/combined_slingshot.rds")
+slingshot <- readRDS(paste0(save.dir, "slingshot.rds"))
 
 # Modify variables
 
@@ -292,7 +311,7 @@ dev.copy(pdf, "output/figures/Trajectories/Slingshot/Combined_plot_pseudotime.pd
 dev.off()
 
 
-dynplot::plot_dimred(slingshot, 
+dynplot::plot_dimred(angle, 
                      dimred = UMAP.dims,
                      hex_cells = TRUE, 
                      grouping = group.vect,
@@ -438,26 +457,44 @@ rm(trajectory.val)
 ```{r Monocle_analysis}
 
 # Create output directory
-if(!dir.exists("output/figures/Trajectories/monocle")){
-  dir.create("output/figures/Trajectories/monocle",
+if(!dir.exists("results/figures/Trajectories/monocle")){
+  dir.create("results/figures/Trajectories/monocle",
              recursive = T)}
 
 # Load library
+#BiocManager::install("monocle")
 library("monocle")
+#remotes::install_github('satijalab/seurat-wrappers', force = T)
+
+
+# cole-trapnell-lab/monocle3 needs to be installed
 
 # Set assay and idents
-DefaultAssay(seurat.combined) <- "integrated"
-Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+DefaultAssay(CD8.seurat) <- "RNA"
+Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
+unique(Idents(CD8.seurat))
 
-unique(Idents(seurat.combined))
+input.seurat <- subset(CD8.seurat, idents = c("Naive_like_1_CM", "Naive_like_2_SC", "Naive_like_3", "Type_I_IFN", "Cytotoxic", "Stimulated_1"))
+input.seurat <- subset(CD8.seurat, idents = c("Type_I_IFN", "Cytotoxic", "Stimulated_1"))
+
+#Idents(input.seurat) <- input.seurat@meta.data$condition
+#input.seurat <- subset(input.seurat, idents = c("US"))
+
+
 
 # convert seurat object to a cell data set
-cds <- SeuratWrappers::as.cell_data_set(seurat.combined, 
-                                        group.by = "seurat_clusters")
+cds <- SeuratWrappers::as.cell_data_set(input.seurat, 
+                                        group.by = "Clusters_l1")
 
 # Cluster cells
 cds <- monocle3::cluster_cells(cds, 
                                reduction_method = "UMAP")
+
+monocle3::plot_cells(cds, 
+                     color_cells_by = "partition", 
+                     show_trajectory_graph = FALSE)
+
+
 
 # Plot cell partition
 p1 <- monocle3::plot_cells(cds, show_trajectory_graph = FALSE)
@@ -466,7 +503,19 @@ p2 <- monocle3::plot_cells(cds, color_cells_by = "partition", show_trajectory_gr
 p1|p2
 
 # Learn graph
-cds <- monocle3::learn_graph(cds)
+cds <- monocle3::learn_graph(cds, 
+                             use_partition = TRUE,
+                             close_loop = TRUE,
+                             learn_graph_control = list(nn.k = NULL, 
+                                                        prune_graph = TRUE, 
+                                                        orthogonal_proj_tip = FALSE, 
+                                                        minimal_branch_len = 20, 
+                                                        nn.cores = 10,
+                                                        euclidean_distance_ratio = 0.4),
+                             verbose = TRUE)
+
+
+
 
 # Plot monocle trajectory
 monocle3::plot_cells(cds,
@@ -474,8 +523,12 @@ monocle3::plot_cells(cds,
                      label_leaves = FALSE, 
                      label_branch_points = FALSE)
 
+
+
+
 dev.copy(pdf, "output/figures/Trajectories/monocle/Monocle_trajectory.pdf")
 dev.off()
+
 
 
 # Plot monocle trajectory with leaves and branch points labelled
@@ -489,12 +542,44 @@ dev.off()
 
 
 
+ciliated_cds_pr_test_res <- monocle3::graph_test(cds, neighbor_graph="principal_graph", cores=8)
+pr_deg_ids <- row.names(subset(ciliated_cds_pr_test_res, q_value < 0.05))
+
+
+pr_graph_test_res <- monocle3::graph_test(cds_subset, neighbor_graph="principal_graph", cores=8)
+pr_deg_ids <- row.names(subset(pr_graph_test_res, morans_I > 0.01 & q_value < 0.05))
 
 
 
+AFD_genes <- pr_deg_ids[1:5]
+AFD_genes <- c("EOMES", "PRF1")
+AFD_lineage_cds <- cds[rownames(cds) %in% AFD_genes,]
+
+
+monocle3::plot_genes_in_pseudotime(AFD_lineage_cds,
+                                   label_by_short_name = F,
+                                   color_cells_by="Clusters_l1",
+                                   min_expr=0.5)
+
+
+gene_module_df <- monocle3::find_gene_modules(cds[pr_deg_ids,], resolution=1e-3)
+
+
+  
+cds_subset <- monocle3::choose_cells(cds)
+cds <- monocle3::order_cells(cds)
+
+monocle3::plot_cells(cds,
+                     genes=c("ISG15"), 
+                     show_trajectory_graph=FALSE, 
+                     label_cell_groups=FALSE)
+
+
+
+?plot_genes_in_pseudotime
 
 ####### WORK in progress ################
-cds <- monocle3::order_cells(cds)
+
 
 
 monocle3::plot_cells(cds, 

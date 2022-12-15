@@ -136,11 +136,11 @@ UMAPPlot(object = CD8.seurat,
          label = TRUE, 
          cols = CD8.cols,
          pt.size = 1,
-         label.size = 6)  + NoLegend()
+         label.size = 6)  + 
+  NoLegend()
 
 dev.copy(pdf, paste0(output.dir, "UMAP_CD8_clusters.pdf"))
 dev.off()
-
 
 
 Idents(CD8.seurat) <- CD8.seurat@meta.data$condition
@@ -297,6 +297,7 @@ dev.copy(pdf, paste0(output.dir, "Stacked_VlnPlot_Activation_markers.pdf"))
 dev.off()
 
 
+
 ```
 
 ### Dotplot of chemokine receptors
@@ -330,6 +331,10 @@ dev.off()
 ```{r DEG_calculation}
 
 if(long.compute){
+  
+  Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
+  DefaultAssay(CD8.seurat) <- "RNA"
+  
 # Run DEG analysis
 DEG.markers <- FindAllMarkers(CD8.seurat, 
                               slot = "data", 
@@ -348,10 +353,809 @@ write.csv(DEG.markers, paste0(output.dir, "DEG_CD8_Clusters_only.csv"))
 
 ```
 
+### Visualise DEGs in common and unique between stim_1 and stim_exhaust
+```{r Vis_Stim_cluster_DEGs}
+
+# Create output directory
+output.dir <- "results/Manuscript/Figure2/DEG_plots/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
+             recursive = T)
+}
+
+
+# set up seurat object
+Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
+DefaultAssay(CD8.seurat) <- "RNA"
+
+
+# set input directory
+input.dir <- "results/Manuscript/Figure2/"
+
+# load data 
+DEG.markers <- read.csv(paste0(input.dir, "DEG_CD8_Clusters_only.csv"))
+
+
+# first plot large heatmap showing top DEGs per cluster
+goi <- DEG.markers %>%
+  group_by(cluster) %>%
+  filter(p_val_adj < 0.05) %>%
+  filter(avg_log2FC > 1) %>%
+  pull(gene)
+
+goi <- unique(goi)
+
+
+# Plot as an average of expression
+temp.seurat <- AverageExpression(CD8.seurat, 
+                                 features = goi,
+                                 return.seurat = TRUE)
+
+DoHeatmap(temp.seurat, 
+          group.colors = CD8.cols,
+          features = goi, 
+          raster = FALSE,
+          draw.lines = FALSE) + 
+  scico::scale_fill_scico(palette = "batlow", 
+                          direction = 1, 
+                          na.value = "white")
+
+dev.copy(pdf, paste0(output.dir, "Heatmap_large_DEGs_logfc_greater_1_across_clusters_average.pdf"))
+dev.off()
+
+
+##################################################
+# Venn overlap of Stim_1 and Stim_Exhaust clusters
+##################################################
+
+
+# Load library
+# install.packages("VennDiagram")
+library(VennDiagram)
+library(grDevices)
+
+
+############################
+# up-regulated genes
+############################
+
+stim.1.goi.up <- DEG.markers %>%
+  filter(cluster %in% c("Stimulated_1")) %>%
+  filter(p_val_adj < 0.05) %>%
+  filter(avg_log2FC > 0) %>%
+  arrange(desc(avg_log2FC)) %>%
+  pull(gene)
+
+stim.exh.goi.up <- DEG.markers %>%
+  filter(cluster %in% c("Stimulated_exhausted")) %>%
+  filter(p_val_adj < 0.05) %>%
+  filter(avg_log2FC > 0) %>%
+  arrange(desc(avg_log2FC)) %>%
+  pull(gene)
+
+
+
+
+# Venn overlap of up-regulated genes
+venn <- venn.diagram(x = list(stim.exh.goi.up, stim.1.goi.up),
+                     category.names = c("Stimulated_exhausted", "Stimulated_1"),
+                     filename = NULL,
+                     output=F,
+                     
+                     # Circles
+                     lwd = 2,
+                     lty = 'blank',
+                     fill = condition.cols,
+                     
+                     # Numbers
+                     cex = .6,
+                     fontface = "bold",
+                     fontfamily = "sans",
+                     
+                     # Set names
+                     cat.cex = 0.6,
+                     cat.fontface = "bold",
+                     cat.default.pos = "outer",
+                     cat.fontfamily = "sans")
+
+pdf(file = paste0(output.dir,"Up_regulated_Venn.pdf"))
+grid.draw(venn)
+dev.off()
+
+
+# calculate union and unique gois
+unique.stim.1.up <- stim.1.goi.up[!stim.1.goi.up %in% stim.exh.goi.up]
+length(unique.stim.1.up)
+
+unique.stim.exh.up <- stim.exh.goi.up[!stim.exh.goi.up %in% stim.1.goi.up]
+length(unique.stim.exh.up)
+
+overlap.goi.up <- stim.1.goi.up[stim.1.goi.up %in% stim.exh.goi.up]
+length(overlap.goi.up)
+
+
+# arrange genes for plotting
+
+goi <- unique(c(unique.stim.1.up, overlap.goi.up, unique.stim.exh.up))
+
+
+small.seurat <- ScaleData(small.seurat,
+                          features = goi)
+
+
+DoHeatmap(small.seurat, 
+          group.colors = CD8.cols,
+          raster = FALSE,
+          features = goi) + 
+  scico::scale_fill_scico(palette = "batlow", 
+                          direction = 1, 
+                          na.value = "white")
+
+dev.copy(pdf, paste0(output.dir, "Heatmap_upregulated_DEGs_shared_and_unique_stim_clusters.pdf"))
+dev.off()
+
+
+temp.seurat <- AverageExpression(CD8.seurat, 
+                                 features = goi,
+                                 return.seurat = TRUE)
+
+
+DoHeatmap(temp.seurat, 
+          group.colors = CD8.cols,
+          features = goi, 
+          raster = FALSE,
+          draw.lines = FALSE) + 
+  scico::scale_fill_scico(palette = "batlow", 
+                          direction = 1, 
+                          na.value = "white")
+
+dev.copy(pdf, paste0(output.dir, "Heatmap_upregulated_DEGs_shared_and_unique_stim_clusters_average.pdf"))
+dev.off()
+
+
+
+############################
+# Down-regulated genes
+############################
+
+stim.1.goi.dn <- DEG.markers %>%
+  filter(cluster %in% c("Stimulated_1")) %>%
+  filter(p_val_adj < 0.05) %>%
+  filter(avg_log2FC < 0) %>%
+  arrange(avg_log2FC) %>%
+  pull(gene)
+
+stim.exh.goi.dn <- DEG.markers %>%
+  filter(cluster %in% c("Stimulated_exhausted")) %>%
+  filter(p_val_adj < 0.05) %>%
+  filter(avg_log2FC < 0) %>%
+  arrange(avg_log2FC) %>%
+  pull(gene)
+
+
+# Venn overlap of up-regulated genes
+venn <- venn.diagram(x = list(stim.exh.goi.dn, stim.1.goi.dn),
+                     category.names = c("Stimulated_exhausted", "Stimulated_1"),
+                     filename = NULL,
+                     output=F,
+                     
+                     # Circles
+                     lwd = 2,
+                     lty = 'blank',
+                     fill = condition.cols,
+                     
+                     # Numbers
+                     cex = .6,
+                     fontface = "bold",
+                     fontfamily = "sans",
+                     
+                     # Set names
+                     cat.cex = 0.6,
+                     cat.fontface = "bold",
+                     cat.default.pos = "outer",
+                     cat.fontfamily = "sans")
+
+pdf(file = paste0(output.dir,"Dn_regulated_Venn.pdf"))
+grid.draw(venn)
+dev.off()
+
+
+# calculate union and unique gois
+unique.stim.1.dn <- stim.1.goi.dn[!stim.1.goi.dn %in% stim.exh.goi.dn]
+length(unique.stim.1.dn)
+
+unique.stim.exh.dn <- stim.exh.goi.dn[!stim.exh.goi.dn %in% stim.1.goi.dn]
+length(unique.stim.exh.dn)
+
+overlap.goi.dn <- stim.1.goi.dn[stim.1.goi.dn %in% stim.exh.goi.dn]
+length(overlap.goi.dn)
+
+
+# arrange genes for plotting
+
+goi <- unique(c(unique.stim.1.dn, overlap.goi.dn, unique.stim.exh.dn))
+
+
+small.seurat <- ScaleData(small.seurat,
+                          features = goi)
+
+
+DoHeatmap(small.seurat, 
+          group.colors = CD8.cols,
+          raster = FALSE,
+          features = goi) + 
+  scico::scale_fill_scico(palette = "batlow", 
+                          direction = 1, 
+                          na.value = "white")
+
+dev.copy(pdf, paste0(output.dir, "Heatmap_dnregulated_DEGs_shared_and_unique_stim_clusters.pdf"))
+dev.off()
+
+
+temp.seurat <- AverageExpression(CD8.seurat, 
+                                 features = goi,
+                                 return.seurat = TRUE)
+
+
+DoHeatmap(temp.seurat, 
+          group.colors = CD8.cols,
+          features = goi, 
+          raster = FALSE,
+          draw.lines = FALSE) + 
+  scico::scale_fill_scico(palette = "batlow", 
+                          direction = 1, 
+                          na.value = "white")
+
+dev.copy(pdf, paste0(output.dir, "Heatmap_dnregulated_DEGs_shared_and_unique_stim_clusters_average.pdf"))
+dev.off()
+
+
+##########################################
+# Create a list for downstream plotting 
+##########################################
+
+stim.cluster.degs <- list("unique_stim_1_up" = unique.stim.1.up,
+                          "unique_stim_exh_up" = unique.stim.exh.up,
+                          "overlap_up" = overlap.goi.up, 
+                          "unique_stim_1_dn" = unique.stim.1.dn, 
+                          "unique_stim_exh_dn" = unique.stim.exh.dn,
+                          "overlap_dn" = overlap.goi.dn)
+
+
+```
+
+
+
+
+##annotated heatmaps
+
+```{r Stim_clusters}
+
+# Source custom function // loaded in custom functions chunk 
+source("scripts/functions/annotate_seurat_heatmap_function.R")
+
+# Create output directory
+output.dir <- "results/Manuscript/Figure2/annotated_heatmaps/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
+             recursive = T)
+}
+
+# set up seurat object
+Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
+DefaultAssay(CD8.seurat) <- "RNA"
+
+
+######################
+# Stim cluster DEGs
+######################
+
+goi <- unique(c(stim.cluster.degs$unique_stim_1_up, stim.cluster.degs$overlap_up, stim.cluster.degs$unique_stim_exh_up))
+
+
+label.var <- list("Stim_1" = c("XCL1", "XCL2", "MYC", "CD69", "TNFSF9", "CDKN1A", "GPR183", "HLA-E", "CD44", "CD6"), 
+                  "overlap" = c("IFNG", "TNF", "VISR", "CRTAM", "TNFSF14", "TNFRSF9", "GZMB", "ICOS", "IL21R", "CD226"), 
+                  "Stim_Exhausted" = c("LAG3", "TIGIT", "HAVCR2", "NKG7", "PDCD1", "CD96", "ENTPD1", "GNLY", "PRF1", "TNFSF4",
+                                       "BHLHE40", "TOX", "AHR", "XBP1", "IL2RG", "TNFRSF25"))
+
+
+label.var <- as.vector(unlist(label.var))
+
+
+pdf(paste0(output.dir, "Stim_cluster_unique_and_overlap_annotated.pdf"))
+
+# Plot heatmap
+annotated.heatmap(CD8.seurat, 
+                  cluster.id = "Clusters_l1",
+                  assay.use = "RNA",
+                  average.expression = TRUE,
+                  goi = goi, 
+                  genes.to.label = label.var, 
+                  col_order = names(CD8.cols), 
+                  col.colours = CD8.cols)
+
+dev.off()
+
+```
+
+
+
+
+
+
+
+
+
+### Visualise DEGs in common and unique between ISG and Cytotoxic
+```{r Vis_cyto_ISG_DEGs}
+
+# Create output directory
+output.dir <- "results/Manuscript/Figure2/ISG_cyto/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
+             recursive = T)
+}
+
+# set input directory
+input.dir <- "results/Manuscript/Figure2/"
+
+# set up seurat object
+Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
+DefaultAssay(CD8.seurat) <- "RNA"
+
+# load data 
+DEG.markers <- read.csv(paste0(input.dir, "DEG_CD8_Clusters_only.csv"))
+
+
+##################################################
+# Venn overlap of ISG and Cyto clusters
+##################################################
+
+
+# Load library
+# install.packages("VennDiagram")
+library(VennDiagram)
+library(grDevices)
+
+unique(DEG.markers$cluster)
+############################
+# up-regulated genes
+############################
+
+ISG.goi.up <- DEG.markers %>%
+  filter(cluster %in% c("Type_I_IFN")) %>%
+  filter(p_val_adj < 0.05) %>%
+  filter(avg_log2FC > 0) %>%
+  arrange(desc(avg_log2FC)) %>%
+  pull(gene)
+
+Cytotoxic.goi.up <- DEG.markers %>%
+  filter(cluster %in% c("Cytotoxic")) %>%
+  filter(p_val_adj < 0.05) %>%
+  filter(avg_log2FC > 0) %>%
+  arrange(desc(avg_log2FC)) %>%
+  pull(gene)
+
+
+# Venn overlap of up-regulated genes
+venn <- venn.diagram(x = list(ISG.goi.up, Cytotoxic.goi.up),
+                     category.names = c("Type_I_IFN", "Cytotoxic"),
+                     filename = NULL,
+                     output=F,
+                     
+                     # Circles
+                     lwd = 2,
+                     lty = 'blank',
+                     fill = condition.cols,
+                     
+                     # Numbers
+                     cex = .6,
+                     fontface = "bold",
+                     fontfamily = "sans",
+                     
+                     # Set names
+                     cat.cex = 0.6,
+                     cat.fontface = "bold",
+                     cat.default.pos = "outer",
+                     cat.fontfamily = "sans")
+
+pdf(file = paste0(output.dir,"Up_regulated_Venn.pdf"))
+grid.draw(venn)
+dev.off()
+
+
+# calculate union and unique gois
+unique.ISG.up <- ISG.goi.up[!ISG.goi.up %in% Cytotoxic.goi.up]
+length(unique.ISG.up)
+
+unique.cyto.up <- Cytotoxic.goi.up[!Cytotoxic.goi.up %in% ISG.goi.up]
+length(unique.cyto.up)
+
+overlap.goi.up <- ISG.goi.up[ISG.goi.up %in% Cytotoxic.goi.up]
+length(overlap.goi.up)
+
+
+# arrange genes for plotting
+
+goi <- unique(c(unique.ISG.up, overlap.goi.up, unique.cyto.up))
+
+
+small.seurat <- ScaleData(small.seurat,
+                          features = goi)
+
+
+DoHeatmap(small.seurat, 
+          group.colors = CD8.cols,
+          raster = FALSE,
+          features = goi) + 
+  scico::scale_fill_scico(palette = "batlow", 
+                          direction = 1, 
+                          na.value = "white")
+
+dev.copy(pdf, paste0(output.dir, "Heatmap_upregulated_DEGs_shared_and_unique_ISG_cyto.pdf"))
+dev.off()
+
+
+temp.seurat <- AverageExpression(CD8.seurat, 
+                                 features = goi,
+                                 return.seurat = TRUE)
+
+
+DoHeatmap(temp.seurat, 
+          group.colors = CD8.cols,
+          features = goi, 
+          raster = FALSE,
+          draw.lines = FALSE) + 
+  scico::scale_fill_scico(palette = "batlow", 
+                          direction = 1, 
+                          na.value = "white")
+
+dev.copy(pdf, paste0(output.dir, "Heatmap_upregulated_DEGs_shared_and_unique_ISG_cyto_averaged.pdf"))
+dev.off()
+
+
+
+############################
+# Down-regulated genes
+############################
+
+ISG.goi.dn <- DEG.markers %>%
+  filter(cluster %in% c("Type_I_IFN")) %>%
+  filter(p_val_adj < 0.05) %>%
+  filter(avg_log2FC < 0) %>%
+  arrange(avg_log2FC) %>%
+  pull(gene)
+
+Cytotoxic.goi.dn <- DEG.markers %>%
+  filter(cluster %in% c("Cytotoxic")) %>%
+  filter(p_val_adj < 0.05) %>%
+  filter(avg_log2FC < 0) %>%
+  arrange(avg_log2FC) %>%
+  pull(gene)
+
+
+# Venn overlap of up-regulated genes
+venn <- venn.diagram(x = list(ISG.goi.dn, Cytotoxic.goi.dn),
+                     category.names = c("Type_I_IFN", "Cytotoxic"),
+                     filename = NULL,
+                     output=F,
+                     
+                     # Circles
+                     lwd = 2,
+                     lty = 'blank',
+                     fill = condition.cols,
+                     
+                     # Numbers
+                     cex = .6,
+                     fontface = "bold",
+                     fontfamily = "sans",
+                     
+                     # Set names
+                     cat.cex = 0.6,
+                     cat.fontface = "bold",
+                     cat.default.pos = "outer",
+                     cat.fontfamily = "sans")
+
+pdf(file = paste0(output.dir,"Dn_regulated_Venn.pdf"))
+grid.draw(venn)
+dev.off()
+
+
+# calculate union and unique gois
+unique.ISG.dn <- ISG.goi.dn[!ISG.goi.dn %in% Cytotoxic.goi.dn]
+length(unique.ISG.dn)
+
+unique.cyto.dn <- Cytotoxic.goi.dn[!Cytotoxic.goi.dn %in% ISG.goi.dn]
+length(unique.cyto.dn)
+
+overlap.goi.dn <- ISG.goi.dn[ISG.goi.dn %in% Cytotoxic.goi.dn]
+length(overlap.goi.dn)
+
+
+# arrange genes for plotting
+
+goi <- unique(c(unique.ISG.dn, overlap.goi.dn, unique.cyto.dn))
+
+
+small.seurat <- ScaleData(small.seurat,
+                          features = goi)
+
+
+DoHeatmap(small.seurat, 
+          group.colors = CD8.cols,
+          raster = FALSE,
+          features = goi) + 
+  scico::scale_fill_scico(palette = "batlow", 
+                          direction = 1, 
+                          na.value = "white")
+
+dev.copy(pdf, paste0(output.dir, "Heatmap_dnregulated_DEGs_shared_and_unique_ISG_cyto.pdf"))
+dev.off()
+
+
+temp.seurat <- AverageExpression(CD8.seurat, 
+                                 features = goi,
+                                 return.seurat = TRUE)
+
+
+DoHeatmap(temp.seurat, 
+          group.colors = CD8.cols,
+          features = goi, 
+          raster = FALSE,
+          draw.lines = FALSE) + 
+  scico::scale_fill_scico(palette = "batlow", 
+                          direction = 1, 
+                          na.value = "white")
+
+dev.copy(pdf, paste0(output.dir, "Heatmap_dnregulated_DEGs_shared_and_unique_ISG_cyto_averaged.pdf"))
+dev.off()
+
+
+
+##########################################
+# Create a list for downstream plotting 
+##########################################
+
+ISG.cyto.cluster.degs <- list("unique_ISG_up" = unique.ISG.up,
+                          "unique_Cyto_up" = unique.cyto.up,
+                          "overlap_up" = overlap.goi.up, 
+                          "unique_ISG_dn" = unique.ISG.dn, 
+                          "unique_Cyto_dn" = unique.cyto.dn,
+                          "overlap_dn" = overlap.goi.dn)
+
+
+
+```
+
+
+
+
+##annotated heatmaps
+
+```{r annotated_heatmap_ISG_cyto_clusters}
+
+# Source custom function // loaded in custom functions chunk 
+source("scripts/functions/annotate_seurat_heatmap_function.R")
+
+# Create output directory
+output.dir <- "results/Manuscript/Figure2/annotated_heatmaps/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
+             recursive = T)
+}
+
+# set up seurat object
+Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
+DefaultAssay(CD8.seurat) <- "RNA"
+
+
+
+######################
+# ISG and Cyto DEGs
+######################
+
+goi <- unique(c(ISG.cyto.cluster.degs$unique_ISG_up, ISG.cyto.cluster.degs$overlap_up, ISG.cyto.cluster.degs$unique_Cyto_up))
+ISG.cyto.cluster.degs$unique_Cyto_up
+
+
+label.var <- list("ISG" = c("IFI6", "ISG15", "MX1", "ISG20", "LY6E", "OAS1", "STAT2", "GPR183", "TAP1", "CCR7", "SELL", "TNFRSF14", "IL32"), 
+                  "overlap" = c("GZMK", "CXCR3", "EOMES", "GZMM", "KLRG1", "TRAT1"), 
+                  "Cyto" = c("CD27", "CXCR4", "GZMA", "CD5", "NKG7", "CCR5", "TCF7"))
+
+
+label.var <- as.vector(unlist(label.var))
+
+
+pdf(paste0(output.dir, "ISG_Cyto_unique_and_overlap_annotated.pdf"))
+
+# Plot heatmap
+annotated.heatmap(CD8.seurat, 
+                  cluster.id = "Clusters_l1",
+                  assay.use = "RNA",
+                  average.expression = TRUE,
+                  goi = goi, 
+                  genes.to.label = label.var, 
+                  col_order = names(CD8.cols), 
+                  col.colours = CD8.cols)
+
+dev.off()
+
+```
+
+
+
+
+
+
+### Visualise GO terms enriched in shared and unique genes between stim clusters
+```{r stim_cluster_GO_enrichment}
+
+# Create output directory
+output.dir <- "results/Manuscript/Figure2/GO_plots/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
+             recursive = T)
+}
+
+
+# load packages
+library("enrichR")
+#install.packages("SCpubr")
+library("SCpubr")
+ 
+# set serach to human genes
+enrichR::setEnrichrSite(site = "Enrichr")
+
+dbs <- enrichR::listEnrichrDbs()
+dbs <- sort(dbs$libraryName)
+
+# Choose the dataset to query against.
+dbs_use <- c("GO_Biological_Process_2021", 
+             "GO_Cellular_Component_2021",
+             "GO_Molecular_Function_2021", 
+             "KEGG_2021_Human",
+             "MSigDB_Hallmark_2020",
+             "Reactome_2022",
+             "WikiPathway_2021_Human",
+             "Azimuth_Cell_Types_2021")
+
+
+
+############################################################
+# Perform enrichment analysis for Upregulated genes 
+############################################################
+
+x <- list("Unique_to_stim_1" = unique.stim.1, 
+          "Unique_to_stim_exh" = unique.stim.exh, 
+          "Shared_stim_clusters" = overlap.goi)
+
+for(dataset in seq_along(x)){
+  
+dataset.name <- names(x)[dataset]
+# List of genes to use as input.
+up.genes <- x[[dataset]]
+
+# Retrieve the enriched terms.
+up.enriched.terms <- enrichR::enrichr(up.genes, dbs_use)
+
+# Plot enriched terms 
+upregulated.plots <- SCpubr::do_TermEnrichmentPlot(enriched_terms = up.enriched.terms, 
+                                                   nchar_wrap = 20,
+                                                   font.size = 10, 
+                                                   font.type = "sans", 
+                                                   text_labels_size = 5,
+                                                   colors.use = c("salmon2", "gray"),
+                                                   nterms = 10)
+
+
+# Plot and save all plots generated 
+for(i in seq_len(length(upregulated.plots))){
+  
+  # upregulated plots
+  name.var <- names(upregulated.plots)[i]
+  
+  ggsave(filename = paste0(output.dir, "Upregulated_", dataset.name, "_",  name.var, ".pdf"),
+         plot = upregulated.plots[[i]], 
+         width = 20, 
+         height = 20, 
+         units = "in",
+         device = "pdf")
+  
+}
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+############################################################
+# Perform enrichment analysis for Downregulated genes 
+############################################################
+
+# List of genes to use as input.
+dn.genes <- unique(IFN.sig.dn$gene_symbol)
+
+# Retrieve the enriched terms.
+dn.enriched.terms <- enrichR::enrichr(dn.genes, dbs_use)
+
+# Plot enriched terms 
+downregulated.plots <- SCpubr::do_TermEnrichmentPlot(enriched_terms = dn.enriched.terms, 
+                                                   nchar_wrap = 20,
+                                                   font.size = 5, 
+                                                   font.type = "sans", 
+                                                   text_labels_size = 1,
+                                                   colors.use = c("royalblue", "gray"),
+                                                   nterms = 10)
+
+# Plot and save all plots generated 
+for(i in seq_len(length(upregulated.plots))){
+  
+  
+  # upregulated plots
+  name.var <- names(upregulated.plots)[i]
+  
+  ggsave(filename = paste0(output.dir, "Upregulated_",  name.var, ".pdf"),
+         plot = upregulated.plots[[i]], 
+         width = 20, 
+         height = 20, 
+         units = "in",
+         device = "pdf")
+  
+  # downregulated plots
+  name.var <- names(downregulated.plots)[i]
+  
+  ggsave(filename = paste0(output.dir, "Downregulated_",  name.var, ".pdf"),
+         plot = downregulated.plots[[i]], 
+         width = 20, 
+         height = 20, 
+         units = "in",
+         device = "pdf")
+  
+}
+
+
+
+
+
+
+
+
+```
 
 
 ### Subset data for Cytotoxic, IFN, Stim-1 and DEG calculation and visualisation
 ```{r DEG_calculation}
+
+# Create output directory
+output.dir <- "results/Manuscript/Figure2/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
+             recursive = T)
+}
+
+
+Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
+DefaultAssay(CD8.seurat) <- "RNA"
 
 Idents(CD8.seurat)
 temp.seurat <- subset(CD8.seurat, idents = c("Cytotoxic", "Type_I_IFN", "Stimulated_1"))
@@ -403,6 +1207,20 @@ DoHeatmap(small.seurat,
 ### Subset data for Exhausted, Stim_exhausted and DEG calculation and visualisation
 ```{r DEG_calculation}
 
+
+# Create output directory
+output.dir <- "results/Manuscript/Figure2/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
+             recursive = T)
+}
+
+
+Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
+DefaultAssay(CD8.seurat) <- "RNA"
+
+
 Idents(CD8.seurat)
 temp.seurat <- subset(CD8.seurat, idents = c("Exhausted_1", "Exhausted_2", "Stimulated_exhausted"))
 
@@ -448,19 +1266,31 @@ DoHeatmap(small.seurat,
 ### DEG and vis Stim-1 vs Stim-exhausted
 ```{r DEG_calculation}
 
-Idents(CD8.seurat)
+
+# Create output directory
+output.dir <- "results/Manuscript/Figure2/Stim_vs_StimExh/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
+             recursive = T)
+}
+
+
+Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
+DefaultAssay(CD8.seurat) <- "RNA"
 
 
 if(long.compute){
-# Run DEG analysis
-DEG.markers <- FindMarkers(CD8.seurat, 
-                           ident.1 = "Stimulated_1",
-                           ident.2 = "Stimulated_exhausted",
-                              slot = "data", 
-                              logfc.threshold = 0.25,
-                              test.use = "wilcox",
-                              only.pos = FALSE)
 
+  # Run DEG analysis
+  DEG.markers <- FindMarkers(CD8.seurat, 
+                             ident.1 = "Stimulated_1",
+                             ident.2 = "Stimulated_exhausted",
+                             slot = "data", 
+                             logfc.threshold = 0.25,
+                             test.use = "wilcox",
+                             only.pos = FALSE)
+  
 # Filter for significance
 DEG.markers <- 
   DEG.markers %>%
@@ -471,61 +1301,223 @@ write.csv(DEG.markers, paste0(output.dir, "DEG_Stim_vs_StimEx.csv"))
 }
 
 
+# read in dataset
 DEG.markers <- read.csv(paste0(output.dir, "DEG_Stim_vs_StimEx.csv"))
-DEG.markers <- as.data.frame(DEG.markers)
 
-small.seurat <- subset(CD8.seurat, idents = c("Stimulated_1", "Stimulated_exhausted"))
-small.seurat <- subset(small.seurat, downsample = 300)
-small.seurat <- ScaleData(small.seurat)
 
 goi <- DEG.markers %>%
-  mutate(abs.FC = abs(avg_log2FC)) %>%
-  filter(abs.FC > 0.5) %>%
-  arrange(desc(avg_log2FC)) %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::mutate(abs.log = abs(avg_log2FC)) %>%
+  dplyr::filter(abs.log > 0.5) %>%
+  dplyr::arrange(desc(avg_log2FC)) %>%
   pull(X)
 
 goi <- unique(goi)
 
 
-
-DoHeatmap(small.seurat, 
-          features = goi) + scico::scale_fill_scico(palette = "batlow", 
-                                                    direction = 1, 
-                                                    na.value = "white")
+temp.seurat <- AverageExpression(CD8.seurat, 
+                                 features = goi,
+                                 return.seurat = TRUE)
 
 
+DoHeatmap(temp.seurat, 
+          group.colors = CD8.cols,
+          features = goi, 
+          raster = FALSE,
+          draw.lines = FALSE) + 
+  scico::scale_fill_scico(palette = "batlow", 
+                          direction = 1, 
+                          na.value = "white")
 
-label.var <- c("IL2", "IL7R", "XCL1", 
-               "TNF", "CD69", "GZMK", "IFNG",
-               "CD28", "TCF7", "CD226", "TOX",
-               "NKG7", "CTLA4", "GZMA", "PRF1", 
-               "ENTPD1", "TIGIT", "GZMB", "LAG3", 
-               "HAVCR2", "GNLY")
+
+dev.copy(pdf, paste0(output.dir, "Heatmap_DEGs_between_stim_clusters_logfc_greater_abs_0_5_averaged.pdf"))
+dev.off()
+
+########################
+# Perform GO analysis 
+########################
+
+GO.input <- DEG.markers %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::mutate(abs.log = abs(avg_log2FC)) %>%
+  dplyr::filter(abs.log > 0.5) %>%
+  dplyr::arrange(desc(avg_log2FC))
+
+GO.input.stim1 <- GO.input %>%
+  dplyr::filter(avg_log2FC > 0.5) %>%
+  pull(X)
+
+GO.input.stimexh <- GO.input %>%
+  dplyr::filter(avg_log2FC < -0.5) %>%
+  pull(X)
 
 
-# With annotated genes
-pdf(paste0(output.dir, "DEG_Stim_vs_StimEx_highlighted.pdf"))
 
-# Plot heatmap
-annotated.heatmap(small.seurat, 
-                  cluster.id = "Clusters_l1",
-                  assay.use = "RNA",
-                  average.expression = FALSE,
-                  goi = goi, 
-                  genes.to.label = label.var, 
-                  col_order = c("Stimulated_1", "Stimulated_exhausted"), 
-                  col.colours = CD8.cols[c(6,7)], 
-                  range.val = c(-2, 0, 2))
+# load packages
+library("enrichR")
+#install.packages("SCpubr")
+library("SCpubr")
+ 
+# set serach to human genes
+enrichR::setEnrichrSite(site = "Enrichr")
 
+dbs <- enrichR::listEnrichrDbs()
+dbs <- sort(dbs$libraryName)
+
+# Choose the dataset to query against.
+dbs_use <- c("GO_Biological_Process_2021", 
+             "GO_Cellular_Component_2021",
+             "GO_Molecular_Function_2021", 
+             "KEGG_2021_Human",
+             "MSigDB_Hallmark_2020",
+             "Reactome_2022",
+             "WikiPathway_2021_Human",
+             "Azimuth_Cell_Types_2021")
+
+
+x <- list("Stim1" = GO.input.stim1, 
+          "StimExh" = GO.input.stimexh)
+
+for(dataset in seq_along(x)){
+  
+dataset.name <- names(x)[dataset]
+# List of genes to use as input.
+up.genes <- x[[dataset]]
+
+# Retrieve the enriched terms.
+up.enriched.terms <- enrichR::enrichr(up.genes, dbs_use)
+
+# Plot enriched terms 
+upregulated.plots <- SCpubr::do_TermEnrichmentPlot(enriched_terms = up.enriched.terms, 
+                                                   nchar_wrap = 20,
+                                                   font.size = 10, 
+                                                   font.type = "sans", 
+                                                   text_labels_size = 5,
+                                                   colors.use = c("salmon2", "gray"),
+                                                   nterms = 10)
+
+
+# Plot and save all plots generated 
+for(i in seq_len(length(upregulated.plots))){
+  
+  # upregulated plots
+  name.var <- names(upregulated.plots)[i]
+  
+  ggsave(filename = paste0(output.dir, "Upregulated_", dataset.name, "_",  name.var, ".pdf"),
+         plot = upregulated.plots[[i]], 
+         width = 20, 
+         height = 20, 
+         units = "in",
+         device = "pdf")
+  
+}
+
+}
+
+
+
+
+
+
+```
+
+
+
+### Transcription_factor inference
+```{r TF_analysis_inference}
+
+# Create output directory
+output.dir <- "results/Manuscript/Figure2/TF_inference/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
+             recursive = T)
+}
+
+
+
+# install and load packages
+#BiocManager::install("decoupleR") 
+library("decoupleR")
+
+# Retrieve prior knowledge network.
+network <- decoupleR::get_dorothea(organism = "human",
+                                   levels = c("A", "B", "C"))
+
+# Run weighted means algorithm.
+activities <- decoupleR::run_wmean(mat = as.matrix(CD8.seurat@assays$RNA@data),
+                                   network = network,
+                                   .source = "source",
+                                   .targe = "target",
+                                   .mor = "mor",
+                                   times = 100,
+                                   minsize = 5)
+
+# General heatmap.
+out <- SCpubr::do_TFActivityPlot(sample = CD8.seurat,
+                                 cluster_rows = FALSE,
+                                 flip = FALSE,
+                                 activities = activities, 
+                                 n_tfs = 50)
+p <- out$heatmaps$average_scores
+p
+
+dev.copy(pdf, paste0(output.dir, "/Heatmap_of_TF_activity_top50.pdf"))
+dev.off()
+
+# load custom functions to interact with dorothea output 
+source("scripts/functions/dorothea_functions.R")
+
+
+# Add dorothea data to seurat object
+CD8.seurat <- add.dorothea.data(CD8.seurat, activities)
+
+# get a table of activity scores 
+tf.data <- extract.top.TFs.dorothea(CD8.seurat, 
+                         group.var = "Clusters_l1", 
+                         return.table = TRUE,
+                         n_tfs = 50)
+
+# filter table for top transcription factors
+goi <- tf.data %>%
+  filter(mean > 1) %>%
+  arrange(group.var, mean) %>%
+  pull(source)
+
+length(goi)
+
+# Average seurat object
+average.seurat <- AverageExpression(CD8.seurat, 
+                                    return.seurat = TRUE)
+
+# plot heatmap of top predicted transcripton factor activity scores
+DoHeatmap(average.seurat, 
+          group.colors = CD8.cols,
+          features = goi, 
+          raster = FALSE,
+          draw.lines = FALSE) + 
+  scico::scale_fill_scico(palette = "batlow", 
+                          direction = 1, 
+                          na.value = "white")
+
+
+dev.copy(pdf, paste0(output.dir, "/Heatmap_of_TF_activity_top_predicted.pdf"))
 dev.off()
 
 
- #library("scico")
-  #  col_fun <- scico::scale_fill_scico(palette = "batlow", 
-   #                                    direction = 1, 
-    #                                   na.value = "white")
-
 ```
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -534,6 +1526,8 @@ dev.off()
 
 if(long.compute){
 
+  library(Scillus)
+  
 # get a broad list of DEG markers 
 Cluster.markers <- FindAllMarkers(CD8.seurat,
                                   assay = "RNA",

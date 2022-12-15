@@ -1,0 +1,14 @@
+[2022-10-20 14:19:39] [INFO]    [OmnipathR] Initialized cache: `/Users/dilloncorvino/Library/Caches/OmnipathR`.
+[2022-10-20 14:19:39] [INFO]    [OmnipathR] Welcome to OmnipathR!
+[2022-10-20 14:19:41] [TRACE]   [OmnipathR] Loaded data from RDS `/Users/dilloncorvino/Library/Caches/OmnipathR/3492392585ba05414edfae46801492076437d7e7-1.rds`.
+[2022-10-20 14:19:41] [INFO]    [OmnipathR] Loaded from cache: `https://omnipathdb.org/annotations?resources=PROGENy&license=academic`
+[2022-10-20 14:19:41] [SUCCESS] [OmnipathR] Loaded 700257 annotation records from cache.
+[2022-10-20 15:38:38] [INFO]    [OmnipathR] Cache record does not exist: `https://omnipathdb.org/interactions?genesymbols=yes&datasets=dorothea&organisms=9606&dorothea_levels=A,B,C,D&fields=sources,references,curation_effort,dorothea_level&license=academic`
+[2022-10-20 15:38:38] [INFO]    [OmnipathR] Retrieving URL: `https://omnipathdb.org/interactions?genesymbols=yes&datasets=dorothea&organisms=9606&dorothea_levels=A,B,C,D&fields=sources,references,curation_effort,dorothea_level&license=academic`
+[2022-10-20 15:38:38] [TRACE]   [OmnipathR] Attempt 1/3: `https://omnipathdb.org/interactions?genesymbols=yes&datasets=dorothea&organisms=9606&dorothea_levels=A,B,C,D&fields=sources,references,curation_effort,dorothea_level&license=academic`
+[2022-10-20 15:38:45] [INFO]    [OmnipathR] Cache item `46d37339bbc3f9a05bb89ccb79278cf1233f5cdf` version 1: status changed from `unknown` to `started`.
+[2022-10-20 15:38:45] [TRACE]   [OmnipathR] Exporting object to RDS: `/Users/dilloncorvino/Library/Caches/OmnipathR/46d37339bbc3f9a05bb89ccb79278cf1233f5cdf-1.rds`.
+[2022-10-20 15:38:46] [TRACE]   [OmnipathR] Exported RDS to `/Users/dilloncorvino/Library/Caches/OmnipathR/46d37339bbc3f9a05bb89ccb79278cf1233f5cdf-1.rds`.
+[2022-10-20 15:38:46] [INFO]    [OmnipathR] Download ready [key=46d37339bbc3f9a05bb89ccb79278cf1233f5cdf, version=1]
+[2022-10-20 15:38:46] [INFO]    [OmnipathR] Cache item `46d37339bbc3f9a05bb89ccb79278cf1233f5cdf` version 1: status changed from `started` to `ready`.
+[2022-10-20 15:38:48] [SUCCESS] [OmnipathR] Downloaded 278482 interactions.

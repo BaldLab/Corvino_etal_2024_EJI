@@ -572,7 +572,7 @@ VlnPlot(Innate.seurat,
 
 
 # genes of ineterest
-goi <- c("TCF7", "BACH2", "BATF")
+goi <- c("TCF7", "BACH2", "BATF", "NKG7", "ZEB2", "HOPX", "ZNF683", "ZBTB16")
 
 for(i in 1:length(goi)){
   
@@ -583,8 +583,8 @@ for(i in 1:length(goi)){
                             pt.size = 1, 
                             reduction = "umap"))
   
-  #dev.copy(pdf, paste0(output.nebulosa, "Nebulosa_RNA_", goi[i], ".pdf"))
-  #dev.off()
+  dev.copy(pdf, paste0(output.Supfig1, "Nebulosa_RNA_", goi[i], ".pdf"))
+  dev.off()
   
     
 }

@@ -445,8 +445,7 @@ dist.func <- function(x){
   dist(x,method = 'binary')
 }
 
-col.palette <- colorRampPalette(brewer.pal(8, "RdYlBu"))(600)
-
+batlow.pal <- scico(100, palette = 'batlow')
 
 
 
@@ -474,12 +473,10 @@ heatmap.2(as.matrix(log2(plot.data+1)),
           distfun = dist.func,
           hclustfun = hclust.func,
           srtCol = 90,
-          col = rev(col.palette))     
+          col = batlow.pal)     
 
 dev.copy(pdf, paste0(output.dir, "Heatmap_top_50_clonotypes.pdf"))
 dev.off()
-
-
 
 
 
@@ -513,7 +510,7 @@ for(i in seq_along(colnames(clonotype.data))){
             distfun = dist.func,
             hclustfun = hclust.func,
             srtCol = 90,
-            col = rev(col.palette))
+            col = batlow.pal)
   
   dev.copy(pdf, paste0(output.dir, "Heatmap_top_10_clonotypes_in_", colnames(clonotype.data)[i], ".pdf"))
   dev.off()
@@ -523,6 +520,17 @@ for(i in seq_along(colnames(clonotype.data))){
 
 
 ```
+
+### clone abundance of ISG cluster
+```{r remedy001}
+
+CD8.seurat.tcr
+
+
+```
+
+
+
 
 
 ```{r remedy001}
@@ -545,6 +553,593 @@ DimPlot(Trex.seurat,
 
 ```
 
+
+
+
+### Clonotype Overlap
+```{r Clonotype_Overlap}
+
+# Create output directory
+output.dir <- "results/Manuscript/FigureTCR/TCR_overlap/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
+             recursive = T)
+}
+
+
+
+
+
+Idents(CD8.seurat.tcr) <- CD8.seurat.tcr@meta.data$cloneType
+temp.seurat <- subset(CD8.seurat.tcr, idents = c("Hyperexpanded (20 < X <= 150)",
+                                                 "Large (10 < X <= 20)",
+                                                 "Medium (5 < X <= 10)", 
+                                                 "Small (1 < X <= 5)"))
+
+clonotypes.all <- temp.seurat[[]] %>% 
+    distinct(CTaa, .keep_all = T)
+  
+x <- table(clonotypes.all$Clonotype_overlap)
+
+sum.x <- sum(x)
+z <- (x/sum.x) * 100
+
+barplot(z)
+
+write.csv(z, paste0(output.dir, "freq_of_shared_and_unique_clonotypes_excluding_single_sized_clones.csv"))
+
+
+
+Idents(CD8.seurat.tcr) <- CD8.seurat.tcr@meta.data$cloneType
+temp.seurat <- subset(CD8.seurat.tcr, idents = c("Hyperexpanded (20 < X <= 150)",
+                                                 "Large (10 < X <= 20)",
+                                                 "Medium (5 < X <= 10)"))
+
+clonotypes.all <- temp.seurat[[]] %>% 
+    distinct(CTaa, .keep_all = T)
+  
+x <- table(clonotypes.all$Clonotype_overlap)
+
+sum.x <- sum(x)
+z <- (x/sum.x) * 100
+
+barplot(z)
+
+write.csv(z, paste0(output.dir, "freq_of_shared_and_unique_clonotypes_excluding_small_and_single_sized_clones.csv"))
+
+
+
+
+
+Idents(CD8.seurat.tcr) <- CD8.seurat.tcr@meta.data$cloneType
+temp.seurat <- subset(CD8.seurat.tcr, idents = c("Hyperexpanded (20 < X <= 150)",
+                                                 "Large (10 < X <= 20)"))
+
+clonotypes.all <- temp.seurat[[]] %>% 
+    distinct(CTaa, .keep_all = T)
+  
+x <- table(clonotypes.all$Clonotype_overlap)
+
+sum.x <- sum(x)
+z <- (x/sum.x) * 100
+
+barplot(z)
+
+write.csv(z, paste0(output.dir, "freq_of_shared_and_unique_clonotypes_excluding_medium_small_and_single_sized_clones.csv"))
+
+
+
+
+
+
+Idents(CD8.seurat.tcr) <- CD8.seurat.tcr@meta.data$condition
+US.seurat <- subset(CD8.seurat.tcr, idents = c("US"))
+
+# Set idents to clone type
+Idents(US.seurat) <- US.seurat@meta.data$cloneType
+
+# extract vector of clone size annotation
+clone.size <- unique(US.seurat@meta.data$cloneType)
+
+
+for(i in seq_along(clone.size)){
+  
+  print(paste0(clone.size[i]))
+  
+  # remove special symbols from annotation for better exporting 
+  clone.size.name <- gsub(" .*", "", clone.size[i])
+  
+  
+temp.seurat <- subset(US.seurat, idents = c(clone.size[i]))
+
+
+clonotypes.all <- temp.seurat[[]] %>% 
+    distinct(CTaa, .keep_all = T)
+  
+x <- table(clonotypes.all$Clonotype_overlap)
+
+sum.x <- sum(x)
+z <- (x/sum.x) * 100
+
+barplot(z)
+
+  write.csv(z, paste0(output.dir, "Freq_of_", clone.size.name, "_US_clonotypes_shared.csv"))
+
+
+
+}
+
+
+
+
+
+
+
+
+# Ask the question, for clonotypes found in US, how many and what is the clone-size classification of these in the Stim dataset 
+
+# therefore first subset dataset by US only
+
+Idents(CD8.seurat.tcr) <- CD8.seurat.tcr@meta.data$condition
+US.seurat <- subset(CD8.seurat.tcr, idents = c("US"))
+
+# Set idents to clone type
+Idents(US.seurat) <- US.seurat@meta.data$cloneType
+
+# extract vector of clone size annotation
+clone.size <- unique(US.seurat@meta.data$cloneType)
+
+
+# Will also require a seurat object subsetted for only stim cells
+Idents(CD8.seurat.tcr) <- CD8.seurat.tcr@meta.data$condition
+
+Stim.seurat <- subset(CD8.seurat.tcr, idents = c("Stim"))
+Idents(Stim.seurat) <- Stim.seurat@meta.data$CTaa
+
+
+for(i in seq_along(clone.size)){
+  
+  print(paste0(clone.size[i]))
+  
+  # remove special symbols from annotation for better exporting 
+  clone.size.name <- gsub(" .*", "", clone.size[i])
+  
+  
+  temp.seurat <- subset(US.seurat, idents = clone.size[i])
+  
+  clonotypes.us <- temp.seurat[[]] %>% 
+    distinct(CTaa, .keep_all = T)
+  
+  # Extract the number of clonotypes which are shared or unique to datasets
+  x <- table(clonotypes.us$Clonotype_overlap)
+  write.csv(x, paste0(output.dir, "Clonotype_overlap_numbers_", clone.size.name, ".csv"))
+  
+  
+  # get list of clonotypes // have to subset list for those that are shared
+  clonotypes.vec <- clonotypes.us %>%
+    dplyr::filter(Clonotype_overlap == "Shared") %>%
+    dplyr::pull(CTaa)
+  
+  # subset stim seurat by clonotypes in US
+  temp.seurat <- subset(Stim.seurat, idents = clonotypes.vec)
+  
+  clonotypes.stim <- temp.seurat[[]] %>% 
+    distinct(CTaa, .keep_all = T)
+  
+  x <- table(clonotypes.stim$cloneType)
+  write.csv(x, paste0(output.dir, "Distribution_of_", clone.size.name, "_US_clonotypes_found_in_stim.csv"))
+  
+  
+}
+
+
+
+table(clonotypes.stim$CTaa, clonotypes.stim$cloneType)
+
+"CAARGDGNKLVF_CASSLGGHPREAYF"
+"CAASVRPRAGNNRKLIW_CASSLGGGGYTF"
+
+
+"CAGDDSNYQLIW_CASSYDRGSPLHF"
+"CAGQRESGGGADGLTF_CASSDNSPAFF"
+
+
+
+Idents(CD8.seurat.tcr) <- CD8.seurat.tcr@meta.data$CTaa
+
+  temp.seurat <- subset(CD8.seurat.tcr, idents = "CAGQRESGGGADGLTF_CASSDNSPAFF")
+
+UMAPPlot(temp.seurat, 
+         group.by = "Clusters_l1",
+         split.by = "condition")
+  
+  
+  
+table(US.seurat@meta.data$cloneType, US.seurat@meta.data$condition)
+
+
+
+
+Idents(CD8.seurat.tcr) <- CD8.seurat.tcr@meta.data$Clonotype_overlap
+
+unique.US <- subset(CD8.seurat.tcr, idents = c("US"))
+
+unique.US <- unique.US[[]] %>% 
+  distinct(CTaa, .keep_all = T)
+x <- table(unique.US$cloneType)
+x[x == "0"] <- NA
+x <- log10(x)
+
+barplot(x, las = 2)
+
+
+
+unique.Stim <- subset(CD8.seurat.tcr, idents = c("Stim"))
+
+unique.Stim <- unique.Stim[[]] %>% 
+  distinct(CTaa, .keep_all = T)
+x <- table(unique.Stim$cloneType)
+x[x == "0"] <- NA
+x <- log10(x)
+barplot(x, las = 2)
+
+
+
+shared.seurat <- subset(CD8.seurat.tcr, idents = c("Shared"))
+
+shared.seurat <- shared.seurat[[]] %>% 
+  distinct(CTaa, condition, .keep_all = T)
+
+x <- table(shared.seurat$cloneType, shared.seurat$condition)
+x[x == "0"] <- NA
+x <- log10(x)
+barplot(x, beside = T)
+
+
+temp.meta <- shared.seurat[[]] %>% 
+  distinct(CTaa, .keep_all = T)
+length(temp.meta$condition)
+
+#449 unique clonotypes are shared
+
+colSums(x)
+
+
+
+Idents(CD8.seurat.tcr) <- CD8.seurat.tcr@meta.data$Clusters_l1
+
+# Get vector of clonotypes found in US cells
+US.clonotypes <- CD8.seurat.tcr@meta.data %>%
+  dplyr::filter(condition == "US") %>%
+  dplyr::select(CTaa)
+
+US.clonotypes <- unique(US.clonotypes$CTaa)
+
+length(US.clonotypes) # 1,701 clonotypes
+
+# Get vector of clonotypes found in Stim cells
+Stim.clonotypes <- CD8.seurat.tcr@meta.data %>%
+  dplyr::filter(condition == "Stim") %>%
+  dplyr::select(CTaa)
+
+Stim.clonotypes <- unique(Stim.clonotypes$CTaa)
+
+length(Stim.clonotypes) # 1,670 clonotypes
+
+# Get shared and unique clonotypes 
+shared.clonotypes <- US.clonotypes[US.clonotypes %in% Stim.clonotypes]
+unique.US <- US.clonotypes[!US.clonotypes %in% Stim.clonotypes]
+unique.Stim <- Stim.clonotypes[!Stim.clonotypes %in% US.clonotypes]
+
+length(shared.clonotypes)
+length(unique.US)
+length(unique.Stim)
+
+meta.data.vec <- meta.data.vec %>% 
+  distinct(CTaa, .keep_all = T)
+
+meta.data.vec <- CD8.seurat.tcr[[]] %>% 
+  distinct(CTaa, .keep_all = T)
+
+table(meta.data.vec$Clonotype_overlap)
+table(meta.data.vec$Clonotype_overlap_new)
+
+
+table(meta.data.vec$cloneType)
+
+US.clonotypes <- US.clonotypes$CTaa
+
+Stim.clonotypes <- Stim.clonotypes$CTaa
+
+
+
+
+x <- table(meta.data.vec$Clonotype_overlap, meta.data.vec$cloneType)
+rowSums(x)
+
+table(meta.data.vec$Clonotype_overlap)
+
+Idents(CD8.seurat.tcr) <- CD8.seurat.tcr@meta.data$cloneType
+
+CD8.filt <- subset(CD8.seurat.tcr, idents = c("Single (1)"))
+
+
+CD8.filt
+table(CD8.filt@meta.data$Clonotype_overlap)
+
+meta.data.vec <- CD8.filt[[]] %>% 
+  distinct(CTaa, .keep_all = T)
+
+
+table(meta.data.vec$Clonotype_overlap)
+
+"CAATSYDKVIF_CASSQAGGRDEAFF"
+"CAATISGGSYIPTF_CASSYTGDEQYF"
+
+Idents(CD8.seurat.tcr) <- CD8.seurat.tcr@meta.data$CTaa
+
+CD8.filt <- subset(CD8.seurat.tcr, idents = c("CAATISGGSYIPTF_CASSYTGDEQYF"))
+
+CD8.filt@meta.data
+
+table(CD8.seurat.tcr$CTaa, CD8.seurat.tcr$Clonotype_overlap)
+
+
+
+
+
+
+unique(CD8.filt$CTaa)
+
+Idents(CD8.filt) <- CD8.filt@meta.data$CTaa
+for(i in seq_along(unique(CD8.filt$CTaa))){
+CD8.filt.fur <- subset(CD8.filt, idents = c(unique(CD8.filt$CTaa)[i]))
+
+
+print(
+UMAPPlot(CD8.filt.fur, 
+         split.by = "condition")
+)
+}
+
+
+x <- CD8.seurat.tcr@meta.data$CTaa %in% shared.clonotypes
+sum(x)
+
+length(shared.clonotypes)
+
+
+
+#~ "Shared", 
+                                   #           CTaa %in% unique.US ~ "US", 
+         #  #                                   CTaa %in% unique.Stim ~ "Stim")) 
+
+
+
+
+
+####################
+# Add to metadata
+####################
+meta.data.vec <- CD8.seurat.tcr@meta.data %>%
+  dplyr::mutate(Clonotype_overlap = case_when(CTaa %in% unique.Stim ~ "Stim", 
+                                              CTaa %in% unique.US ~ "US", 
+                                              CTaa %in% shared.clonotypes ~ "Shared")) %>%
+  dplyr::select(Clonotype_overlap)
+
+
+CD8.seurat.tcr <- AddMetaData(CD8.seurat.tcr,
+                              meta.data.vec$Clonotype_overlap,
+                              "Clonotype_overlap_new")
+
+table(CD8.seurat.tcr@meta.data$Clonotype_overlap, CD8.seurat.tcr@meta.data$Clonotype_overlap_new)
+
+
+
+
+
+
+# Remove large objects no longer required
+rm(shared.clonotypes, 
+   unique.US, 
+   unique.Stim, 
+   US.clonotypes, 
+   Stim.clonotypes)
+
+```
+
+
+
+
+
+
+
+
+```{r clonotype_overlap_what_the_hell}
+
+table(CD8.seurat.tcr@meta.data$condition, CD8.seurat.tcr@meta.data$Clonotype_overlap)
+
+
+
+Idents(CD8.seurat.tcr) <- CD8.seurat.tcr@meta.data$cloneType
+
+CD8.filt <- subset(CD8.seurat.tcr, idents = c("Hyperexpanded (20 < X <= 150)"))
+levels(CD8.filt@meta.data$cloneType)
+CD8.filt@meta.data$cloneType <- droplevels(CD8.filt@meta.data$cloneType)
+levels(CD8.filt@meta.data$cloneType)
+
+
+
+Idents(CD8.seurat.tcr) <- CD8.seurat.tcr@meta.data$condition
+
+temp1 <- subset(CD8.seurat.tcr, idents = c("US"))
+temp2 <- subset(CD8.seurat.tcr, idents = c("Stim"))
+
+Idents(temp1) <- temp1@meta.data$cloneType
+Idents(temp2) <- temp2@meta.data$cloneType
+
+
+temp1 <- subset(temp1, idents = c("Hyperexpanded (20 < X <= 150)"))
+temp2 <- subset(temp2, idents = c("Hyperexpanded (20 < X <= 150)"))
+
+
+vec.1 <- unique(temp1@meta.data$CTaa)
+
+
+vec.2 <- unique(temp2@meta.data$CTaa)
+
+
+
+
+Idents(CD8.seurat.tcr) <- CD8.seurat.tcr@meta.data$cloneType
+
+
+temp1 <- subset(CD8.seurat.tcr, idents = c("Hyperexpanded (20 < X <= 150)"))
+
+
+table(temp1@meta.data$CTaa, temp1@meta.data$condition)
+
+
+
+Idents(CD8.seurat.tcr) <- CD8.seurat.tcr@meta.data$CTaa
+
+
+temp2 <- subset(CD8.seurat.tcr, idents = c("CIAGAYSGAGSYQLTF_CASSSGPEAFF"))
+
+
+table(temp2@meta.data$CTaa, temp2@meta.data$Clonotype_overlap)
+
+
+
+
+
+
+
+
+Idents(CD8.seurat.tcr) <- CD8.seurat.tcr@meta.data$cloneType
+
+CD8.filt <- subset(CD8.seurat.tcr, idents = c("Hyperexpanded (20 < X <= 150)"))
+levels(CD8.filt@meta.data$cloneType)
+CD8.filt@meta.data$cloneType <- droplevels(CD8.filt@meta.data$cloneType)
+levels(CD8.filt@meta.data$cloneType)
+
+
+
+Idents(CD8.filt) <- CD8.filt@meta.data$condition
+
+vec.1 <- subset(CD8.filt, idents = c("US"))
+vec.1 <- unique(vec.1@meta.data$CTaa)
+
+
+vec.2 <- subset(CD8.filt, idents = c("Stim"))
+vec.2 <- unique(vec.2@meta.data$CTaa)
+
+
+
+
+
+
+
+# For filtered result
+#Stim_filt_fur <- extract_list_clonotypes(seurat_object = CD8.seurat.tcr.filt.further, overlap_var = "Stim")
+#US_filt_fur <- extract_list_clonotypes(seurat_object = CD8.seurat.tcr.filt.further, overlap_var = "US")
+
+venn_filt_fur <- venn.diagram(
+        x = list(vec.1, vec.2),
+        category.names = c("US", "Stim" ),
+        filename = NULL,
+        output=F,
+        
+        # Circles
+        lwd = 2,
+        lty = 'blank',
+        fill = condition.cols,
+        
+        # Numbers
+        cex = .6,
+        fontface = "bold",
+        fontfamily = "sans",
+        
+        # Set names
+        cat.cex = 0.6,
+        cat.fontface = "bold",
+        cat.default.pos = "outer",
+        cat.fontfamily = "sans")
+
+#pdf(file = paste0(output.dir,"/venn_condition_CTaa_overlap_filt_single_and_small.pdf"))
+grid.draw(venn_filt_fur)
+#dev.off()
+```
+
+```{r}
+clono_vec <- c("Hyperexpanded (20 < X <= 150)", "Large (10 < X <= 20)", "Medium (5 < X <= 10)", "Small (1 < X <= 5)", "Single (1)")
+output.dir <- "/Volumes/Work/IEO/HNSCC_Descriptive/results/Manuscript/FigureTCR/Venn/Venn_loop_through_clonotypes"
+
+for (i in clono_vec) {
+  Idents(CD8.seurat.tcr) <- CD8.seurat.tcr@meta.data$cloneType
+CD8.seurat.tcr.filt.further <- subset(CD8.seurat.tcr, idents = c(i))
+CD8.seurat.tcr.filt.further@meta.data$cloneType <- droplevels(CD8.seurat.tcr.filt.further@meta.data$cloneType)
+
+# For filtered result
+Stim_filt_fur <- extract_list_clonotypes (seurat_object = CD8.seurat.tcr.filt.further, overlap_var = "Stim")
+US_filt_fur <- extract_list_clonotypes (seurat_object = CD8.seurat.tcr.filt.further, overlap_var = "US")
+
+venn_filt_fur <- venn.diagram(
+        x = list(US_filt_fur, Stim_filt_fur),
+        category.names = c("US", "Stim" ),
+        filename = NULL,
+        output=F,
+        
+        # Circles
+        lwd = 2,
+        lty = 'blank',
+        fill = condition.cols,
+        
+        # Numbers
+        cex = .6,
+        fontface = "bold",
+        fontfamily = "sans",
+        
+        # Set names
+        cat.cex = 0.6,
+        cat.fontface = "bold",
+        cat.default.pos = "outer",
+        cat.fontfamily = "sans")
+
+pdf(file = paste0(output.dir,"/",i,"_","venn_condition_CTaa_overlap_filt.pdf"))
+grid.draw(venn_filt_fur)
+dev.off()
+}
+```
+
+
+```{r}
+
+Idents(CD8.seurat.tcr) <- CD8.seurat.tcr@meta.data$cloneType
+CD8.seurat.tcr.filt.further <- subset(CD8.seurat.tcr, idents = c("Large (10 < X <= 20)"))
+CD8.seurat.tcr.filt.further@meta.data$cloneType <- droplevels(CD8.seurat.tcr.filt.further@meta.data$cloneType)
+
+metadata <- CD8.seurat.tcr.filt.further[[]]
+length(unique(metadata$CTaa))
+
+
+filt.meta <- metadata %>% filter(Clonotype_overlap == "Shared")
+unique.shared <- unique(filt.meta$CTaa)
+table(unique(filt.meta$CTaa))
+
+length(unique.shared)
+
+filt.meta.US <- metadata %>% filter(condition == "US")
+filt.meta.Stim <- metadata %>% filter(condition == "Stim")
+
+x <- unique(filt.meta.US$CTaa)
+y <- unique(filt.meta.Stim$CTaa)
+
+x %in% y
+
+
+```
 
 
 

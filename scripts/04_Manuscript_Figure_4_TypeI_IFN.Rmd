@@ -105,9 +105,7 @@ if(!dir.exists(paste0(output.dir))){
 
 
 
-## Type I IFN score HNSCC dataset {.tabset}
-
-
+## Type I IFN {.tabset}
 
 ### Reading data
 ```{r reading_data}
@@ -173,19 +171,99 @@ if(long.compute){
 # Hard code the signature to prevent any alternations with statistical drift 
 Sig.10 <- c("IFI6", "ISG15", "IFIT3", "MX1", "ISG20", "IFITM1", "LY6E", "IFIT1", "MX2", "OAS1")
 
-Sig.10 <- paste0(Sig.10, "+")
+Sig.10.up <- paste0(Sig.10, "+")
 
-
-
-Signature.list <- list(Top_10 = Sig.10)
+Signature.list <- list(Top_10 = Sig.10.up)
 
 signature.names <- paste0(names(Signature.list), "_UCell")
 
+```
 
+
+### Heatmaps of IFN cluster DEGs
+```{r IFN_cluster_DEG_Heatmaps}
+
+
+# Create output directory
+output.dir <- "results/Manuscript/Figure4/Heatmaps/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
+             recursive = TRUE)
+}
+
+
+  # read in data
+input.dir <- "results/Manuscript/Figure4/"
+
+IFN.clust.DEGs <- read.csv(paste0(input.dir, "IFN_clust_DEGs.csv"))
+
+
+
+
+# Prepare dataset for heatmap
+Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
+DefaultAssay(CD8.seurat) <- "RNA"
+
+
+average.seurat <- AverageExpression(CD8.seurat, return.seurat = T)
+
+
+goi <- IFN.clust.DEGs %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::filter(avg_log2FC > 0.25) %>%
+  dplyr::filter(DE == "up") %>%
+  dplyr::arrange(desc(avg_log2FC)) %>%
+  dplyr::pull(gene_symbol)
+
+
+DoHeatmap(average.seurat, 
+          draw.lines = FALSE,
+          raster = FALSE,
+          features = goi, 
+          group.colors = CD8.cols) + 
+  scico::scale_fill_scico(palette = "batlow", 
+                          direction = 1, 
+                          na.value = "white")
+
+dev.copy(pdf, paste0(output.dir, "Heatmap_DEGs_IFN_cluster_greater_0_25_FC_UP.pdf"))
+dev.off()
+
+
+# Plot top 10 DEG / i.e the ISG cluster signature
+
+DoHeatmap(average.seurat, 
+          draw.lines = FALSE,
+          raster = FALSE,
+          features = Sig.10, 
+          group.colors = CD8.cols) + 
+  scico::scale_fill_scico(palette = "batlow", 
+                          direction = 1, 
+                          na.value = "white")
+
+dev.copy(pdf, paste0(output.dir, "Heatmap_ISG_cluster_top_10_Signature.pdf"))
+dev.off()
+
+
+pattern <- c("ISG", "IRF", "IFI", "OAS", "STAT", "GZM")
+label.goi <- grep(paste0(pattern, collapse = "|"), goi, value = T)
+
+annotated.heatmap(CD8.seurat, 
+                  cluster.id = "Clusters_l1",
+                  assay.use = "RNA",
+                  average.expression = TRUE,
+                  goi = goi, 
+                  genes.to.label = label.goi, 
+                  col_order = names(CD8.cols), 
+                  col.colours = CD8.cols)
+
+dev.copy(pdf, paste0(output.dir, "HNSCC_IFN_cluster_DEGs_highlighted_average.pdf"))
+dev.off()
 
 
 
 ```
+
 
 
 ### visualise IFN cluster DEG enrichment terms
@@ -316,7 +394,7 @@ for(i in seq_len(length(upregulated.plots))){
 # install required packages
 #BiocManager::install("decoupleR") 
 #BiocManager::install("OmnipathR") 
-BiocManager::install("ComplexHeatmap")
+#BiocManager::install("ComplexHeatmap")
 
 library("decoupleR")
 
@@ -336,6 +414,7 @@ activities <- decoupleR::run_wmean(mat = as.matrix(CD8.seurat@assays$RNA@data),
 
 # General heatmap.
 out <- SCpubr::do_PathwayActivityPlot(sample = CD8.seurat,
+                                      cluster_rows = FALSE,
                                       activities = activities)
 p <- out$heatmaps$average_scores
 p
@@ -384,6 +463,78 @@ dev.off()
 ```{r TypeI_or_II_IFN}
 
 
+# Create output directory
+output.dir <- "results/Manuscript/Figure4/Type1_or_2/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
+             recursive = TRUE)
+}
+
+# Prepare dataset for heatmap
+Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
+DefaultAssay(CD8.seurat) <- "RNA"
+
+
+# signature from Azizi et al 2018, Single-cell map of diverse immune phenotypes in breast tumor microenvironment (https://doi.org/10.1016/j.cell.2018.05.060)
+
+# note signature published in manuscript has FAM46C, this is also called TENT5C in newest HGNC symbol annotation - signature has been adjusted to reflect this
+Type1.signature <- c("IRF1", "IFIH1", "IFITM3", "DDX58", "IFI44L", "IFI6", "IFITM2", "NAMPT", "OASL",
+                     "RTP4", "TREX1", "ADAR", "TENT5C", "LY6E", "MCOLN2", "APOBEC3G", "IL15", "ISG15", "MX1", "TLR3")
+
+# Manuscript signature is published with C-MYC, P21, PD-L1, these have been adjusted to human HNGC symbols, MYC, CDKN1A, and CD274 respectively
+# Additionally, signature simply stated MHC1 and MHC2, these are collected using  grex expression "HLA.*"
+Type2.signature <- c("IFNG", "CXCL9", "CXCL10", "STAT1", "CD274", "CDKN1A", "MYC", "SMAD7", "IRF1")
+HLA.genes <- grep("^HLA.*", rownames(CD8.seurat), value = T)
+Type2.signature <- c(Type2.signature, HLA.genes)
+
+
+
+Signature.list <- list(Type1.sig = Type1.signature, 
+                       Type2.sig = Type2.signature)
+
+
+
+
+if(long.compute){
+
+ cores <- parallel::detectCores(all.tests = FALSE, logical = TRUE)
+
+# Calculate Ucell scores for signatures
+ CD8.seurat <- UCell::AddModuleScore_UCell(CD8.seurat,
+                                           features = Signature.list,
+                                           ncores = cores)
+
+
+}
+
+########################
+# plot signature scores 
+########################
+
+# Type 1 Signature
+VlnPlot(CD8.seurat, 
+        features = "Type1.sig_UCell",
+        cols = CD8.cols,
+        pt.size = 0) + 
+  NoLegend()
+
+dev.copy(pdf, paste0(output.dir, "VlnPlot_Type1_signature.pdf"))
+dev.off()
+
+
+# Type 2 Signature
+VlnPlot(CD8.seurat, 
+        features = "Type2.sig_UCell",
+        cols = CD8.cols,
+        pt.size = 0) + 
+  NoLegend()
+
+dev.copy(pdf, paste0(output.dir, "VlnPlot_Type2_signature.pdf"))
+dev.off()
+
+
+
 #https://www.nature.com/articles/nri1604
 
 # Prepare dataset for heatmap
@@ -402,12 +553,6 @@ DoHeatmap(average.seurat,
 
 dev.copy(pdf, paste0(output.dir, "Heatmap_Type1_vs_Type2_IFN.pdf"))
 dev.off()
-
-
-#c("STAT1", "STAT2", "STAT3", "TYK2", "IRF9", "JAK1", "JAK2", "IFNAR1", "IFNAR2", "IFNGR1", "IFNGR2", "SOCS1", "SOCS3", "OAS1")
-#c("OAS1", "OAS2", "OAS3", "OASL")
-
-#goi <- grep("STAT.*", rownames(average.seurat), value = T)
 
 
 ```
@@ -444,6 +589,11 @@ dev.off()
 
 
 ```
+
+
+
+
+
 
  
 ### Visualise Type I IFN cluster 
@@ -482,31 +632,16 @@ dev.off()
 
 
 
-# Heatmap of IFN cluster DEGs
-IFN.clust.DEGs <- read.csv(paste0(output.dir, "IFN_clust_DEGs.csv"))
-
-DEGs.UP <- IFN.clust.DEGs %>%
-  filter(p_val_adj <= 0.05) %>%
-  filter(DE == "up") %>%
-  pull(gene_symbol)
 
 
 
-grep("I.*", DEGs.UP, value = T)
 
 
-annotated.heatmap(CD8.seurat, 
-                  cluster.id = "Clusters_l1",
-                              assay.use = "RNA",
-                              average.expression = TRUE,
-                              goi = DEGs.UP, 
-                              genes.to.label = c("ISG15", "IFI6", "ISG20", "IRF7", "IRF2", "IRF9", "IRF2", "IFI35", "IFI44"), 
-                              col_order = names(CD8.cols), 
-                              col.colours = CD8.cols, 
-                              range.val = c(-2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2))
+Plot_Density_Custom(CD8.seurat, 
+                    "IRF7")
 
-dev.copy(pdf, paste0(output.dir, "HNSCC_IFN_cluster_DEGs_highlighted_average.pdf"))
-dev.off()
+Plot_Density_Custom(CD8.seurat, 
+                    "ZEB2")
 
 
 

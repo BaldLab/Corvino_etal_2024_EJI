@@ -92,7 +92,8 @@ annotated.heatmap <- function(input.seurat,
                                col = list(clusterID = col.colours))
   
   # Heatmap colour scheme
-  col_fun <- colorRamp2(range.val, c(scico::scico(n= length(range.val), palette = "batlow")))
+  #col_fun <- colorRamp2(range.val, c(scico::scico(n= length(range.val), palette = "batlow")))
+  col_fun <- scico::scico(n= 100, palette = "batlow")
   
 
  # Colour scheme copied from seurat DoHeatmap which uses = PurpleAndYellow()
