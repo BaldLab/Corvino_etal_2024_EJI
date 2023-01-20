@@ -17,19 +17,20 @@ library("Seurat")
 library("SeuratDisk")
 library("dplyr")
 library("scCustomize")
+library("usefulfunctions")
 
 # Establish colour scheme
 source("scripts/variables/Colour_scheme_variable.R", local = knitr::knit_global())
 
 # Load custom functions
-source("scripts/functions/scRNAseq_function.R", local = knitr::knit_global())
-source("scripts/functions/annotate_seurat_heatmap_function.R", local = knitr::knit_global())
-source("scripts/functions/Enhanced_volcano_custom_defaults_function.R", local = knitr::knit_global())
+#source("scripts/functions/scRNAseq_function.R", local = knitr::knit_global())
+#source("scripts/functions/annotate_seurat_heatmap_function.R", local = knitr::knit_global())
+#source("scripts/functions/Enhanced_volcano_custom_defaults_function.R", local = knitr::knit_global())
 
 # TCR specific functions
-source("scripts/functions/combineMeta_function.R", local = knitr::knit_global())
-source("scripts/functions/Clonotype_distribution_function.R", local = knitr::knit_global())
-source("scripts/functions/get_clonotypes_function.R", local = knitr::knit_global())
+#source("scripts/functions/combineMeta_function.R", local = knitr::knit_global())
+#source("scripts/functions/Clonotype_distribution_function.R", local = knitr::knit_global())
+#source("scripts/functions/get_clonotypes_function.R", local = knitr::knit_global())
 
 
 ###############################

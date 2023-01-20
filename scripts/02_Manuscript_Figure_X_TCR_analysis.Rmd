@@ -524,7 +524,40 @@ for(i in seq_along(colnames(clonotype.data))){
 ### clone abundance of ISG cluster
 ```{r remedy001}
 
-CD8.seurat.tcr
+# Get data of how many cells in each cluster are assigned to what clonotypes
+clonotype.data <- table(CD8.seurat.tcr@meta.data$CTaa, CD8.seurat.tcr@meta.data$Clusters_l1)
+
+colnames(clonotype.data)[5]
+
+ISG.clones <- clonotype.data[,5]
+ISG.clones <- sort(ISG.clones, decreasing = T)
+names(ISG.clones[1:20])
+x <- ISG.clones[ISG.clones>5]
+length(x)
+
+Idents(CD8.seurat.tcr) <- CD8.seurat.tcr@meta.data$CTaa
+
+temp.seurat <- subset(CD8.seurat.tcr, idents = c(names(x)))
+
+
+UMAPPlot(temp.seurat, 
+         label = T,
+         #split.by = "condition",
+         group.by = "Clusters_l1")
+
+
+
+temp.seurat@meta.data$group
+
+
+
+# Plot the top 50 clonotypes
+aa.keep <- sort(rowSums(clonotype.data), decreasing = TRUE)[1:50]
+
+keep.vec <- rownames(clonotype.data) %in% names(aa.keep)
+
+plot.data <- clonotype.data[keep.vec, ]
+dim(plot.data)
 
 
 ```
@@ -532,26 +565,6 @@ CD8.seurat.tcr
 
 
 
-
-```{r remedy001}
-
-# CD8 dataset
-  Trex.seurat <- LoadH5Seurat("data/TREX_.h5Seurat")
-
-Trex.seurat
-
-Idents(Trex.seurat) <- Trex.seurat@meta.data$Clusters_l1
-DefaultAssay(Trex.seurat) <- "RNA"
-
-seuratObj <- Trex::quietTCRgenes(seuratObj)
-seuratObj <- RunPCA(seuratObj)
-
-DimPlot(Trex.seurat, 
-        reduction = "umap")
-
-
-
-```
 
 
 
