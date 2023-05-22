@@ -1,0 +1,246 @@
+---
+title: "06_Manuscript_Braun_etal_dataset"
+author: "Dillon Corvino"
+date: "19/01/2023"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: united
+    highlight: tango
+    df_print: paged
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+  markdown: 
+    wrap: 72
+---
+
+Built with R version `{r} getRversion()`
+
+## Setup {.tabset}
+
+### Dataset information
+
+```{r Dataset_Info}
+
+
+```
+
+### Environment
+
+```{r setup, message = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,  
+  eval = TRUE, 
+  tidy = TRUE
+)
+
+knitr::opts_knit$set(
+  root.dir = "../"
+)
+
+# Environment Set up
+rm(list = ls()) #Clean workspace
+cat("\014")     #Clean Console
+gc() # Free memory
+
+
+# Establish working directory
+library("rstudioapi")
+
+# Set working directory to source file location
+setwd(dirname(getActiveDocumentContext()$path))
+setwd("..")
+
+# Create output directories & load custom functions & colour scheme
+source("scripts/Setup.R", local = knitr::knit_global())
+
+# pipeline variables
+long.compute <- FALSE
+
+# load required packages
+require(tidyverse)
+require(Seurat)
+require(useful)
+require(ggrepel)
+require(clusterProfiler)
+require(enrichplot)
+require(org.Hs.eg.db)
+require(org.Mm.eg.db)
+require(UCell)
+require(Nebulosa)
+require(ggsci)
+library(harmony)
+require(irGSEA)
+#source("scripts/aimed_analysis/functions.R")
+
+
+# Create output directory
+output.dir <- "results/Manuscript/Braun_etal/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
+             recursive = TRUE)
+}
+```
+
+## Type I IFN score pancancer dataset {.tabset}
+
+### Prepare dataset / read
+
+```{r read_dataset_braun_etal}
+
+
+  Braun.seurat <- readRDS("data/external_datasets/Braun_etal_seurat.rds")
+  
+  
+
+UMAPPlot(Braun.seurat, 
+         group.by = "DNAM.clust.quantile")
+
+UMAPPlot(Braun.seurat, 
+         group.by = "seurat_clusters")
+
+
+```
+
+### apply ucell score to pancancer
+
+```{r ucell_pancancer}
+
+if(long.compute){
+  
+  
+  #input.dir <- "results/Manuscript/Figure4/"
+  
+  # create signatures
+  #IFN.clust.DEGs <- read.csv(paste0(input.dir, "IFN_clust_DEGs.csv"))
+  
+  #Sig.10 <- IFN.clust.DEGs %>%
+  #  filter(p_val_adj <= 0.05) %>%
+  #  top_n(10, avg_log2FC) %>%
+  #  pull(gene_symbol)
+  
+  
+  # Hard code the signature to prevent any alternations with statistical drift 
+  #Sig.10 <- c("IFI6", "ISG15", "IFIT3", "MX1", "ISG20", "IFITM1", "LY6E", "IFIT1", "MX2", "OAS1")
+  
+  
+  #Sig.10 <- usefulfunctions::convert.human.to.mouse(Sig.10, use.jax = T)
+  
+  # hardcoded the mouse conversion because convert.human.to.mouse found some homologes but manual searching internet found others 
+  # therefore for most complete list of homologues i just did manual 
+  
+  Sig.10 <- c("Isg15", "Ifit3b", "Mx1", "Isg20", "Ifitm1", "Ly6e", "Ifit1", "Mx2", "Oas1a")
+   
+  
+ # no homolog in mouse Ifi6, 
+ # Oas1 = Oas1a
+ # Mx2 is same in mouse but not found in this dataset
+  
+  
+  cores <- parallel::detectCores(all.tests = FALSE, logical = TRUE)
+  
+  
+  
+  
+  Sig.10.up <- paste0(Sig.10, "+")
+  
+  Signature.list <- list(Top_10 = Sig.10.up)
+  
+  
+  
+  # Calculate Ucell scores for signatures
+  DefaultAssay(Braun.seurat) <- "RNA"
+  Braun.seurat <- UCell::AddModuleScore_UCell(Braun.seurat,
+                                              features = Signature.list,
+                                              ncores = cores)
+  # Not found in dataset Mx2
+  
+}
+
+```
+
+### Visualise IFN cluster
+
+```{r vis_IFN_cluster}
+
+
+ DefaultAssay(Braun.seurat) <- "RNA"
+
+
+Braun.seurat <- Braun.seurat %>%
+  Seurat::RunUMAP(reduction = "pca", 
+                  dims = 1:20, 
+                  min.dist = 0.4, 
+                  spread = 1,
+                  n.neighbors = 50, # 5 - 50 , larger = more global
+                  densmap = F,
+                  seed.use = 42)
+
+
+Braun.seurat <- 
+  Braun.seurat %>%
+  FindNeighbors(reduction = "pca",
+                dims = 1:20) %>%
+  FindClusters(resolution = 0.3)
+
+
+# Density plots 
+Plot_Density_Custom(Braun.seurat, 
+                    features =  "Top_10_UCell",
+                    custom_palette = batlow.pal,
+                    joint = FALSE, 
+                    pt.size = 1, 
+                    reduction = "umap")
+
+dev.copy(pdf, paste0(output.dir, "Pmel_TIL_UMAP_UCell_scores_ISG_signature_top10.pdf"))
+dev.off()
+
+
+
+UMAPPlot(Braun.seurat, 
+         group.by = "seurat_clusters", 
+         label = T)
+
+ 
+dev.copy(pdf, paste0(output.dir, "Pmel_TIL_UMAP_clusters.pdf"))
+dev.off()
+
+
+FeaturePlot(Braun.seurat, 
+            features = "Top_10_UCell")
+
+dev.copy(pdf, paste0(output.dir, "Pmel_TIL_UMAP_feature_plot_ISG_signature_top_10.pdf"))
+dev.off()
+
+
+# Rename clusters
+Idents(Braun.seurat) <- Braun.seurat@meta.data$seurat_clusters
+Braun.seurat <- Braun.seurat %>%
+  RenameIdents('0' = "other",
+               '1' = "other",
+               '2' = "ISG", 
+               '3' = "other")
+Idents(Braun.seurat)
+
+Braun.seurat@meta.data$IFN_status <- Idents(Braun.seurat)
+
+# VlnPlots
+VlnPlot(Braun.seurat,
+        pt.size = 0, 
+        same.y.lims = T,
+        features = "Top_10_UCell",
+        group.by = "IFN_status") + 
+  NoLegend()
+
+dev.copy(pdf, paste0(output.dir, "Pmel_TIL_VlnPlot_UCell_scores_top10.pdf"))
+dev.off()
+
+
+
+```

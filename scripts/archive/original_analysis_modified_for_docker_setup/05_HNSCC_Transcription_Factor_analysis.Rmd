@@ -1,0 +1,481 @@
+---
+title: "HNSCC_Transcription_Factor_analysis"
+author: "Dillon Corvino"
+date: "03/02/2020"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: united
+    highlight: tango
+    df_print: paged
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+  markdown: 
+    wrap: 72
+---
+
+Built with R version `{r} getRversion()`
+
+## Setup {.tabset}
+
+### Environment
+
+```{r setup, message = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,  
+  eval = TRUE, 
+  tidy = TRUE
+)
+
+knitr::opts_knit$set(
+  root.dir = "../"
+)
+
+# Environment Set up
+rm(list = ls()) #Clean workspace
+cat("\014")     #Clean Console
+gc() # Free memory
+
+
+# Establish working directory
+library("rstudioapi")
+
+# Set working directory to source file location
+setwd(dirname(getActiveDocumentContext()$path))
+setwd("..")
+
+# Create output directories & load custom functions & colour scheme
+source("scripts/Setup.R", local = knitr::knit_global())
+
+# pipeline variables
+quick.load <- FALSE
+long.compute <- FALSE
+
+# load saved seurat object with cluster annotations and imputation performed
+if(quick.load){
+  seurat.combined <- LoadH5Seurat("saves/seurat_combined.h5Seurat")
+}
+
+
+```
+
+## Transcription factor analysis {.tabset}
+
+### Progeny Analysis
+
+```{r Progeny_analysis}
+
+# Create output directory
+output.dir <- "results/scRNAseq/figures/GO_analysis/Progeny/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
+             recursive = T)
+}
+
+
+# load required packages
+library("progeny")
+library("ComplexHeatmap")
+
+## We compute the Progeny activity scores and add them to our Seurat object
+## as a new assay called Progeny. 
+
+DefaultAssay(seurat.combined) <- "RNA"
+Idents(seurat.combined) <- seurat.combined@meta.data$Clusters_l1
+
+
+seurat.combined <- progeny(seurat.combined, 
+                           scale = FALSE, 
+                           organism = "Human", 
+                           top = 500,
+                           perm = 1,
+                           return_assay = TRUE)
+
+
+## We can now directly apply Seurat functions in our Progeny scores. 
+## For instance, we scale the pathway activity scores. 
+seurat.combined <- Seurat::ScaleData(seurat.combined,
+                                     assay = "progeny")
+
+## We transform Progeny scores into a data frame to better handling the results
+progeny_scores_df <- as.data.frame(t(GetAssayData(seurat.combined, 
+                                                  slot = "scale.data",
+                                                  assay = "progeny"))) %>%
+  rownames_to_column("Cell") %>%
+  gather(Pathway, Activity, -Cell)
+
+
+## We create a data frame with the specification of the cells that belong to 
+## each cluster to match with the Progeny scores.
+CellsClusters <- data.frame(Cell = names(Idents(seurat.combined)),
+                            CellType = as.character(Idents(seurat.combined)),
+                            stringsAsFactors = FALSE)
+
+## We match Progeny scores with the cell clusters.
+progeny_scores_df <- inner_join(progeny_scores_df, CellsClusters)
+
+## We summarize the Progeny scores by cellpopulation
+summarized_progeny_scores <- progeny_scores_df %>%
+  group_by(Pathway, CellType) %>%
+  summarise(avg = mean(Activity), std = sd(Activity))
+
+
+## We prepare the data for the plot
+summarized_progeny_scores_df <- summarized_progeny_scores %>%
+  dplyr::select(-std) %>%
+  spread(Pathway, avg) %>%
+  data.frame(row.names = 1, check.names = FALSE, stringsAsFactors = FALSE)
+
+paletteLength = 100
+myColor = colorRampPalette(c("Darkblue", "white","red"))(paletteLength)
+
+progenyBreaks = c(seq(min(summarized_progeny_scores_df), 0,
+                      length.out=ceiling(paletteLength/2) + 1),
+                  seq(max(summarized_progeny_scores_df)/paletteLength,
+                      max(summarized_progeny_scores_df),
+                      length.out=floor(paletteLength/2)))
+
+
+pheatmap(t(summarized_progeny_scores_df[,-1]),fontsize=14,
+         fontsize_row = 10,
+         color= myColor, 
+         breaks = progenyBreaks,
+         main = "PROGENy (500)", 
+         angle_col = "45",
+         treeheight_col = 0,  
+         border_color = NA)
+
+
+dev.copy(pdf, paste0(output.dir, "Progeny_heatmap.pdf"))
+dev.off()
+
+unique(progeny_scores_df$Pathway)
+
+DefaultAssay(seurat.combined) <- "RNA"
+
+```
+
+### Searching for TFs
+
+```{r TF_analysis}
+
+# Create output directory
+output.dir <- "results/scRNAseq/figures/Transcription_factors/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
+             recursive = T)
+}
+
+
+# Searching for TFs
+TF.ref.list <- read.delim("data/TFcheckpoint.txt") # http://www.tfcheckpoint.org/index.php/browse
+
+dim(TF.ref.list) # 1020, 11
+colnames(TF.ref.list)
+head(TF.ref.list)
+
+Cluster.markers <- read.csv("results/scRNAseq/tables/DEG_Clusters/Cluster_markers_unfiltered.csv", row.names = 1)
+
+# Up-regulated TFs
+sig.genes <- Cluster.markers %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::filter(avg_log2FC > 0.5 | avg_log2FC < -0.5) %>%
+  dplyr::select(gene)
+
+sig.genes <- unique(sig.genes$gene)
+TF.logic <- sig.genes %in% TF.ref.list$Gene_symbol
+
+TF.DEG <- sig.genes[TF.logic]
+
+
+
+
+########################################
+# Plot TFs differentially regulated 
+########################################
+
+Idents(seurat.combined) <- seurat.combined@meta.data$Clusters_l1
+DefaultAssay(seurat.combined) <- "RNA"
+
+seurat.combined.small <- subset(seurat.combined, downsample = 300)
+
+average.seurat <- AverageExpression(seurat.combined,
+                                    assay = "RNA",
+                                    slot = "data",
+                                    verbose = TRUE,
+                                    return.seurat = TRUE)
+
+DoHeatmap(average.seurat, 
+          features = TF.DEG, 
+          draw.lines = FALSE, 
+          raster = FALSE)
+
+dev.copy(pdf, paste0(output.dir, "Heatmap_of_TF_diff_expressed.pdf"))
+dev.off()
+
+
+
+
+########################################################
+# Plot TF heatmap but only annotate specific genes 
+########################################################
+
+# Source custom function // loaded in custom functions chunk 
+source("scripts/functions/annotate_seurat_heatmap_function.R")
+
+genes.id <- c("BACH2", "EOMES", "KLF2", "ZEB2", "IRF4", "TCF7", "JUNB", "ATF4", "IRF7", "STAT1")
+
+# Plot heatmap averaged values
+pdf(paste0(output.dir, "Heatmap_of_TF_diff_expressed_annotated_averaged.pdf"))
+annotated.heatmap(seurat.combined, 
+                  cluster.id = "Clusters_l1",
+                  assay.use = "RNA",
+                  average.expression = TRUE,
+                  goi = TF.DEG, 
+                  genes.to.label = genes.id, 
+                  col_order = names(clust.cols), 
+                  col.colours = clust.cols, 
+                  range.val = c(-2, 0, 2))
+
+dev.off()
+
+
+# Plot heatmap downsampled single cell values
+pdf(paste0(output.dir, "Heatmap_of_TF_diff_expressed_annotated.pdf"))
+
+annotated.heatmap(seurat.combined, 
+                  cluster.id = "Clusters_l1",
+                  assay.use = "RNA",
+                  average.expression = FALSE,
+                  goi = TF.DEG, 
+                  genes.to.label = genes.id, 
+                  col_order = names(clust.cols), 
+                  col.colours = clust.cols, 
+                  range.val = c(-2, 0, 2))
+
+dev.off()
+
+
+
+```
+
+
+### RcisTarget
+
+```{r TF_regulation}
+
+# Create output directory
+fig.dir <- "results/scRNAseq/figures/RcisTarget/"
+
+if(!dir.exists(paste0(fig.dir))){
+  dir.create(paste0(fig.dir), 
+             recursive = T)
+}
+
+table.dir <- "results/scRNAseq/tables/RcisTarget/"
+
+if(!dir.exists(paste0(table.dir))){
+  dir.create(paste0(table.dir), 
+             recursive = T)
+}
+
+
+###################################
+# Generate input gene lists 
+###################################
+
+Cluster.markers <- read.csv("results/scRNAseq/tables/DEG_Clusters/Cluster_markers_unfiltered.csv", row.names = 1)
+
+
+UP.genes <- Cluster.markers %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::filter(avg_log2FC > 0.5) %>%
+  dplyr::select(gene)
+
+UP.genes <- unique(UP.genes$gene)
+
+DN.genes <- Cluster.markers %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::filter(avg_log2FC < -0.5) %>%
+  dplyr::select(gene)
+
+DN.genes <- unique(DN.genes$gene)
+
+geneLists <- list(UP = UP.genes, 
+                  DN = DN.genes)
+
+
+
+Clust.genes <- Cluster.markers %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::group_by(cluster) %>%
+  dplyr::filter(avg_log2FC > 0.5) %>%
+  dplyr::select(gene)
+
+unique(Clust.genes$cluster)
+
+
+geneLists <- list(Naive_like_1_CM = Clust.genes[Clust.genes$cluster == "Naive_like_1_CM", ]$gene, 
+                  Naive_like_2_SC = Clust.genes[Clust.genes$cluster == "Naive_like_2_SC", ]$gene, 
+                  Naive_like_3 = Clust.genes[Clust.genes$cluster == "Naive_like_3", ]$gene, 
+                  Cytotoxic = Clust.genes[Clust.genes$cluster == "Cytotoxic", ]$gene,
+                  Type_I_IFN = Clust.genes[Clust.genes$cluster == "Type_I_IFN", ]$gene, 
+                  Stimulated_1 = Clust.genes[Clust.genes$cluster == "Stimulated_1", ]$gene,
+                  Stimulated_exhausted = Clust.genes[Clust.genes$cluster == "Stimulated_exhausted", ]$gene, 
+                  Exhausted_1 = Clust.genes[Clust.genes$cluster == "Exhausted_1", ]$gene,
+                  Exhausted_2 = Clust.genes[Clust.genes$cluster == "Exhausted_2", ]$gene,
+                  TRM = Clust.genes[Clust.genes$cluster == "TRM", ]$gene,
+                  gd_T_g9d2 = Clust.genes[Clust.genes$cluster == "gd_T_g9d2", ]$gene,
+                  gd_T_non_g9d2 = Clust.genes[Clust.genes$cluster == "gd_T_non_g9d2", ]$gene,
+                  MAIT = Clust.genes[Clust.genes$cluster == "MAIT", ]$gene,
+                  Proliferative = Clust.genes[Clust.genes$cluster == "Proliferative", ]$gene)
+
+
+
+
+
+
+
+# Available motif databased - in order of narrow -> large search space
+# available datasets can be found at = https://resources.aertslab.org/cistarget/
+
+# Download database
+#featherURL <- "https://resources.aertslab.org/cistarget/databases/homo_sapiens/hg38/refseq_r80/mc9nr/gene_based/hg38__refseq-r80__10kb_up_and_down_tss.mc9nr.feather" 
+
+#download.file(featherURL, destfile=basename(featherURL)) # saved in current dir
+
+
+# Read in database
+motifRankings <- importRankings("data/RcisTarget_feather_files/hg38__refseq-r80__10kb_up_and_down_tss.mc9nr.feather")
+
+# Load mouse motif annotations
+data("motifAnnotations_hgnc")
+
+TF.vec <- unique(motifAnnotations_hgnc$TF)
+
+
+# perform analysis
+motifEnrichmentTable_wGenes <- cisTarget(geneLists, 
+                                         motifRankings,
+                                         motifAnnot = motifAnnotations_hgnc, 
+                                         #highlightTFs = c("EOMES", "TBX21", "BATF3"),
+                                         nCores = 6)
+
+
+
+
+# Add motif logo to table
+motifEnrichmentTable_wGenes_wLogo <- addLogo(motifEnrichmentTable_wGenes)
+
+
+ 
+# to view output data 
+resultsSubset <- motifEnrichmentTable_wGenes_wLogo[1:50,]
+
+datatable(resultsSubset[,-c("enrichedGenes", "TF_lowConf"), with=FALSE], 
+          escape = FALSE, # To show the logo
+          filter="top", options=list(pageLength=10))
+
+
+
+# Write data to file 
+write.csv(motifEnrichmentTable_wGenes_wLogo,
+          paste0(table.dir, "motif_enrichment_table_withLogo_10kb.csv"))
+
+
+# Extract all high confidence transcription factors for each geneset
+anotatedTfs <- lapply(split(motifEnrichmentTable_wGenes$TF_highConf,
+                            motifEnrichmentTable_wGenes$geneSet),
+                      function(x) {
+                        genes <- gsub(" \\(.*\\). ", "; ", x, fixed=FALSE)
+                        genesSplit <- unique(unlist(strsplit(genes, "; ")))
+                        return(genesSplit)
+                        })
+                      
+
+fix.list.length <- function(input.list){
+  temp <- unlist(lapply(input.list, length))
+  x.max <- max(temp)
+  
+  output.list <- lapply(input.list, function(x){
+    
+    remain <- x.max - length(x)
+    return(paste0(c(x, rep(NA, remain))))
+  })
+  
+  return(output.list)
+}
+
+anotatedTfs.export <- fix.list.length(anotatedTfs)  
+
+# Write data to file 
+write.csv(anotatedTfs.export,
+          paste0(table.dir, "Transcription_factors_annotated_to_motifs_with_highConf.csv"))
+
+rm(anotatedTfs.export)
+
+
+# Filter predicted TFs based on those that are also significantly DEGs
+
+index.vec <- names(geneLists)
+DEG.predicted.TFs <- list()
+
+for(i in 1:length(index.vec)){
+  
+  DEG.var <- geneLists[[paste0(index.vec[i])]]
+  TF.var <- anotatedTfs[[paste0(index.vec[i])]]
+  DEG.predicted.TFs[[paste0(index.vec[i])]]<- DEG.var[DEG.var %in% TF.var]
+  names(DEG.predicted.TFs)[i] <- paste0(index.vec[i])
+  print(DEG.predicted.TFs)
+}
+
+
+
+
+DEG.predicted.TFs.export <- fix.list.length(DEG.predicted.TFs)  
+
+# Write data to file 
+write.csv(DEG.predicted.TFs.export,
+          paste0(table.dir, "Transcription_factors_predicted_which_are_also_DEG.csv"))
+
+rm(DEG.predicted.TFs.export)
+
+
+
+
+
+
+# Plot heatmaps of DEG predicted TFs
+
+Idents(seurat.combined) <- seurat.combined@meta.data$Clusters_l1
+DefaultAssay(seurat.combined) <- "RNA"
+
+seurat.combined.small <- subset(seurat.combined, downsample = 300)
+
+average.seurat <- AverageExpression(seurat.combined,
+                                    assay = "RNA",
+                                    slot = "data",
+                                    verbose = TRUE,
+                                    return.seurat = TRUE)
+
+x <- unique(unlist(DEG.predicted.TFs))
+
+DoHeatmap(average.seurat, 
+          features = x, 
+          draw.lines = FALSE, 
+          raster = FALSE)
+dev.copy(pdf, paste0(fig.dir, "Heatmap_predicted_TFs_dif_expressed.pdf"))
+dev.off()
+
+
+
+```
+
+

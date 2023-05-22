@@ -1,0 +1,328 @@
+---
+title: "Bald - velocity analysis"
+output: html_notebook
+---
+```{r}
+require(reticulate) 
+use_python(python = "/home/rstudio/miniconda3/bin/python",required = T)
+```
+
+
+
+```{r}
+reticulate::use_condaenv(condaenv = "/home/rstudio/miniconda3",
+                         required = T)
+```
+
+
+```{r}
+library(Seurat)
+library(SeuratDisk)
+library(SeuratWrappers)
+```
+
+```{python}
+import anndata
+import igraph
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+import rpy2.robjects as robj
+import scanpy as sc
+import scipy
+import scipy.optimize
+import scvelo as scv
+import sklearn
+import velocyto as vcy
+```
+
+
+```{python}
+from collections import Counter
+#from IPython.core.display import display, HTML
+from numpy_groupies import aggregate, aggregate_np
+from rpy2.robjects.packages import importr
+from sklearn.decomposition import PCA
+from sklearn.neighbors import NearestNeighbors
+from scipy.spatial.distance import pdist, squareform
+```
+
+
+```{r}
+# library(knitr)  
+# library(reticulate)  
+# knitr::knit_engines$set(python = reticulate::eng_python) 
+# matplotlib <- import("matplotlib", convert = TRUE)
+# matplotlib$use("Agg")
+```
+
+
+```{python}
+GEX1 = anndata.read('/work_dir/results/preprocessing_velocity/kb_count/GEX1/counts_unfiltered/adata.h5ad')
+GEX2 = anndata.read('/work_dir/results/preprocessing_velocity/kb_count/GEX2/counts_unfiltered/adata.h5ad')
+GEX3 = anndata.read('/work_dir/results/preprocessing_velocity/kb_count/GEX3/counts_unfiltered/adata.h5ad')
+GEX4 = anndata.read('/work_dir/results/preprocessing_velocity/kb_count/GEX4/counts_unfiltered/adata.h5ad')
+```
+
+
+```{python}
+# Before we do, we need to make sure we can trace each row back to its
+# original anndata object.
+GEX1.obs['sample'] = 'GEX1'
+GEX2.obs['sample'] = 'GEX2'
+GEX3.obs['sample'] = 'GEX3'
+GEX4.obs['sample'] = 'GEX4'
+
+GEX1.obs['bcs'] = GEX1.obs.index
+GEX2.obs['bcs'] = GEX2.obs.index
+GEX3.obs['bcs'] = GEX3.obs.index
+GEX4.obs['bcs'] = GEX4.obs.index
+
+
+GEX1.obs.index = GEX1.obs['bcs'] + '.' + GEX1.obs['sample']
+GEX2.obs.index = GEX2.obs['bcs'] + '.' + GEX2.obs['sample']
+GEX3.obs.index = GEX3.obs['bcs'] + '.' + GEX3.obs['sample']
+GEX4.obs.index = GEX4.obs['bcs'] + '.' + GEX4.obs['sample']
+
+GEX_combined = GEX1.concatenate(GEX2,GEX3,GEX4, batch_key='batch')
+```
+
+```{python}
+# some cleanup on IDs
+GEX_combined.obs.index = GEX_combined.obs.index.str.split('-').str[0]
+GEX_combined.obs.head()
+
+#some cleanup on genes
+GEX_combined.var.index = GEX_combined.var.index.str.split('.').str[0]
+GEX_combined.var.head()
+
+GEX_combined
+```
+
+```{python}
+sc.pl.highest_expr_genes(GEX_combined, n_top=20, )
+```
+
+
+```{python}
+scv.pp.filter_and_normalize(GEX_combined, min_shared_counts=20, n_top_genes=2000)
+scv.pp.remove_duplicate_cells(GEX_combined)
+sc.tl.pca(GEX_combined)
+scv.pp.neighbors(GEX_combined, n_pcs=30, n_neighbors=30)
+scv.pp.moments(GEX_combined, n_pcs=None, n_neighbors=None)
+```
+
+```{python}
+sc.tl.umap(GEX_combined)
+sc.pl.umap(GEX_combined)
+```
+
+
+```{python}
+scv.tl.recover_dynamics(GEX_combined, n_jobs=24,show_progress_bar=False)
+```
+
+```{python}
+scv.tl.velocity(GEX_combined, mode="dynamical")
+scv.tl.velocity_graph(GEX_combined)
+scv.pl.velocity_embedding_stream(
+    GEX_combined, basis="umap", legend_fontsize=12, title="", smooth=0.8, min_mass=4
+)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{python}
+GEX_combined.layers["ambiguous"] = scipy.sparse.csr_matrix(np.zeros(GEX_combined.X.shape))
+GEX_combined.obs["CellID"] = GEX_combined.obs.index
+#GEX_combined.obs["Clusters"] = GEX_combined.obs.index.map(them.obs["Clusters"])
+GEX_combined.var["Accession"] = GEX_combined.var.index
+```
+
+
+```{r}
+seurat_combined@meta.data$py_anno <- paste0(str_sub(rownames(seurat_combined@meta.data),start = 4),".",seurat_combined@meta.data$orig.ident)
+seurat_combined@meta.data$py_anno <- str_replace(seurat_combined@meta.data$py_anno,pattern = ".S",".GEX")
+cl_info <- seurat_combined@meta.data[seurat_combined@meta.data$py_anno%in%py$GEX_combined$obs$CellID,]
+umap_info <- seurat_combined@reductions$umap@cell.embeddings
+sample_id <- str_split(rownames(umap_info),pattern = "_",simplify = T)[,1]
+sample_id <- str_replace(sample_id,pattern = "S","GEX")
+cell_id <- str_split(rownames(umap_info),pattern = "_",simplify = T)[,2]
+  rownames(umap_info) <- paste0(cell_id,".",sample_id)
+gene_id <- rownames(seurat_combined@assays$RNA)
+length(gene_id)
+
+```
+
+
+```{python}
+GEX_filtered = GEX_combined[list(r.cl_info["py_anno"]),:].copy()
+```
+
+```{python}
+    
+```
+
+
+```{r}
+py$GEX_filtered$obs$cluster <- cl_info$seurat_clusters
+```
+
+
+
+```{python}
+GEX_filtered.obs
+```
+
+
+
+
+```{python}
+scv.pp.show_proportions(GEX_filtered)
+print(GEX_filtered)
+```
+
+```{python}
+scv.pp.filter_and_normalize(GEX_filtered, min_shared_counts=20, n_top_genes=2000)
+scv.pp.moments(GEX_filtered, n_pcs=30, n_neighbors=30)
+
+```
+
+
+
+
+```{python}
+scv.tl.velocity(GEX_filtered)
+scv.tl.velocity_graph(GEX_filtered)
+
+```
+
+
+
+```{python}
+scv.tl.umap(GEX_filtered)
+sc.pl.umap(GEX_filtered,color=['ENSG00000126709'])
+```
+```{python}
+GEX_filtered.var_names
+```
+
+
+
+```{python}
+scv.pl.velocity_embedding_stream(GEX_filtered, basis='umap',color="cluster")
+```
+
+
+```{python}
+
+GEX_filtered.obs.seurat
+```
+
+
+
+
+
+# Analysis - Only normal 
+## Perform intial analysis in R
+
+```{r}
+require(anndata)
+anndata::write_h5ad(anndata = py$GEX_filtered,filename = "../results/saves/2021-12-13_GEX_filtered.h5ad")
+```
+
+
+```{r}
+# import loom to Seurat
+Convert("../results/saves/2021-12-13_GEX_filtered.h5ad", dest = "h5seurat", overwrite = TRUE)
+
+require(SeuratDisk)
+r_GEX_filtered <- read_h5ad("../results/saves/2021-12-13_GEX_filtered.h5ad")
+
+Convert("pbmc3k_final.h5ad", dest = "h5seurat", overwrite = TRUE)
+pbmc3k
+
+
+```
+
+
+
+```{python}
+GEX_filtered.write_loom("results/saves/gex.filtered.loom")
+
+```
+
+
+
+```{python}
+# Filter dataset
+GEX_only_nostim = GEX_filtered[GEX_filtered.obs['sample'].isin(['GEX1','GEX2'])].copy() 
+GEX_only_nostim
+```
+
+
+```{python}
+qc = sc.pp.calculate_qc_metrics(GEX_only_nostim)
+                              
+cell_qc_dataframe = qc[0]
+gene_qc_dataframe = qc[1]
+
+print('This is the cell quality control dataframe:')
+print(cell_qc_dataframe.head(10))
+
+print('\n\n\n\nThis is the gene quality control dataframe:')
+print(gene_qc_dataframe.head(10))
+```
+
+
+```{python}
+#Perform PCA analysis
+
+sc.pp.filter_genes(GEX_only_nostim, min_cells = 2)
+sc.pp.normalize_per_cell(GEX_only_nostim,counts_per_cell_after=1e6)
+                         
+sc.pp.log1p(GEX_only_nostim)
+sc.pp.scale(GEX_only_nostim)
+sc.pp.pca(GEX_only_nostim)
+
+sc.pl.pca_overview(GEX_only_nostim, color='sample')
+sc.pl.pca(GEX_only_nostim)
+
+sc.pp.neighbors(GEX_only_nostim) # UMAP is based on the neighbor graph; we'll compute this first
+sc.tl.umap(GEX_only_nostim, min_dist=0.5, spread=1.0, random_state=1, n_components=2)
+sc.pl.umap(GEX_only_nostim, color='sample')
+
+```
+
+
+
+
+
+
+
+
+

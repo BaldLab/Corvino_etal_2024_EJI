@@ -1,0 +1,1281 @@
+---
+title: "Bald - velocity analysis"
+output: html_notebook
+---
+
+# Setup 
+```{r}
+require(reticulate) 
+use_python(python = "/home/rstudio/miniconda3/bin/python",required = T)
+reticulate::use_condaenv(condaenv = "/home/rstudio/miniconda3",
+                         required = T)
+
+```
+
+
+```{r,message=FALSE}
+library(Seurat)
+library(tidyverse)
+require(ggplot2)
+```
+
+```{python}
+import anndata
+import igraph
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+import rpy2.robjects as robj
+import scanpy as sc
+import scipy
+import scipy.optimize
+import scvelo as scv
+import sklearn
+import velocyto as vcy
+import cellrank as cr
+```
+
+
+```{python}
+from collections import Counter
+from IPython.core.display import display, HTML
+from numpy_groupies import aggregate, aggregate_np
+from rpy2.robjects.packages import importr
+from sklearn.decomposition import PCA
+from sklearn.neighbors import NearestNeighbors
+from scipy.spatial.distance import pdist, squareform
+```
+
+```{python}
+sc.set_figure_params(dpi=300, dpi_save=300,figsize=(6, 4), color_map = 'viridis_r',)
+sc.settings.verbosity = 1
+sc.logging.print_header()
+```
+
+
+# Combined 
+
+Remove subsets TRM, two gamma-delta pop, MAIT
+
+
+
+
+# untreated 
+## Run seurat analysis
+
+```{r}
+count_dirs <- paste0(list.dirs(path = "/work_dir/data/Human_HNSCC_2019/Raw_input_datasets/GEX_only",
+                        full.names = T,recursive = F),"/outs/filtered_feature_bc_matrix")
+names(count_dirs) <- paste0("GEX",1:4)
+
+counts_raw_untreated <- Read10X(data.dir = count_dirs[1:2],strip.suffix = T)
+seurat_untreated <- CreateSeuratObject(counts_raw_untreated, min.cells = 2)
+seurat_untreated <- PercentageFeatureSet(seurat_untreated,pattern = "^MT-", col.name="percent.mito")
+VlnPlot(seurat_untreated,features = c("nCount_RNA","nFeature_RNA","percent.mito"),log = T)
+seurat_untreated <- subset(seurat_untreated,percent.mito < 15 & nFeature_RNA >500)
+VlnPlot(seurat_untreated,features = c("nCount_RNA","nFeature_RNA","percent.mito"),log = T)
+plot1 <- FeatureScatter(seurat_untreated, feature1 = "nCount_RNA", feature2 = "percent.mito")
+plot2 <- FeatureScatter(seurat_untreated, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot1 + plot2
+
+seurat_untreated_list <- SplitObject(seurat_untreated,split.by = "orig.ident")
+
+seurat_untreated_list <- lapply(X = seurat_untreated_list, function(x) {
+  x <- NormalizeData(x)
+  x <- FindVariableFeatures(x, selection.method = "vst", nfeatures = 2000)
+})
+
+features <- SelectIntegrationFeatures(object.list = seurat_untreated_list)
+seurat.anchors <- FindIntegrationAnchors(object.list = seurat_untreated_list,
+                                         anchor.features = features)
+seurat_untreated <- IntegrateData(anchorset = seurat.anchors)
+seurat_untreated
+
+DefaultAssay(seurat_untreated) <- "integrated"
+
+seurat_untreated <- ScaleData(seurat_untreated, features = rownames(seurat_untreated))
+seurat_untreated <- RunPCA(seurat_untreated, features = VariableFeatures(object = seurat_untreated))
+
+DimPlot(seurat_untreated, reduction = "pca")
+ElbowPlot(seurat_untreated,ndims = 30)
+
+seurat_untreated <- FindNeighbors(seurat_untreated, dims = 1:25)
+seurat_untreated <- FindClusters(seurat_untreated, resolution = 0.5)
+
+
+seurat_untreated <- RunUMAP(seurat_untreated, dims = 1:25)
+DimPlot(seurat_untreated, reduction = "umap") + 
+  scale_color_manual(values = pals::cols25())
+DimPlot(seurat_untreated,group.by = "orig.ident",
+        reduction = "umap") + 
+  scale_color_manual(values = pals::cols25())
+
+FeaturePlot(seurat_untreated,pt.size = .1,features = c("GZMK","IL7R","XCL2","IFI6")) & scale_color_viridis_c(option = "A")
+
+FeaturePlot(seurat_untreated,pt.size = .1,features = c("CXCL13",
+                                                       "CCL4","LMNA","FTH1")) & scale_color_viridis_c(option = "A")
+
+FeaturePlot(seurat_untreated,pt.size = .1,features = c("ACP5","TRBV12-4",
+                                                       "KLRC3","UBE2C")) & scale_color_viridis_c(option = "A")
+FeaturePlot(seurat_untreated,pt.size = .1,features = c("HPGD","KLRB1","CXCL8","SOD2")) & scale_color_viridis_c(option = "A")
+
+
+VlnPlot(seurat_untreated,features = c("IFI6","ISG15","IFIT3")) & scale_fill_manual(values = pals::cols25())
+
+```
+
+
+```{r,fig.height=10,fig.width=12}
+DefaultAssay(seurat_untreated) <- "RNA"
+
+all_markers_untreated <- FindAllMarkers(seurat_untreated,logfc.threshold = .6)
+
+all_markers_untreated %>%
+  group_by(cluster) %>%
+  top_n(n = 5, wt = avg_log2FC) -> top10
+seurat_untreated <- ScaleData(seurat_untreated,features =  top10$gene)
+DoHeatmap(seurat_untreated, features = top10$gene,
+          group.colors = pals::cols25()) + 
+  NoLegend() + 
+  scale_fill_viridis_c(option = "A")
+```
+
+
+```{r}
+save.image(file =paste0("/work_dir/results/saves/",Sys.Date(),"_scvelo_untreated.RData"))
+load("/work_dir/results/saves/2022-01-31_scvelo_untreated.RData")
+```
+
+
+## Export information for velocity analysis
+
+```{r}
+write.csv(Cells(seurat_untreated), file = "/work_dir/results/exports/seurat_untreated/cellID_obs.csv", row.names = FALSE)
+write.csv(Embeddings(seurat_untreated, reduction = "umap"), file = "/work_dir/results/exports/seurat_untreated/cell_embeddings.csv")
+write.csv(paste0("Cluster_",seurat_untreated@meta.data$seurat_clusters), file = "/work_dir/results/exports/seurat_untreated/clusters.csv")
+
+```
+
+
+
+# Run scVelo
+```{python}
+sc.settings.figdir = '/work_dir/results/figures/'
+scv.settings.figdir = '/work_dir/results/figures/'
+cr.settings.figdir = '/work_dir/results/figures/'
+scv.settings.set_figure_params('scvelo') 
+cr.settings.set_figure_params('scvelo') 
+
+GEX1 = anndata.read('/work_dir/results/preprocessing_velocity/kb_count/GEX1/counts_unfiltered/adata.h5ad')
+GEX2 = anndata.read('/work_dir/results/preprocessing_velocity/kb_count/GEX2/counts_unfiltered/adata.h5ad')
+```
+
+
+```{python}
+scv.pl.proportions(GEX1,save="/work_dir/results/figures/scvelo_prop_gex1.png")
+scv.pl.proportions(GEX2,save="/work_dir/results/figures/scvelo_prop_gex2.png")
+
+```
+
+
+```{python}
+import pandas as pd
+# combine untreated samples
+GEX1.obs['sample'] = 'GEX1'
+GEX2.obs['sample'] = 'GEX2'
+
+GEX1.obs['bcs'] = GEX1.obs.index
+GEX2.obs['bcs'] = GEX2.obs.index
+
+GEX1.obs.index = GEX1.obs['sample'] + "_" + GEX1.obs['bcs'] 
+GEX2.obs.index = GEX2.obs['sample'] + "_" + GEX2.obs['bcs'] 
+
+
+sc_untreated = GEX1.concatenate(GEX2,index_unique=None)
+
+scv.pl.proportions(sc_untreated,save="/work_dir/results/figures/scvelo_prop_untreated.png")
+
+
+# filter for cell IDs from seurat 
+sample_obs_untreated = pd.read_csv("/work_dir/results/exports/seurat_untreated/cellID_obs.csv")
+
+sc_untreated = sc_untreated[np.isin(sc_untreated.obs.index,sample_obs_untreated["x"])]
+sc_untreated
+```
+
+
+
+```{python}
+# add UMAP coordinates
+umap_untreated = pd.read_csv("/work_dir/results/exports/seurat_untreated/cell_embeddings.csv")
+
+sc_untreated.obsm['X_umap'] = umap_untreated.iloc[:,1:].values
+
+# add cluster info
+cluster_untreated = pd.read_csv("/work_dir/results/exports/seurat_untreated/clusters.csv")
+sc_untreated.obs['clusters'] = cluster_untreated.iloc[:,1:].values
+
+sc.pl.embedding(sc_untreated,basis='umap',color ="clusters",save="_scvelo_clusters.png") 
+scv.pl.proportions(sc_untreated,save="/work_dir/results/figures/scvelo_prop_untreated.png")
+
+```
+
+
+```{r}
+p1 <- py$sc_untreated$obs  %>% as_tibble(rownames = "cell_ids")  %>%
+  mutate(UMAP1=py$sc_untreated$obsm$X_umap[,1],
+         UMAP2=py$sc_untreated$obsm$X_umap[,2]) %>%
+  mutate(clusters=as.factor(py$sc_untreated$obs$clusters)) %>%
+  ggplot(aes(UMAP1,UMAP2,color=clusters)) +
+  geom_point(size=.5) +
+  theme_classic() +
+  scale_color_manual(values = pals::cols25()) +
+  guides(color = guide_legend(override.aes = list(size = 2) )) 
+
+ggsave(plot = p1,width = 10,height = 6,filename = "/work_dir/results/figures/umap_scvelo_clusters.png")
+p1
+
+
+p2 <- py$sc_untreated$obs  %>% as_tibble(rownames = "cell_ids")  %>%
+  mutate(UMAP1=py$sc_untreated$obsm$X_umap[,1],
+         UMAP2=py$sc_untreated$obsm$X_umap[,2]) %>%
+  mutate(clusters=as.factor(py$sc_untreated$obs$clusters)) %>%
+  ggplot(aes(UMAP1,UMAP2,color=sample)) +
+  geom_point(size=.5) +
+  theme_classic() +
+  scale_color_manual(values = pals::cols25()) +
+  guides(color = guide_legend(override.aes = list(size = 2) )) 
+
+ggsave(plot = p2,width = 10,height = 6,filename = "/work_dir/results/figures/umap_scvelo_samples.png")
+p2
+
+
+
+p3 <- py$sc_untreated$obs  %>% as_tibble(rownames = "cell_ids")  %>%
+  mutate(UMAP1=py$sc_untreated$obsm$X_umap[,1],
+         UMAP2=py$sc_untreated$obsm$X_umap[,2]) %>%
+  mutate(clusters=as.factor(py$sc_untreated$obs$clusters)) %>%
+  group_by(clusters,sample) %>%
+  tally() %>%
+  ggplot(aes(clusters,n,fill=sample)) +
+  geom_bar(stat="identity",position = "dodge") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45,hjust=1)) +
+  scale_fill_manual(values = pals::cols25())  
+
+ggsave(plot = p3,width = 10,height = 6,filename = "/work_dir/results/figures/untreated_clusters.png")
+p3
+
+
+p4 <- py$sc_untreated$obs  %>% as_tibble(rownames = "cell_ids")  %>%
+  mutate(UMAP1=py$sc_untreated$obsm$X_umap[,1],
+         UMAP2=py$sc_untreated$obsm$X_umap[,2]) %>%
+  mutate(clusters=as.factor(py$sc_untreated$obs$clusters)) %>%
+  group_by(clusters,sample) %>%
+  tally() %>%
+  ggplot(aes(clusters,n,fill=sample)) +
+  geom_bar(stat="identity",position = "fill") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45,hjust=1)) +
+  scale_fill_manual(values = pals::cols25())  +
+  scale_y_continuous(labels = scales::percent) +
+  labs(y="Percentage of cluster")
+
+ggsave(plot = p4,width = 10,height = 6,filename = "/work_dir/results/figures/untreated_clusters_perc.png")
+p4
+
+
+
+
+```
+
+
+
+
+```{python}
+# conda install pandas=1.3.5
+scv.pp.filter_and_normalize(sc_untreated)
+sc_untreated
+scv.pp.moments(sc_untreated)
+sc_untreated
+scv.tl.recover_dynamics(sc_untreated)
+scv.tl.velocity(sc_untreated, mode = "dynamical")
+scv.tl.velocity_graph(sc_untreated)
+
+
+```
+
+
+```{python}
+# save velocity data
+sc_untreated.write('/work_dir/results/saves/sc_untreated.h5ad')
+#sc_untreated = anndata.read('/work_dir/results/saves/sc_untreated.h5ad')
+
+
+```
+
+```{python}
+scv.pl.velocity_embedding_stream(sc_untreated, basis = 'umap',color="clusters",
+legend_fontsize=6,min_mass=3, density=3 , save="sc_velo_umap_velocity.png")
+
+scv.pl.velocity_embedding_grid(sc_untreated, basis='umap', color="clusters",
+legend_fontsize=6,min_mass=3, arrow_length =2 ,save="sc_velo_umap_velocity_grid.png")
+
+
+```
+
+
+
+```{python}
+
+scv.pl.velocity_embedding(sc_untreated, arrow_length=3, arrow_size=2, dpi=300,save="scvelo_velocity_embedding.png")
+
+
+```
+
+
+```{python}
+scv.pl.velocity(sc_untreated, ['ENSG00000126709.16'], ncols=2,save="/work_dir/results/figures/scvelo_gene_dynamics.png")
+
+scv.pl.scatter(sc_untreated, 'ENSG00000126709.16', color=['clusters', 'velocity'],
+               add_outline='Cluster_0, Cluster_1, Cluster_4',save="/work_dir/results/figures/scvelo_gene_dynamics_ifi6.png")
+
+```
+
+```{python}
+scv.tl.rank_velocity_genes(sc_untreated, groupby='clusters', min_corr=.3)
+
+df = scv.DataFrame(sc_untreated.uns['rank_velocity_genes']['names'])
+df["Cluster_4"].head(5)
+
+
+kwargs = dict(frameon=False, size=10, linewidth=1.5,
+              add_outline='Cluster_1, Cluster_4')
+
+scv.pl.scatter(sc_untreated, df['Cluster_4'][:5], ylabel='Cluster_4', **kwargs,save="scvelo_gene_dynamics_cluster4.png")
+
+```
+
+```{python}
+scv.tl.velocity_confidence(sc_untreated)
+keys = 'velocity_length', 'velocity_confidence'
+scv.pl.scatter(sc_untreated, c=keys, cmap='coolwarm', perc=[5, 95],save="scvelo_untreated_velocity_confidence.png")
+
+df = sc_untreated.obs.groupby('clusters')[keys].mean().T
+```
+```{r,fig.width=10,fig.height=3}
+py$sc_untreated$obs %>% as_tibble() %>% 
+  select(clusters,velocity_length, velocity_confidence) %>%
+  group_by(clusters) %>%
+  summarise(across(everything(),mean)) %>%
+  pivot_longer(cols = -clusters) %>%
+  group_by(name) %>% 
+  mutate(scaled=scale(value)) %>%
+  ggplot(aes(x=clusters,y=name, fill=scaled)) +
+  geom_tile() + 
+  scale_fill_distiller(palette = "RdYlBu") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45,hjust=1)) 
+```
+
+
+
+## Cell rank
+
+```{python}
+from cellrank.tl.kernels import VelocityKernel
+vk = VelocityKernel(sc_untreated)
+vk.compute_transition_matrix()
+print(vk)
+
+from cellrank.tl.kernels import ConnectivityKernel
+ck = ConnectivityKernel(sc_untreated).compute_transition_matrix()
+
+combined_kernel = 0.8 * vk + 0.2 * ck
+from cellrank.tl.estimators import GPCCA
+
+g = GPCCA(combined_kernel)
+print(g)
+g.compute_schur(n_components=20)
+g.plot_spectrum(save="cellrank_schur_untreated.png")
+
+g.compute_macrostates(n_states=4, cluster_key="clusters")
+g.plot_macrostates(save="cellrank_macrostates.png")
+g.plot_macrostates(same_plot=False,save="cellrank_macrostates_sep.png")
+g.plot_macrostates(discrete=True,save="cellrank_macrostates_discrete.png")
+
+
+```
+
+```{python}
+g.set_terminal_states_from_macrostates()
+g.compute_absorption_probabilities()
+g.plot_absorption_probabilities(save="cellrank_untreated_absorption_probabilities.png")
+
+g.compute_absorption_probabilities(time_to_absorption="all")
+sc_untreated.obs["mean_time_to_absorption"] = g.absorption_times["Cluster_8, Cluster_2, Cluster_3, Cluster_4 mean"]
+scv.pl.scatter(sc_untreated, color="mean_time_to_absorption",save="cellrank_absorption_time_untreated.png")
+
+```
+
+
+
+```{python}
+cl4_drivers = g.compute_lineage_drivers(lineages="Cluster_4", return_drivers=True)
+cl4_drivers.sort_values(by="Cluster_4_corr", ascending=False)
+g.plot_lineage_drivers("Cluster_4", n_genes=8,save="cellrank_cl4_driver_genes.png")
+
+```
+
+
+
+```{python}
+cr.pl.circular_projection(sc_untreated, keys="clusters", legend_loc="right",save="cellrank_circular_projection.png")
+```
+
+
+
+
+
+
+
+```{python}
+from cellrank.tl.kernels import VelocityKernel
+vk = VelocityKernel(sc_untreated,backward=True)
+vk.compute_transition_matrix()
+print(vk)
+
+from cellrank.tl.kernels import ConnectivityKernel
+ck = ConnectivityKernel(sc_untreated,backward=True).compute_transition_matrix()
+
+combined_kernel = 0.8 * vk + 0.2 * ck
+from cellrank.tl.estimators import GPCCA
+
+g = GPCCA(combined_kernel)
+print(g)
+g.compute_schur(n_components=20)
+g.plot_spectrum(save="cellrank_schur_initial.png")
+
+g.compute_macrostates(n_states=6, cluster_key="clusters")
+g.plot_macrostates(save="cellrank_macrostates_initial.png")
+g.plot_macrostates(same_plot=False,save="cellrank_macrostates_sep_initial.png")
+g.plot_macrostates(discrete=True,save="cellrank_macrostates_discrete_initial.png")
+
+cr.pl.lineages(sc_untreated, same_plot=False,save="cellrank_lineages.png")
+
+
+```
+
+```{python}
+scv.tl.recover_latent_time(
+    sc_untreated, root_key="initial_states_probs", end_key="terminal_states_probs"
+)
+scv.tl.paga(
+    sc_untreated,
+    groups="clusters",
+    root_key="initial_states_probs",
+    end_key="terminal_states_probs",
+    use_time_prior="velocity_pseudotime",
+)
+
+cr.pl.cluster_fates(
+    sc_untreated,
+    mode="paga_pie",
+    cluster_key="clusters",
+    basis="umap",
+    legend_kwargs={"loc": "top right out"},
+    legend_loc="top left out",
+    node_size_scale=1,
+    edge_width_scale=1,
+    max_edge_width=4,
+    title="directed PAGA",
+    save="cellrank_directed_paga.png"
+)
+
+model = cr.ul.models.GAM(sc_untreated)
+
+cr.pl.heatmap(
+    sc_untreated,
+    model,
+    genes=sc_untreated.varm['terminal_lineage_drivers']["Cluster_4_corr"].sort_values(ascending=False).index[:100],
+    show_absorption_probabilities=True,
+    lineages=("Cluster_4"),
+    n_jobs=1,
+    backend="loky",
+    save="cellrank_cl4_heatmap.png"
+)
+
+
+
+```
+
+
+
+
+
+```{python}
+cr.settings.figdir = '/work_dir/results/figures/'
+
+  
+cr.tl.terminal_states(sc_untreated, cluster_key="clusters",n_states=4,weight_connectivities=0.2)
+cr.pl.terminal_states(sc_untreated,same_plot=False,save="cellrank_terminal_states.png")
+
+```
+
+
+
+
+```{python}
+cr.tl.initial_states(sc_untreated, cluster_key="clusters")
+cr.pl.initial_states(sc_untreated,save="cellrank_initial_states.png")
+
+```
+
+
+
+```{python}
+cr.tl.lineages(sc_untreated)
+cr.pl.lineages(sc_untreated, same_plot=False,save="cellrank_lineage.png")
+cr.pl.lineages(sc_untreated, same_plot=True)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{python}
+GEX_untreated.write_h5ad("/work_dir/results/preprocessing_velocity/velocity/GEX_untreated.h5ad")
+GEX_treated.write_h5ad("/work_dir/results/preprocessing_velocity/velocity/GEX_treated.h5ad")  
+```
+
+
+
+```{r}
+Convert("/work_dir/results/preprocessing_velocity/velocity/GEX_untreated.h5ad",
+        dest = "h5seurat", overwrite = TRUE)
+GEX_untreated <- LoadH5Seurat("/work_dir/results/preprocessing_velocity/velocity/GEX_untreated.h5seurat")
+```
+
+
+
+```{r}
+GEX_untreated
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+```{python}
+# some cleanup on IDs
+GEX_combined.obs.index = GEX_combined.obs.index.str.split('-').str[0]
+GEX_combined.obs.head()
+
+#some cleanup on genes
+GEX_combined.var.index = GEX_combined.var.index.str.split('.').str[0]
+GEX_combined.var.head()
+
+GEX_combined
+```
+
+```{python}
+sc.pl.highest_expr_genes(GEX_combined, n_top=20, )
+```
+
+
+```{python}
+scv.pp.filter_and_normalize(GEX_combined, min_shared_counts=20, n_top_genes=2000)
+scv.pp.remove_duplicate_cells(GEX_combined)
+sc.tl.pca(GEX_combined)
+scv.pp.neighbors(GEX_combined, n_pcs=30, n_neighbors=30)
+scv.pp.moments(GEX_combined, n_pcs=None, n_neighbors=None)
+```
+
+```{python}
+sc.tl.umap(GEX_combined)
+sc.pl.umap(GEX_combined)
+```
+
+
+```{python}
+scv.tl.recover_dynamics(GEX_combined, n_jobs=24,show_progress_bar=False)
+```
+
+```{python}
+scv.tl.velocity(GEX_combined, mode="dynamical")
+scv.tl.velocity_graph(GEX_combined)
+scv.pl.velocity_embedding_stream(
+    GEX_combined, basis="umap", legend_fontsize=12, title="", smooth=0.8, min_mass=4
+)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{python}
+GEX_combined.layers["ambiguous"] = scipy.sparse.csr_matrix(np.zeros(GEX_combined.X.shape))
+GEX_combined.obs["CellID"] = GEX_combined.obs.index
+#GEX_combined.obs["Clusters"] = GEX_combined.obs.index.map(them.obs["Clusters"])
+GEX_combined.var["Accession"] = GEX_combined.var.index
+```
+
+
+```{r}
+seurat_combined@meta.data$py_anno <- paste0(str_sub(rownames(seurat_combined@meta.data),start = 4),".",seurat_combined@meta.data$orig.ident)
+seurat_combined@meta.data$py_anno <- str_replace(seurat_combined@meta.data$py_anno,pattern = ".S",".GEX")
+cl_info <- seurat_combined@meta.data[seurat_combined@meta.data$py_anno%in%py$GEX_combined$obs$CellID,]
+umap_info <- seurat_combined@reductions$umap@cell.embeddings
+sample_id <- str_split(rownames(umap_info),pattern = "_",simplify = T)[,1]
+sample_id <- str_replace(sample_id,pattern = "S","GEX")
+cell_id <- str_split(rownames(umap_info),pattern = "_",simplify = T)[,2]
+  rownames(umap_info) <- paste0(cell_id,".",sample_id)
+gene_id <- rownames(seurat_combined@assays$RNA)
+length(gene_id)
+
+```
+
+
+```{python}
+GEX_filtered = GEX_combined[list(r.cl_info["py_anno"]),:].copy()
+```
+
+```{python}
+    
+```
+
+
+```{r}
+py$GEX_filtered$obs$cluster <- cl_info$seurat_clusters
+```
+
+
+
+```{python}
+GEX_filtered.obs
+```
+
+
+
+
+```{python}
+scv.pp.show_proportions(GEX_filtered)
+print(GEX_filtered)
+```
+
+```{python}
+scv.pp.filter_and_normalize(GEX_filtered, min_shared_counts=20, n_top_genes=2000)
+scv.pp.moments(GEX_filtered, n_pcs=30, n_neighbors=30)
+
+```
+
+
+
+
+```{python}
+scv.tl.velocity(GEX_filtered)
+scv.tl.velocity_graph(GEX_filtered)
+
+```
+
+
+
+```{python}
+scv.tl.umap(GEX_filtered)
+sc.pl.umap(GEX_filtered,color=['ENSG00000126709'])
+```
+```{python}
+GEX_filtered.var_names
+```
+
+
+
+```{python}
+scv.pl.velocity_embedding_stream(GEX_filtered, basis='umap',color="cluster")
+```
+
+
+```{python}
+
+GEX_filtered.obs.seurat
+```
+
+
+
+
+
+# Analysis - Only normal 
+## Perform intial analysis in R
+
+```{r}
+require(anndata)
+anndata::write_h5ad(anndata = py$GEX_filtered,filename = "../results/saves/2021-12-13_GEX_filtered.h5ad")
+```
+
+
+```{r}
+# import loom to Seurat
+Convert("../results/saves/2021-12-13_GEX_filtered.h5ad", dest = "h5seurat", overwrite = TRUE)
+
+require(SeuratDisk)
+r_GEX_filtered <- read_h5ad("../results/saves/2021-12-13_GEX_filtered.h5ad")
+
+Convert("pbmc3k_final.h5ad", dest = "h5seurat", overwrite = TRUE)
+pbmc3k
+
+
+```
+
+
+
+```{python}
+GEX_filtered.write_loom("results/saves/gex.filtered.loom")
+
+```
+
+
+
+```{python}
+# Filter dataset
+GEX_only_nostim = GEX_filtered[GEX_filtered.obs['sample'].isin(['GEX1','GEX2'])].copy() 
+GEX_only_nostim
+```
+
+
+```{python}
+qc = sc.pp.calculate_qc_metrics(GEX_only_nostim)
+                              
+cell_qc_dataframe = qc[0]
+gene_qc_dataframe = qc[1]
+
+print('This is the cell quality control dataframe:')
+print(cell_qc_dataframe.head(10))
+
+print('\n\n\n\nThis is the gene quality control dataframe:')
+print(gene_qc_dataframe.head(10))
+```
+
+
+```{python}
+#Perform PCA analysis
+
+sc.pp.filter_genes(GEX_only_nostim, min_cells = 2)
+sc.pp.normalize_per_cell(GEX_only_nostim,counts_per_cell_after=1e6)
+                         
+sc.pp.log1p(GEX_only_nostim)
+sc.pp.scale(GEX_only_nostim)
+sc.pp.pca(GEX_only_nostim)
+
+sc.pl.pca_overview(GEX_only_nostim, color='sample')
+sc.pl.pca(GEX_only_nostim)
+
+sc.pp.neighbors(GEX_only_nostim) # UMAP is based on the neighbor graph; we'll compute this first
+sc.tl.umap(GEX_only_nostim, min_dist=0.5, spread=1.0, random_state=1, n_components=2)
+sc.pl.umap(GEX_only_nostim, color='sample')
+
+```
+
+
+
+
+
+
+
+
+
+# treated 
+## Run seurat analysis
+
+```{r,fig.width=12}
+count_dirs <- paste0(list.dirs(path = "/work_dir/data/Human_HNSCC_2019/Raw_input_datasets/GEX_only",
+                               full.names = T,recursive = F),"/outs/filtered_feature_bc_matrix")
+names(count_dirs) <- paste0("GEX",1:4)
+
+counts_raw_treated <- Read10X(data.dir = count_dirs[3:4],strip.suffix = T)
+seurat_treated <- CreateSeuratObject(counts_raw_treated, min.cells = 2)
+seurat_treated <- PercentageFeatureSet(seurat_treated,pattern = "^MT-", col.name="percent.mito")
+VlnPlot(seurat_treated,features = c("nCount_RNA","nFeature_RNA","percent.mito"),log = T)
+seurat_treated <- subset(seurat_treated,percent.mito < 15 & nFeature_RNA >500)
+VlnPlot(seurat_treated,features = c("nCount_RNA","nFeature_RNA","percent.mito"),log = T)
+plot1 <- FeatureScatter(seurat_treated, feature1 = "nCount_RNA", feature2 = "percent.mito")
+plot2 <- FeatureScatter(seurat_treated, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot1 + plot2
+
+seurat_treated_list <- SplitObject(seurat_treated,split.by = "orig.ident")
+
+seurat_treated_list <- lapply(X = seurat_treated_list, function(x) {
+  x <- NormalizeData(x)
+  x <- FindVariableFeatures(x, selection.method = "vst", nfeatures = 2000)
+})
+
+features_treated <- SelectIntegrationFeatures(object.list = seurat_treated_list)
+seurat.anchors.treated <- FindIntegrationAnchors(object.list = seurat_treated_list,
+                                         anchor.features = features_treated)
+seurat_treated <- IntegrateData(anchorset = seurat.anchors.treated)
+seurat_treated
+
+DefaultAssay(seurat_treated) <- "integrated"
+
+seurat_treated <- ScaleData(seurat_treated, features = rownames(seurat_treated))
+seurat_treated <- RunPCA(seurat_treated, features = VariableFeatures(object = seurat_treated))
+
+DimPlot(seurat_treated, reduction = "pca")
+ElbowPlot(seurat_treated,ndims = 30)
+
+seurat_treated <- FindNeighbors(seurat_treated, dims = 1:25)
+seurat_treated <- FindClusters(seurat_treated, resolution = 0.5)
+
+
+seurat_treated <- RunUMAP(seurat_treated, dims = 1:25)
+DimPlot(seurat_treated, reduction = "umap") + 
+  scale_color_manual(values = pals::cols25())
+DimPlot(seurat_treated,group.by = "orig.ident",
+        reduction = "umap") + 
+  scale_color_manual(values = pals::cols25())
+
+FeaturePlot(seurat_treated,pt.size = .1,features = c("GZMK","IL7R","XCL2","IFI6")) & scale_color_viridis_c(option = "A")
+
+FeaturePlot(seurat_treated,pt.size = .1,features = c("CXCL13",
+                                                       "CCL4","LMNA","FTH1")) & scale_color_viridis_c(option = "A")
+
+FeaturePlot(seurat_treated,pt.size = .1,features = c("ACP5","TRBV12-4",
+                                                       "KLRC3","UBE2C")) & scale_color_viridis_c(option = "A")
+FeaturePlot(seurat_treated,pt.size = .1,features = c("HPGD","KLRB1","CXCL8","SOD2")) & scale_color_viridis_c(option = "A")
+
+
+VlnPlot(seurat_treated,features = c("IFI6","ISG15","IFIT3")) & scale_fill_manual(values = pals::cols25())
+
+```
+
+
+```{r,fig.height=10,fig.width=12}
+DefaultAssay(seurat_treated) <- "RNA"
+
+all_markers_treated <- FindAllMarkers(seurat_treated,logfc.threshold = .6)
+
+all_markers_treated %>%
+  group_by(cluster) %>%
+  top_n(n = 5, wt = avg_log2FC) -> top10
+seurat_treated <- ScaleData(seurat_treated,features =  top10$gene)
+DoHeatmap(seurat_treated, features = top10$gene,
+          group.colors = pals::cols25()) + 
+  NoLegend() + 
+  scale_fill_viridis_c(option = "A")
+```
+
+
+```{r}
+save.image(file =paste0("/work_dir/results/saves/",Sys.Date(),"_scvelo_treated.RData"))
+#load("/work_dir/results/saves/2022-01-31_scvelo_treated.RData")
+```
+
+
+## Export information for velocity analysis
+
+```{r}
+write.csv(Cells(seurat_treated), file = "/work_dir/results/exports/seurat_treated/cellID_obs.csv", row.names = FALSE)
+write.csv(Embeddings(seurat_treated, reduction = "umap"), file = "/work_dir/results/exports/seurat_treated/cell_embeddings.csv")
+write.csv(paste0("Cluster_",seurat_treated@meta.data$seurat_clusters), file = "/work_dir/results/exports/seurat_treated/clusters.csv")
+
+```
+
+
+
+# Run scVelo
+```{python}
+sc.settings.figdir = '/work_dir/results/figures/'
+scv.settings.figdir = '/work_dir/results/figures/'
+cr.settings.figdir = '/work_dir/results/figures/'
+scv.settings.set_figure_params(style='scvelo') 
+sc.settings.set_figure_params('scvelo') 
+cr.settings.set_figure_params('scvelo') 
+
+GEX3 = anndata.read('/work_dir/results/preprocessing_velocity/kb_count/GEX3/counts_unfiltered/adata.h5ad')
+GEX4 = anndata.read('/work_dir/results/preprocessing_velocity/kb_count/GEX4/counts_unfiltered/adata.h5ad')
+```
+
+
+```{python}
+scv.pl.proportions(GEX3,save="/work_dir/results/figures/scvelo_prop_gex3.png")
+scv.pl.proportions(GEX4,save="/work_dir/results/figures/scvelo_prop_gex4.png")
+
+```
+
+
+```{python}
+import pandas as pd
+# combine treated samples
+GEX3.obs['sample'] = 'GEX3'
+GEX4.obs['sample'] = 'GEX4'
+
+GEX3.obs['bcs'] = GEX3.obs.index
+GEX4.obs['bcs'] = GEX4.obs.index
+
+GEX3.obs.index = GEX3.obs['sample'] + "_" + GEX3.obs['bcs'] 
+GEX4.obs.index = GEX4.obs['sample'] + "_" + GEX4.obs['bcs'] 
+
+
+sc_treated = GEX3.concatenate(GEX4,index_unique=None)
+
+scv.pl.proportions(sc_treated,save="/work_dir/results/figures/scvelo_prop_treated.png")
+
+
+# filter for cell IDs from seurat 
+sample_obs_treated = pd.read_csv("/work_dir/results/exports/seurat_treated/cellID_obs.csv")
+
+sc_treated = sc_treated[np.isin(sc_treated.obs.index,sample_obs_treated["x"])]
+sc_treated
+```
+
+
+
+```{python}
+# add UMAP coordinates
+umap_treated = pd.read_csv("/work_dir/results/exports/seurat_treated/cell_embeddings.csv")
+
+sc_treated.obsm['X_umap'] = umap_treated.iloc[:,1:].values
+
+# add cluster info
+cluster_treated = pd.read_csv("/work_dir/results/exports/seurat_treated/clusters.csv")
+sc_treated.obs['clusters'] = cluster_treated.iloc[:,1:].values
+
+sc.pl.embedding(sc_treated,basis='umap',color ="clusters",save="_treated_scvelo_clusters.png") 
+scv.pl.proportions(sc_treated,save="/work_dir/results/figures/treated_scvelo_prop.png")
+
+```
+
+
+```{r}
+p1 <- py$sc_treated$obs  %>% as_tibble(rownames = "cell_ids")  %>%
+  mutate(UMAP1=py$sc_treated$obsm$X_umap[,1],
+         UMAP2=py$sc_treated$obsm$X_umap[,2]) %>%
+  mutate(clusters=as.factor(py$sc_treated$obs$clusters)) %>%
+  ggplot(aes(UMAP1,UMAP2,color=clusters)) +
+  geom_point(size=.5) +
+  theme_classic() +
+  scale_color_manual(values = pals::cols25()) +
+  guides(color = guide_legend(override.aes = list(size = 2) )) 
+
+ggsave(plot = p1,width = 10,height = 6,filename = "/work_dir/results/figures/treated_umap_scvelo_clusters.png")
+p1
+
+
+p2 <- py$sc_treated$obs  %>% as_tibble(rownames = "cell_ids")  %>%
+  mutate(UMAP1=py$sc_treated$obsm$X_umap[,1],
+         UMAP2=py$sc_treated$obsm$X_umap[,2]) %>%
+  mutate(clusters=as.factor(py$sc_treated$obs$clusters)) %>%
+  ggplot(aes(UMAP1,UMAP2,color=sample)) +
+  geom_point(size=.5) +
+  theme_classic() +
+  scale_color_manual(values = pals::cols25()) +
+  guides(color = guide_legend(override.aes = list(size = 2) )) 
+
+ggsave(plot = p2,width = 10,height = 6,filename = "/work_dir/results/figures/treated_umap_scvelo_samples.png")
+p2
+
+
+
+p3 <- py$sc_treated$obs  %>% as_tibble(rownames = "cell_ids")  %>%
+  mutate(UMAP1=py$sc_treated$obsm$X_umap[,1],
+         UMAP2=py$sc_treated$obsm$X_umap[,2]) %>%
+  mutate(clusters=as.factor(py$sc_treated$obs$clusters)) %>%
+  group_by(clusters,sample) %>%
+  tally() %>%
+  ggplot(aes(clusters,n,fill=sample)) +
+  geom_bar(stat="identity",position = "dodge") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45,hjust=1)) +
+  scale_fill_manual(values = pals::cols25())  
+
+ggsave(plot = p3,width = 10,height = 6,filename = "/work_dir/results/figures/treated_clusters.png")
+p3
+
+
+p4 <- py$sc_treated$obs  %>% as_tibble(rownames = "cell_ids")  %>%
+  mutate(UMAP1=py$sc_treated$obsm$X_umap[,1],
+         UMAP2=py$sc_treated$obsm$X_umap[,2]) %>%
+  mutate(clusters=as.factor(py$sc_treated$obs$clusters)) %>%
+  group_by(clusters,sample) %>%
+  tally() %>%
+  ggplot(aes(clusters,n,fill=sample)) +
+  geom_bar(stat="identity",position = "fill") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45,hjust=1)) +
+  scale_fill_manual(values = pals::cols25())  +
+  scale_y_continuous(labels = scales::percent) +
+  labs(y="Percentage of cluster")
+
+ggsave(plot = p4,width = 10,height = 6,filename = "/work_dir/results/figures/treated_clusters_perc.png")
+p4
+
+
+
+
+```
+
+
+
+
+```{python}
+# conda install pandas=1.3.5
+scv.pp.filter_and_normalize(sc_treated)
+sc_treated
+scv.pp.moments(sc_treated)
+sc_treated
+scv.tl.recover_dynamics(sc_treated)
+scv.tl.velocity(sc_treated, mode = "dynamical")
+scv.tl.velocity_graph(sc_treated)
+
+
+```
+
+
+```{python}
+# save velocity data
+sc_treated.write('/work_dir/results/saves/sc_treated.h5ad')
+#sc_treated = anndata.read('/work_dir/results/saves/sc_treated.h5ad')
+
+
+```
+
+```{python}
+scv.pl.velocity_embedding_stream(sc_treated, basis = 'umap',color="clusters",
+                                 legend_fontsize=6,min_mass=3, density=3 , save="treated_sc_velo_umap_velocity.png")
+
+scv.pl.velocity_embedding_grid(sc_treated, basis='umap', color="clusters",
+                               legend_fontsize=6,min_mass=3, arrow_length =2 ,save="treated_sc_velo_umap_velocity_grid.png")
+
+
+```
+
+
+
+```{python}
+
+scv.pl.velocity_embedding(sc_treated, arrow_length=3, arrow_size=2, dpi=300,save="treated_velocity_embedding.png")
+
+
+```
+
+
+```{python}
+scv.pl.velocity(sc_treated, ['ENSG00000126709.16'], ncols=2,save="/work_dir/results/figures/treated_scvelo_gene_dynamics.png")
+
+scv.pl.scatter(sc_treated, 'ENSG00000126709.16', color=['clusters', 'velocity'],
+               add_outline='Cluster_0,Cluster_4',
+               save="/work_dir/results/figures/treated_scvelo_gene_dynamics_ifi6.png")
+
+```
+
+```{python}
+scv.tl.rank_velocity_genes(sc_treated, groupby='clusters', min_corr=.3)
+
+df_treated = scv.DataFrame(sc_treated.uns['rank_velocity_genes']['names'])
+df["Cluster_4"].head(5)
+
+
+kwargs = dict(frameon=False, size=10, linewidth=1.5,
+              add_outline='Cluster_1, Cluster_4')
+
+scv.pl.scatter(sc_treated, df['Cluster_4'][:5], ylabel='Cluster_4', **kwargs,save="treated_scvelo_gene_dynamics_cluster4.png")
+
+```
+
+```{python}
+scv.tl.velocity_confidence(sc_treated)
+keys = 'velocity_length', 'velocity_confidence'
+scv.pl.scatter(sc_treated, c=keys, cmap='coolwarm', perc=[5, 95],save="scvelo_treated_velocity_confidence.png")
+
+df = sc_treated.obs.groupby('clusters')[keys].mean().T
+```
+
+```{r,fig.width=10,fig.height=3}
+py$sc_treated$obs %>% as_tibble() %>% 
+  select(clusters,velocity_length, velocity_confidence) %>%
+  group_by(clusters) %>%
+  summarise(across(everything(),mean)) %>%
+  pivot_longer(cols = -clusters) %>%
+  group_by(name) %>% 
+  mutate(scaled=scale(value)) %>%
+  ggplot(aes(x=clusters,y=name, fill=scaled)) +
+  geom_tile() + 
+  scale_fill_distiller(palette = "RdYlBu") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45,hjust=1)) 
+```
+
+
+
+## Cell rank
+
+```{python}
+from cellrank.tl.kernels import VelocityKernel
+vk = VelocityKernel(sc_treated)
+vk.compute_transition_matrix()
+print(vk)
+
+from cellrank.tl.kernels import ConnectivityKernel
+ck = ConnectivityKernel(sc_treated).compute_transition_matrix()
+
+combined_kernel = 0.8 * vk + 0.2 * ck
+from cellrank.tl.estimators import GPCCA
+
+g = GPCCA(combined_kernel)
+print(g)
+g.compute_schur(n_components=20)
+g.plot_spectrum(save="cellrank_schur_treated.png")
+
+g.compute_macrostates(n_states=4, cluster_key="clusters")
+g.plot_macrostates(save="cellrank_macrostates.png")
+g.plot_macrostates(same_plot=False,save="cellrank_macrostates_sep.png")
+g.plot_macrostates(discrete=True,save="cellrank_macrostates_discrete.png")
+
+
+```
+
+```{python}
+g.set_terminal_states_from_macrostates()
+g.compute_absorption_probabilities()
+g.plot_absorption_probabilities(save="cellrank_treated_absorption_probabilities.png")
+
+g.compute_absorption_probabilities(time_to_absorption="all")
+sc_treated.obs["mean_time_to_absorption"] = g.absorption_times["Cluster_7, Cluster_2, Cluster_0, Cluster_4, Cluster_5 mean"]
+scv.pl.scatter(sc_treated, color="mean_time_to_absorption",save="cellrank_absorption_time_treated.png")
+
+```
+
+
+
+```{python}
+cl4_drivers = g.compute_lineage_drivers(lineages="Cluster_4", return_drivers=True)
+cl4_drivers.sort_values(by="Cluster_4_corr", ascending=False)
+g.plot_lineage_drivers("Cluster_4", n_genes=8,save="treated_cellrank_cl4_driver_genes.png")
+
+```
+
+
+
+```{python}
+cr.pl.circular_projection(sc_treated, keys="clusters", legend_loc="right",save="treated_cellrank_circular_projection.png")
+```
+
+
+
+
+
+
+
+```{python}
+from cellrank.tl.kernels import VelocityKernel
+vk = VelocityKernel(sc_treated,backward=True)
+vk.compute_transition_matrix()
+print(vk)
+
+from cellrank.tl.kernels import ConnectivityKernel
+ck = ConnectivityKernel(sc_treated,backward=True).compute_transition_matrix()
+
+combined_kernel = 0.8 * vk + 0.2 * ck
+from cellrank.tl.estimators import GPCCA
+
+g = GPCCA(combined_kernel)
+print(g)
+g.compute_schur(n_components=20)
+g.plot_spectrum(save="cellrank_schur_initial.png")
+
+g.compute_macrostates(n_states=6, cluster_key="clusters")
+g.plot_macrostates(save="cellrank_macrostates_initial.png")
+g.plot_macrostates(same_plot=False,save="cellrank_macrostates_sep_initial.png")
+g.plot_macrostates(discrete=True,save="cellrank_macrostates_discrete_initial.png")
+
+cr.pl.lineages(sc_treated, same_plot=False,save="cellrank_lineages.png")
+
+
+```
+
+```{python}
+scv.tl.recover_latent_time(
+  sc_treated, root_key="initial_states_probs", end_key="terminal_states_probs"
+)
+scv.tl.paga(
+  sc_treated,
+  groups="clusters",
+  root_key="initial_states_probs",
+  end_key="terminal_states_probs",
+  use_time_prior="velocity_pseudotime",
+)
+
+cr.pl.cluster_fates(
+  sc_treated,
+  mode="paga_pie",
+  cluster_key="clusters",
+  basis="umap",
+  legend_kwargs={"loc": "top right out"},
+  legend_loc="top left out",
+  node_size_scale=1,
+  edge_width_scale=1,
+  max_edge_width=4,
+  title="directed PAGA",
+  save="treated_cellrank_directed_paga.png"
+)
+
+model = cr.ul.models.GAM(sc_treated)
+
+cr.pl.heatmap(
+  sc_treated,
+  model,
+  genes=sc_treated.varm['terminal_lineage_drivers']["Cluster_4_corr"].sort_values(ascending=False).index[:100],
+  show_absorption_probabilities=True,
+  lineages=("Cluster_4"),
+  n_jobs=1,
+  backend="loky",
+  save="treated_cellrank_cl4_heatmap.png"
+)
+
+
+
+```
+
+
+
+
+
+

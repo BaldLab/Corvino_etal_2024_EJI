@@ -1,0 +1,617 @@
+---
+title: "HNSCC_Cell_Cell_Interaction_Analysis"
+author: "Dillon Corvino"
+date: "03/02/2020"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: united
+    highlight: tango
+    df_print: paged
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+  markdown: 
+    wrap: 72
+---
+
+Built with R version `{r} getRversion()`
+
+## Setup {.tabset}
+
+### Environment
+
+```{r setup, message = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,  
+  eval = TRUE, 
+  tidy = TRUE
+)
+
+knitr::opts_knit$set(
+  root.dir = "../"
+)
+
+# Environment Set up
+rm(list = ls()) #Clean workspace
+cat("\014")     #Clean Console
+gc() # Free memory
+
+
+# Establish working directory
+library("rstudioapi")
+
+# Set working directory to source file location
+#setwd(dirname(getActiveDocumentContext()$path))
+setwd("..")
+
+# Load packages
+source("R/Load_packages.R", local = knitr::knit_global())
+
+# Create output directories & load custom functions & colour scheme
+source("R/Setup.R", local = knitr::knit_global())
+
+# pipeline variables
+quick.load <- TRUE
+long.compute <- FALSE
+
+# load saved seurat object with cluster annotations and imputation performed
+if(quick.load){
+  seurat.combined <- readRDS("Exported_RDS_files/seurat_combined.rds")
+}
+
+```
+
+## Cell-cell receptor-ligand analysis {.tabset}
+
+### Celltalker analysis
+
+```{r celltalker}
+
+# Create output directories
+if(!dir.exists("output/figures/Cell_cell_interaction/celltalker")){
+  dir.create("output/figures/Cell_cell_interaction/celltalker", 
+             recursive = T)
+}
+
+
+# Ref dataset supplied with celltalker
+head(ramilowski_pairs)
+tail(ramilowski_pairs)
+
+dim(ramilowski_pairs) #There are 2,557 unique ligand/receptor interactions in this dataset
+
+
+###########################################################################
+#Identification of differentially expressed ligands and receptors
+###########################################################################
+
+# Identify ligands and receptors in our dataset
+ligs <- as.character(unique(ramilowski_pairs$ligand))
+recs <- as.character(unique(ramilowski_pairs$receptor))
+
+ligs.present <- rownames(seurat.combined)[rownames(seurat.combined) %in% ligs]
+recs.present <- rownames(seurat.combined)[rownames(seurat.combined) %in% recs]
+
+genes.to.use <- union(ligs.present,recs.present)
+length(genes.to.use) # 760
+
+
+# Use FindAllMarkers for deferentially expressed ligands and receptors between groups
+
+# Set idents to clusters
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+ligand.markers <- FindAllMarkers(seurat.combined,
+                                 assay = "RNA", 
+                                 features = genes.to.use,
+                                 only.pos = TRUE)
+
+nrow(ligand.markers) # 269 
+
+
+# Filter by adjusted P.value 
+ligand.markers <- ligand.markers[ligand.markers$p_val_adj < 0.05, ]
+
+nrow(ligand.markers) # 254
+
+# get vector of unique ligands/receptors
+ligs.recs.use <- unique(ligand.markers$gene)
+length(ligs.recs.use) # 111
+
+
+
+
+# Filter ramilowski pairs
+interactions.forward1 <- ramilowski_pairs[as.character(ramilowski_pairs$ligand) %in% ligs.recs.use, ]
+
+interactions.forward2 <- ramilowski_pairs[as.character(ramilowski_pairs$receptor) %in% ligs.recs.use, ]
+
+interact.for <- rbind(interactions.forward1, interactions.forward2)
+
+dim(interact.for) # 494 ligand receptor interactions
+
+
+
+
+# Create data for celltalker
+DefaultAssay(seurat.combined) <- "RNA"
+
+expr.mat <- GetAssayData(seurat.combined, 
+                         slot = "counts")
+
+# define clusters and groups(condition)
+defined.clusters <- seurat.combined@meta.data$seurat_clusters
+defined.groups <- seurat.combined@meta.data$condition
+
+
+# Need to get a replicates vector 
+defined.replicates <- seurat.combined@meta.data$group
+defined.replicates <- gsub("S1", "US_1", defined.replicates)
+defined.replicates <- gsub("S2", "US_2", defined.replicates)
+defined.replicates <- gsub("S3", "Stim_1", defined.replicates)
+defined.replicates <- gsub("S4", "Stim_2", defined.replicates)
+
+# Needs to be a named vector
+names(defined.clusters) <- rownames(seurat.combined@meta.data)
+names(defined.groups) <- rownames(seurat.combined@meta.data)
+names(defined.replicates) <- rownames(seurat.combined@meta.data)
+
+# should be a factor vector
+defined.clusters <- factor(defined.clusters, levels = c("Naïve_like_1_CM",
+                                                        "Naïve_like_2_SC",
+                                                        "Naïve_like_3",
+                                                        "Cytotoxic",
+                                                        "Type_I_IFN",
+                                                        "Stimulated_1",
+                                                        "Stimulated_exhausted",
+                                                        "Exhausted_1",
+                                                        "Exhausted_2",
+                                                        "TRM",
+                                                        "gd_T_g9d2",
+                                                        "gd_T_non_g9d2",
+                                                        "MAIT",
+                                                        "Proliferative"))
+
+defined.groups <- factor(defined.groups, levels = c("US",
+                                                    "Stim"))
+
+defined.replicates <- factor(defined.replicates, levels = c("US_1",
+                                                            "US_2",
+                                                            "Stim_1",
+                                                            "Stim_2"))
+
+
+
+reshaped.matrices <- reshape_matrices(count.matrix = expr.mat,
+                                      clusters = defined.clusters,
+                                      groups = defined.groups,
+                                      replicates = defined.replicates,
+                                      ligands.and.receptors = interact.for)
+
+
+#Check out the hierarchy of the tibble
+reshaped.matrices
+reshaped.matrices$group
+reshaped.matrices$samples
+
+unnest(reshaped.matrices,
+       cols = "samples")
+
+names(pull(unnest(reshaped.matrices, cols = "samples"))[[1]])
+
+# small bug in create_lig_rec_tib function, required small modification 
+# found in Modified_Celltalker_function.R
+
+consistent.lig.recs <- create_lig_rec_tib.mod(exp.tib = reshaped.matrices,
+                                              clusters = defined.clusters,
+                                              groups = defined.groups,
+                                              replicates = defined.replicates,
+                                              cells.reqd = 10,
+                                              freq.pos.reqd = 0.5,
+                                              ligands.and.receptors = interact.for)
+
+
+
+
+
+consistent.lig.recs
+
+
+unnest(consistent.lig.recs[1,2], 
+       cols = "lig.rec.exp")
+
+pull(unnest(consistent.lig.recs[1,2],
+            cols = "lig.rec.exp")[1,2])[[1]]
+
+# Determine putative ligand/receptor pairs
+put.int <- putative_interactions(ligand.receptor.tibble = consistent.lig.recs,
+                                 clusters = defined.clusters,
+                                 groups = defined.groups,
+                                 freq.group.in.cluster = 0.05,
+                                 ligands.and.receptors = interact.for)
+
+# Identify and visualise unique ligand/receptor pairs in a group
+
+# Identify unique ligand/receptor interactions present in each sample
+unique.ints <- unique_interactions(put.int,
+                                   group1 = "US",
+                                   group2 = "Stim",
+                                   interact.for)
+
+temp.df <- as.data.frame(unique.ints)
+
+# Get data to plot circos unique to US
+US.to.plot <- pull(unique.ints[1,2])[[1]]
+for.circos.US <- pull(put.int[1,2])[[1]][US.to.plot]
+
+circos_plot(interactions = for.circos.US,
+            clusters = defined.clusters, 
+            ligand.col = "lightgreen", 
+            receptor.col = "blue",
+            interactions.col = "lightgray") 
+
+dev.copy(pdf, "output/figures/Cell_cell_interaction/celltalker/Celltalker_unique_US_clusters.pdf")
+dev.off()
+
+
+
+
+#Get data to plot circos unique to Stim
+Stim.to.plot <- pull(unique.ints[2,2])[[1]]
+for.circos.Stim <- pull(put.int[2,2])[[1]][Stim.to.plot]
+
+circos_plot(interactions = for.circos.Stim,
+            clusters = defined.clusters, 
+            ligand.col = "lightgreen", 
+            receptor.col = "blue",
+            interactions.col = "lightgray")
+
+dev.copy(pdf, "output/figures/Cell_cell_interaction/celltalker/Celltalker_unique_Stim_clusters.pdf")
+dev.off()
+
+
+
+
+
+# Get data to plot circos common 
+Common.to.plot <- pull(unique.ints[3,2])[[1]]
+for.circos.common <- pull(put.int[1,2])[[1]][Common.to.plot]
+
+circos_plot(interactions = for.circos.common,
+            clusters = defined.clusters, 
+            ligand.col = "lightgreen", 
+            receptor.col = "blue",
+            interactions.col = "lightgray")
+
+dev.copy(pdf, "output/figures/Cell_cell_interaction/celltalker/Celltalker_Common_clusters.pdf")
+dev.off()
+
+
+
+
+```
+
+### iTalk
+
+```{r iTalk}
+
+# Create output directories
+if(!dir.exists("output/figures/Cell_cell_interaction/iTALK")){
+  dir.create("output/figures/Cell_cell_interaction/iTALK", 
+             recursive = T)
+}
+
+
+#############################
+# Run analysis for clusters
+#############################
+
+# Downsample dataset
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+seurat.combined.small <- subset(seurat.combined, downsample = 300)
+
+iTalk.input <- as.data.frame(seurat.combined.small@assays$RNA@data)
+
+# Append metadata
+temp <- as.data.frame(seurat.combined.small@meta.data)
+sum(rownames(temp) != colnames(iTalk.input))
+
+iTalk.input <- t(iTalk.input)
+iTalk.input <- as.data.frame(iTalk.input)
+
+iTalk.input$cell_type <- temp$seurat_clusters
+
+
+# find top 50 percent highly expressed genes
+highly_exprs_genes <- rawParse(iTalk.input, top_genes = 50, stats = 'mean')
+
+# find the ligand-receptor pairs from highly expressed genes
+comm_list<-c('growth factor','other','cytokine','checkpoint')
+
+cell_col <- structure(c('Red','Blue','Green','Purple', 'Orange', 'Grey','Black', "Yellow", "Darkred", "lightblue", "Pink", "burlywood", "Brown", "Darkgreen"), names = unique(iTalk.input$cell_type))
+
+
+par(mfrow = c(1,2))
+par(mfrow = c(1,1))
+
+res <- NULL
+
+for(comm_type in comm_list){
+  res_cat <- FindLR(highly_exprs_genes, 
+                    datatype = 'mean count', 
+                    comm_type = comm_type)
+  
+  res_cat <- res_cat[order(res_cat$cell_from_mean_exprs*res_cat$cell_to_mean_exprs, 
+                           decreasing = TRUE), ]
+  
+  #plot by ligand category
+  
+  #top 50 ligand-receptor pairs
+  LRPlot(res_cat[1:50,],
+         datatype = 'mean count', 
+         cell_col = cell_col,
+         link.arr.lwd = res_cat$cell_from_mean_exprs[1:50], 
+         link.arr.width = res_cat$cell_to_mean_exprs[1:50])
+  title(comm_type)
+  
+  dev.copy(pdf, paste0("output/figures/Cell_cell_interaction/iTALK/Ligand_receptor_plot_", comm_type, ".pdf"))
+  dev.off()
+  
+  res <- rbind(res,res_cat)
+}
+
+
+
+
+
+
+# Archived code below to plot network 1 by 1 for each cell type
+
+#for(i in 1:14){
+
+# col.vec <- rep("#BEBEBE00", 14)
+#col.vec[i] <- "Red"
+
+
+#cell_col <- structure(col.vec, names = unique(iTalk.input$cell_type))
+
+#NetView(res_cat, 
+#        col = cell_col,
+#        vertex.label.cex = 1,
+#        label = FALSE,
+#        arrow.width = 1, 
+#        edge.max.width = 20)
+
+#}
+
+
+```
+
+
+### Cellphonedb
+
+```{r Cellphonedb}
+
+# Create output directories
+if(!dir.exists("output/tables/cellphonedb")){
+  dir.create("output/tables/cellphonedb", 
+             recursive = T)
+}
+
+# Cellphonedb is a python program - can also be used via an online webportal
+
+# Prepare and export data for cellphonedb analysis
+
+
+# Export dataset of all cells (US and Stim)
+
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+save.data.frame.function(seurat.combined@assays$RNA@data,
+                         path = "output/tables/cellphonedb/", 
+                         title = "cellphonedb_both_conditions_normed")
+
+
+# Metadata with cluster annotation
+tmp.meta.data <- cbind(rownames(seurat.combined@meta.data),
+                       seurat.combined@meta.data[ ,"seurat_clusters", drop = F])
+
+write.table(tmp.meta.data,
+            "output/tables/cellphonedb/Metadata_both_conditions_clusters.txt",
+            sep="\t", 
+            quote = FALSE, 
+            row.names = FALSE)
+
+
+# Export dataset of just US cells
+Idents(seurat.combined) <- seurat.combined@meta.data$condition
+
+temp.seurat <- subset(seurat.combined, idents = "US")
+
+Idents(temp.seurat) <- temp.seurat@meta.data$seurat_clusters
+
+save.data.frame.function(temp.seurat@assays$RNA@data,
+                         path = "output/tables/cellphonedb/", 
+                         title = "cellphonedb_US_normed")
+
+# Metadata with cluster annotations
+tmp.meta.data <- cbind(rownames(temp.seurat@meta.data), temp.seurat@meta.data[ ,"seurat_clusters", drop = F])
+
+write.table(tmp.meta.data,
+            "output/tables/cellphonedb/Metadata_US_clusters.txt",
+            sep="\t", 
+            quote = FALSE, 
+            row.names = FALSE)
+
+
+
+# Export dataset of just Stim cells
+Idents(seurat.combined) <- seurat.combined@meta.data$condition
+
+temp.seurat <- subset(seurat.combined, idents = "Stim")
+
+Idents(temp.seurat) <- temp.seurat@meta.data$seurat_clusters
+
+save.data.frame.function(temp.seurat@assays$RNA@data, 
+                         path = "output/tables/cellphonedb/", 
+                         title = "cellphonedb_Stim_normed")
+
+# Metadata with cluster annotations
+tmp.meta.data <- cbind(rownames(temp.seurat@meta.data), temp.seurat@meta.data[ ,"seurat_clusters", drop = F])
+
+write.table(tmp.meta.data,
+            "output/tables/cellphonedb/Metadata_Stim_clusters.txt",
+            sep="\t", 
+            quote = FALSE, 
+            row.names = FALSE)
+
+
+rm(tmp.meta.data, temp.seurat)
+
+
+```
+
+### Export for NATMI analysis in python
+
+```{r NATMI_export}
+
+# Create output directory
+if(!dir.exists("output/tables/NATMI")){
+  dir.create("output/tables/NATMI", 
+             recursive = T)
+}
+
+##########################################
+# All clusters in both conditions
+##########################################
+
+# Expression data
+write.csv(100 * (exp(as.matrix(GetAssayData(object = seurat.combined, assay = "RNA", slot = "data"))) - 1),
+          "output/tables/NATMI/Expression_data_all_clusters_both_conditions.csv", 
+          row.names = TRUE)
+
+
+# Metadata
+Idents(seurat.combined) <- seurat.combined@meta.data$seurat_clusters
+
+write.csv(Idents(seurat.combined),
+          "output/tables/NATMI/metadata_all_clusters_both_conditions.csv",
+          row.names = TRUE)
+
+
+
+###########################
+# All clusters in US Only
+###########################
+Idents(seurat.combined) <- seurat.combined@meta.data$condition
+temp.seurat <- subset(seurat.combined, idents = "US")
+
+
+# Expression data
+write.csv(100 * (exp(as.matrix(GetAssayData(object = temp.seurat, assay = "RNA", slot = "data"))) - 1),
+          "output/tables/NATMI/Expression_data_all_clusters_US_only.csv", 
+          row.names = TRUE)
+
+
+# Metadata
+Idents(temp.seurat) <- temp.seurat@meta.data$seurat_clusters
+
+write.csv(Idents(temp.seurat),
+          "output/tables/NATMI/metadata_all_clusters_US_only.csv",
+          row.names = TRUE)
+
+rm(temp.seurat)
+
+
+###########################
+# All clusters in Stim Only
+###########################
+Idents(seurat.combined) <- seurat.combined@meta.data$condition
+temp.seurat <- subset(seurat.combined, idents = "Stim")
+
+
+# Expression data
+write.csv(100 * (exp(as.matrix(GetAssayData(object = temp.seurat, assay = "RNA", slot = "data"))) - 1),
+          "output/tables/NATMI/Expression_data_all_clusters_Stim_only.csv", 
+          row.names = TRUE)
+
+
+# Metadata
+Idents(temp.seurat) <- temp.seurat@meta.data$seurat_clusters
+
+write.csv(Idents(temp.seurat),
+          "output/tables/NATMI/metadata_all_clusters_Stim_only.csv",
+          row.names = TRUE)
+
+rm(temp.seurat)
+
+######################################
+# Only T-cell clusters in US Only
+######################################
+
+Idents(seurat.combined) <- seurat.combined@meta.data$condition
+temp.seurat <- subset(seurat.combined, idents = "US")
+
+Idents(temp.seurat) <- temp.seurat@meta.data$seurat_clusters
+
+keep.ids <- unique(Idents(temp.seurat))[!grepl(paste0(c("gd_T_*.", "MAIT", "TRM"), collapse = "|"), unique(Idents(temp.seurat)))]
+keep.ids <- as.character(keep.ids)
+
+temp.seurat <- subset(temp.seurat, idents = keep.ids)
+
+
+# Expression data
+write.csv(100 * (exp(as.matrix(GetAssayData(object = temp.seurat, assay = "RNA", slot = "data"))) - 1),
+          "output/tables/NATMI/Expression_data_Tcell_clusters_US_only.csv", 
+          row.names = TRUE)
+
+
+# Metadata
+Idents(temp.seurat) <- temp.seurat@meta.data$seurat_clusters
+
+write.csv(Idents(temp.seurat),
+          "output/tables/NATMI/metadata_Tcell_clusters_US_only.csv",
+          row.names = TRUE)
+
+rm(temp.seurat)
+
+######################################
+# Only T-cell clusters in Stim Only
+######################################
+
+Idents(seurat.combined) <- seurat.combined@meta.data$condition
+temp.seurat <- subset(seurat.combined, idents = "Stim")
+
+Idents(temp.seurat) <- temp.seurat@meta.data$seurat_clusters
+
+keep.ids <- unique(Idents(temp.seurat))[!grepl(paste0(c("gd_T_*.", "MAIT", "TRM"), collapse = "|"), unique(Idents(temp.seurat)))]
+keep.ids <- as.character(keep.ids)
+
+temp.seurat <- subset(temp.seurat, idents = keep.ids)
+
+
+# Expression data
+write.csv(100 * (exp(as.matrix(GetAssayData(object = temp.seurat, assay = "RNA", slot = "data"))) - 1),
+          "output/tables/NATMI/Expression_data_Tcell_clusters_Stim_only.csv", 
+          row.names = TRUE)
+
+
+# Metadata
+Idents(temp.seurat) <- temp.seurat@meta.data$seurat_clusters
+
+write.csv(Idents(temp.seurat),
+          "output/tables/NATMI/metadata_Tcell_clusters_Stim_only.csv",
+          row.names = TRUE)
+
+rm(temp.seurat)
+
+
+
+```
+

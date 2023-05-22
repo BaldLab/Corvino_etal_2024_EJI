@@ -1,0 +1,1402 @@
+---
+title: "HNSCC_scTCRseq_Generic_analysis"
+author: "Dillon Corvino"
+date: "03/02/2020"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: united
+    highlight: tango
+    df_print: paged
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+  markdown: 
+    wrap: 72
+---
+
+Built with R version `r getRversion()`
+
+## Setup {.tabset}
+
+### Environment
+```{r setup, message = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,  
+  eval = TRUE, 
+  tidy = TRUE
+)
+
+knitr::opts_knit$set(
+  root.dir = "../"
+)
+
+# Environment Set up
+rm(list = ls()) #Clean workspace
+cat("\014")     #Clean Console
+gc() # Free memory
+
+
+# Establish working directory
+library("rstudioapi")
+
+# Set working directory to source file location
+#setwd(dirname(getActiveDocumentContext()$path))
+setwd("..")
+
+# Load packages
+source("R/Load_packages.R", local = knitr::knit_global())
+
+# Create output directories & load custom functions & colour scheme
+source("R/Setup.R", local = knitr::knit_global())
+
+# pipeline variables
+quick.load <- TRUE
+long.compute <- TRUE
+do.plot <- TRUE
+
+# load saved seurat object with cluster annotations and imputation performed
+if(quick.load){
+  seurat.combined <- readRDS("Exported_RDS_files/seurat_combined.rds")
+  DefaultAssay(seurat.combined) <- "integrated"
+  
+  seurat.tcr <- readRDS("Exported_RDS_files/seurat_tcr.rds")
+  DefaultAssay(seurat.tcr) <- "integrated"
+  
+  seurat.tcr.filt <- readRDS("Exported_RDS_files/seurat_tcr_filt.rds")
+  DefaultAssay(seurat.tcr.filt) <- "integrated"
+  
+  # Also requires combined contig file 
+  combined.contig <- readRDS("Exported_RDS_files/combined_contig.rds")
+
+}
+
+```
+
+
+## Generic TCR analysis {.tabset}
+
+### Analysis with scRepertoire
+```{r scRepertoire_analysis}
+
+# Ensure dir back in working
+setwd(working.dir)
+
+# Create output directories
+if(!dir.exists("output_tcr/figures/scRepertoire/clusters")){
+  dir.create("output_tcr/figures/scRepertoire/clusters",
+             recursive = T)}
+
+if(!dir.exists("output_tcr/figures/scRepertoire/modules")){
+  dir.create("output_tcr/figures/scRepertoire/modules",
+             recursive = T)}
+
+output.dir <- "output_tcr/figures/scRepertoire"
+setwd(output.dir)
+
+#########################
+# Set uniform variables 
+#########################
+
+# for clonalProportion split
+split.var <- c(1, 5, 10, 20, 50, 500, 5000, 1e+05)
+
+# for clonalHomeostasis split
+homeostasis.var <- c(Rare = 0.001, 
+                     very_small = 0.002,
+                     Small = 0.005, 
+                     Medium = 0.01, 
+                     Large = 0.05, 
+                     very_Large = 0.1, 
+                     Hyperexpanded = 1)
+
+
+#########################################################
+# Perform basic clonotype analysis and visualisation
+#########################################################
+
+# quantify % unique clonotype per sample
+quantContig(combined.contig,
+            cloneCall="aa", 
+            scale = TRUE)
+
+dev.copy(pdf, "Quant_contig_sample.pdf")
+dev.off()
+
+# quantify % unique clonotype per group
+quantContig(combined.contig,
+            cloneCall="aa", 
+            group = "ID",
+            scale = TRUE)
+
+dev.copy(pdf, "Quant_contig_treatment.pdf")
+dev.off()
+
+
+# abundance of clonotypes
+abundanceContig(combined.contig,
+                cloneCall = "aa",
+                group = "ID", 
+                scale = TRUE)
+
+dev.copy(pdf, "Clonotype_abundance_by_treatment.pdf")
+dev.off()
+
+
+
+# Chain length overview 
+lengthContig(combined.contig, 
+             cloneCall="aa", 
+             chains = "combined",
+             group = "ID") 
+
+dev.copy(pdf, "Chain_length_combined.pdf")
+dev.off()
+
+# Chain length by chain
+lengthContig(combined.contig, 
+             cloneCall="aa", 
+             chains = "single",
+             group = "ID")
+
+dev.copy(pdf, "Chain_length_by_locus.pdf")
+dev.off()
+
+
+## Something looks weird with the alluvial plots - lines dont line up
+
+# Compare clonotypes across samples
+
+compareClonotypes(combined.contig,
+                  numbers = 20, 
+                  samples = c("S1_US", "S3_Stim"), 
+                  cloneCall = "aa", 
+                  graph = "alluvial") + NoLegend()
+
+
+compareClonotypes(combined.contig,
+                  numbers = 20, 
+                  samples = c("S2_US", "S4_Stim"), 
+                  cloneCall = "aa", 
+                  graph = "alluvial") + NoLegend()
+
+
+
+# Overview of clonal homeostasis
+clonalHomeostasis(combined.contig, 
+                  cloneType = homeostasis.var,
+                  cloneCall = "aa")
+
+dev.copy(pdf, "clonalHomeostasis.pdf")
+dev.off()
+
+
+# Clonal Proportion
+clonalProportion(combined.contig,
+                 split = split.var,
+                 cloneCall = "aa") 
+
+dev.copy(pdf, "clonalProportion.pdf")
+dev.off()
+
+# clonal overlap
+clonalOverlap(combined.contig, 
+              cloneCall = "aa", 
+              method = "morisita")
+
+dev.copy(pdf, "cloncalOverlap.pdf")
+dev.off()
+
+
+# clone size distribution
+clonesizeDistribution(combined.contig, 
+                      cloneCall = "aa", 
+                      method = "ward.D2")
+
+dev.copy(pdf, "cloneSizeDistribution.pdf")
+dev.off()
+
+# Clonal Diversity 
+clonalDiversity(combined.contig,
+                cloneCall = "aa",
+                group = "ID")
+
+dev.copy(pdf, "clonalDiversity.pdf")
+dev.off()
+
+
+
+########################################################################
+# perform basic repertoire analysis across clusters & modules
+########################################################################
+
+# Modified function, original was not subsetting correctly
+expression2List.mod <- function(sc, group){
+  meta <- sc@meta.data
+  unique.var <- str_sort(as.character(unique(meta[,group])), numeric = TRUE)
+  df <- NULL
+  for (i in seq_along(unique.var)) {
+    subset.var <- meta[meta[,group] == unique.var[i],]
+    df[[i]] <- subset.var
+  }
+  names(df) <- unique.var
+  
+  return(df)
+}
+
+tcr.clusters <- expression2List.mod(seurat.tcr, group = "seurat_clusters")
+
+####################
+# Clonal Diversity 
+####################
+
+clonalDiversity(tcr.clusters, 
+                cloneCall = "aa")
+
+dev.copy(pdf, "clusters/clonalDiversity_clusters.pdf")
+dev.off()
+
+
+####################
+# Clonal Homeostasis
+####################
+
+clonalHomeostasis(tcr.clusters, 
+                  cloneType = homeostasis.var,
+                  cloneCall = "aa") + 
+  theme(axis.text.x = element_text(angle = 90))
+
+dev.copy(pdf, "clusters/clonalHomeostasis_clusters.pdf")
+dev.off()
+
+
+####################
+# Clonal Proportion
+####################
+
+clonalProportion(tcr.clusters, 
+                 split = split.var,
+                 cloneCall = "aa") + 
+  theme(axis.text.x = element_text(angle = 90))
+
+dev.copy(pdf, "clusters/clonalproportion_clusters.pdf")
+dev.off()
+
+
+####################
+# Clonal Overlap
+####################
+
+clonalOverlap(tcr.clusters, 
+              cloneCall = "aa", 
+              method = "overlap") + 
+  theme(axis.text.x = element_text(angle = 90))
+
+dev.copy(pdf, "clusters/clonaloverlap_clusters.pdf")
+dev.off()
+
+
+###################################
+# Split dataset by condition
+###################################
+
+Idents(seurat.tcr) <- seurat.tcr@meta.data$condition
+
+# US
+US.seurat.tcr <- subset(seurat.tcr, ident = "US")
+tcr.clusters.US <- expression2List.mod(US.seurat.tcr, group = "seurat_clusters")
+
+# Stimulated
+Stim.seurat.tcr <- subset(seurat.tcr, ident = "Stim")
+tcr.clusters.Stim <- expression2List.mod(Stim.seurat.tcr, group = "seurat_clusters")
+
+
+
+
+p1 <- clonalOverlap(tcr.clusters.US, 
+                    cloneCall = "aa", 
+                    method = "overlap") + 
+  theme(axis.text.x = element_text(angle = 90))
+
+p2 <- clonalOverlap(tcr.clusters.Stim, 
+                    cloneCall = "aa", 
+                    method = "overlap") + 
+  theme(axis.text.x = element_text(angle = 90))
+
+
+p1|p2
+
+
+
+rm(US.seurat.tcr, tcr.clusters.US, Stim.seurat.tcr, tcr.clusters.Stim, tcr.modules, tcr.clusters, p1, p2)
+
+
+# reset to working dir
+setwd(working.dir)
+
+```
+
+
+### Heatmaps VJ gene usage
+```{r V_J_usage_heatmaps}
+
+# Move to working dir
+setwd(working.dir)
+
+# Create output directories
+if(!dir.exists("output_tcr/figures/VJ_usage")){
+  dir.create("output_tcr/figures/VJ_usage",
+             recursive = T)}
+
+# set and move to output.dir
+output.dir <- "output_tcr/figures/VJ_usage"
+setwd(output.dir)
+
+
+
+########################
+# Heatmap functions
+########################
+
+hclust.func <- function(x){
+  hclust(x, method = 'ward.D2')
+}
+
+dist.func <- function(x){
+  dist(x,method = 'binary')
+}
+
+col.palette <- colorRampPalette(brewer.pal(8, "RdYlBu"))(600)
+
+######################################################
+# Plot V/J gene usage as a log2() of cell number
+######################################################
+
+# TRA-V gene usage
+
+x <- table(seurat.tcr.filt@meta.data$TRAV, seurat.tcr.filt@meta.data$seurat_clusters)
+
+cells.remove <- c("gd_T_non_g9d2", "gd_T_g9d2", "MAIT")
+
+x <- x[ ,-grep(paste0(cells.remove, collapse = "|"), colnames(x))]
+
+
+heatmap.2(as.matrix(log2(x+1)), 
+          scale = "none",
+          trace = "none",
+          Colv = TRUE,
+          cexRow = 0.5, 
+          margins = c(8, 5),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = rev(col.palette))     
+
+dev.copy(pdf, "Heatmap_TRA_V_usage.pdf")
+dev.off()
+
+# TRA-J gene usage
+
+x <- table(seurat.tcr.filt@meta.data$TRAJ, seurat.tcr.filt@meta.data$seurat_clusters)
+
+cells.remove <- c("gd_T_non_g9d2", "gd_T_g9d2", "MAIT")
+
+x <- x[ ,-grep(paste0(cells.remove, collapse = "|"), colnames(x))]
+
+
+heatmap.2(as.matrix(log2(x+1)), 
+          scale = "none",
+          trace = "none",
+          Colv = TRUE,
+          cexRow = 0.5, 
+          margins = c(8, 5),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = rev(col.palette))     
+
+dev.copy(pdf, "Heatmap_TRA_J_usage.pdf")
+dev.off()
+
+
+# TRB-V gene usage
+
+x <- table(seurat.tcr.filt@meta.data$TRBV, seurat.tcr.filt@meta.data$seurat_clusters)
+
+cells.remove <- c("gd_T_non_g9d2", "gd_T_g9d2", "MAIT")
+
+x <- x[ ,-grep(paste0(cells.remove, collapse = "|"), colnames(x))]
+
+
+heatmap.2(as.matrix(log2(x+1)), 
+          scale = "none",
+          trace = "none",
+          Colv = TRUE,
+          cexRow = 0.5, 
+          margins = c(8, 5),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = rev(col.palette))     
+
+dev.copy(pdf, "Heatmap_TRB_V_usage.pdf")
+dev.off()
+
+
+
+# TRB-J gene usage
+
+x <- table(seurat.tcr.filt@meta.data$TRBJ, seurat.tcr.filt@meta.data$seurat_clusters)
+
+cells.remove <- c("gd_T_non_g9d2", "gd_T_g9d2", "MAIT")
+
+x <- x[ ,-grep(paste0(cells.remove, collapse = "|"), colnames(x))]
+
+
+heatmap.2(as.matrix(log2(x+1)), 
+          scale = "none",
+          trace = "none",
+          Colv = TRUE,
+          cexRow = 0.5, 
+          margins = c(8, 5),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = rev(col.palette))     
+
+dev.copy(pdf, "Heatmap_TRB_J_usage.pdf")
+dev.off()
+
+
+
+
+# Reset working dir
+setwd(working.dir)
+
+```
+
+### Heatmap of top clonotypes
+**Note: This is a very cool way of looking at overlapping clonotypes and it seems consistent from all iterations that Stimulate_1/Cytotoxic/Type_1_interferon are related and more to the point you mentioned Exhusted_1 vs Stimulated_Exhuasted has a greater overlap than Exhusated_2 vs Stimulated_Exhuasted. However it is interesting that the major clonotype in Exhuasted_2 is seen in Stimulated_exhuasted, Exhuasted_1 and proliferative?**
+```{r Heatmap_top_clonotypes}
+
+# Move to working dir
+setwd(working.dir)
+
+# Create output directories
+if(!dir.exists("output_tcr/figures/Top_clonotypes_heatmaps")){
+  dir.create("output_tcr/figures/Top_clonotypes_heatmaps",
+             recursive = T)}
+
+# set and move to output.dir
+output.dir <- "output_tcr/figures/Top_clonotypes_heatmaps"
+setwd(output.dir)
+
+
+
+########################
+# Heatmap functions
+########################
+
+hclust.func <- function(x){
+  hclust(x, method = 'ward.D2')
+}
+
+dist.func <- function(x){
+  dist(x,method = 'binary')
+}
+
+col.palette <- colorRampPalette(brewer.pal(8, "RdYlBu"))(600)
+
+
+
+
+
+# Get data of how many cells in each cluster are assigned to what clonotypes
+clonotype.data <- table(seurat.tcr.filt@meta.data$CTaa, seurat.tcr.filt@meta.data$seurat_clusters)
+
+# remove non-T cell clusters
+cells.remove <- c("gd_T_non_g9d2", "gd_T_g9d2")
+cells.remove.index <- grep(paste0(cells.remove, collapse = "|"), colnames(clonotype.data))
+clonotype.data <- clonotype.data[ ,-cells.remove.index]
+
+# also filter colouring variable to remove non-T cell clusters
+temp.cols <- clust.cols[-cells.remove.index]
+
+
+
+
+
+
+# Plot the top 10 clonotypes
+aa.keep <- sort(rowSums(clonotype.data), decreasing = TRUE)[1:10]
+
+keep.vec <- rownames(clonotype.data) %in% names(aa.keep)
+
+plot.data <- clonotype.data[keep.vec, ]
+
+
+heatmap.2(as.matrix(log2(plot.data+1)), 
+          scale = "none",
+          trace = "none",
+          ColSideColors = temp.cols,
+          Colv = TRUE,
+          cexRow = 0.8, 
+          margins = c(8, 15),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = rev(col.palette))     
+
+dev.copy(pdf, "Heatmap_top_10_clonotypes.pdf")
+dev.off()
+
+
+
+# Plot the top 50 clonotypes
+aa.keep <- sort(rowSums(clonotype.data), decreasing = TRUE)[1:50]
+
+keep.vec <- rownames(clonotype.data) %in% names(aa.keep)
+
+plot.data <- clonotype.data[keep.vec, ]
+
+
+heatmap.2(as.matrix(log2(plot.data+1)), 
+          scale = "none",
+          trace = "none",
+          ColSideColors = temp.cols,
+          Colv = TRUE,
+          cexRow = 0.5, 
+          labRow = FALSE,
+          margins = c(8, 5),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = rev(col.palette))     
+
+dev.copy(pdf, "Heatmap_top_50_clonotypes.pdf")
+dev.off()
+
+
+
+# Plot the all clonotypes in > 3 cells
+
+aa.keep <- rowSums(clonotype.data) > 3
+
+keep.vec <- rownames(clonotype.data) %in% names(aa.keep)[aa.keep]
+
+plot.data <- clonotype.data[keep.vec, ]
+
+heatmap.2(as.matrix(log2(plot.data+1)), 
+          scale = "none",
+          trace = "none",
+          ColSideColors = temp.cols,
+          Colv = TRUE,
+          cexRow = 0.5, 
+          labRow = FALSE,
+          margins = c(8, 5),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = rev(col.palette))     
+
+dev.copy(pdf, "Heatmap_top_all_clonotypes_in_morethan_3_cells.pdf")
+dev.off()
+
+
+
+
+############################################
+# Plot top clonotypes in each cluster 
+############################################
+
+for(i in seq_along(colnames(clonotype.data))){
+  temp <- as.data.frame(clonotype.data)
+  
+  temp <- temp %>%
+    dplyr::filter(Var2 == paste0(colnames(clonotype.data)[i])) %>%
+    dplyr::top_n(10)
+  
+  clonotypes.to.plot <- temp$Var1
+  
+  keep.vec <- rownames(clonotype.data) %in% clonotypes.to.plot
+  
+  plot.data <- clonotype.data[keep.vec, ]
+  
+  heatmap.2(as.matrix(log2(plot.data+1)), 
+            scale = "none",
+            trace = "none",
+            ColSideColors = temp.cols,
+            Colv = FALSE,
+            cexRow = 0.8, 
+            margins = c(8, 15),
+            cexCol = 0.8, 
+            distfun = dist.func,
+            hclustfun = hclust.func,
+            srtCol = 90,
+            col = rev(col.palette))
+  
+  dev.copy(pdf, paste0("Heatmap_top_10_clonotypes_in_", colnames(clonotype.data)[i], ".pdf"))
+  dev.off()
+  
+}
+
+
+
+# Reset working dir
+setwd(working.dir)
+
+```
+
+
+### Clonotype frequency on UMAP
+**Note: To me this also is interesting that you have 2 distinct clusters in the stimulation - one comprised of expanded clonotypes (presumably from the ehuasted clusters) and one of non-expanded clonotypes**
+```{r Clonotype_freq}
+
+# Ensure dir back in working
+setwd(working.dir)
+
+# Create output directory
+if(!dir.exists("output_tcr/figures/Binned_clonotype_expansion_plots")){
+  dir.create("output_tcr/figures/Binned_clonotype_expansion_plots",
+             recursive = T)}
+
+output.dir <- "output_tcr/figures/Binned_clonotype_expansion_plots"
+setwd(output.dir)
+
+###################################
+# Plot dataset on UMAP projection
+###################################
+
+Idents(seurat.tcr.filt) <- seurat.tcr.filt@meta.data$seurat_clusters
+
+clonetype.col <- c("Red", "Black", "blue", "orange", "lightblue")
+
+# Vis clonotype size on UMAP
+UMAPPlot(seurat.tcr.filt, 
+         group.by = "cloneType", 
+         pt.size = 1) +
+  scale_color_manual(values = clonetype.col, 
+                     na.value="grey")
+
+
+dev.copy(pdf, "Clonotype_size_UMAP.pdf")
+dev.off()
+
+# Split by condition
+UMAPPlot(seurat.tcr.filt, 
+         group.by = "cloneType", 
+         split.by = "condition", 
+         pt.size = 1) +
+  scale_color_manual(values = clonetype.col, 
+                     na.value="grey")
+
+dev.copy(pdf, "Clonotype_size_UMAP_split_condition.pdf")
+dev.off()
+
+
+# Split by cloneType visualise clusters
+UMAPPlot(seurat.tcr.filt, 
+         group.by = "seurat_clusters", 
+         split.by = "cloneType", 
+         pt.size = 1, 
+         cols = clust.cols) 
+
+dev.copy(pdf, "Clonotype_size_UMAP_split_cloneType_Clusters.pdf")
+dev.off()
+
+
+############################################################
+# For manuscript, looks nicer to plot each group one by one 
+############################################################
+
+# First extract axis limits 
+x <- UMAPPlot(seurat.tcr.filt, 
+         group.by = "seurat_clusters", 
+         split.by = "cloneType", 
+         pt.size = 1, 
+         cols = clust.cols) 
+
+
+x.axis.limits <- ggplot_build(x)$layout$panel_scales_x[[1]]$range$range
+y.axis.limits <- ggplot_build(x)$layout$panel_scales_y[[1]]$range$range
+
+
+
+
+
+
+
+
+Idents(seurat.tcr.filt) <- seurat.tcr.filt@meta.data$cloneType
+index.var <- unique(Idents(seurat.tcr.filt))
+
+
+for(i in seq_along(index.var)){
+  
+  temp.seurat <- subset(seurat.tcr.filt, ident = index.var[i])
+  
+  # Split by cloneType visualise clusters
+  print(UMAPPlot(temp.seurat, 
+                 group.by = "seurat_clusters", 
+                 split.by = "cloneType", 
+                 pt.size = 1, 
+                 cols = clust.cols) + 
+          NoLegend() + 
+          xlim(x.axis.limits) + 
+          ylim(y.axis.limits))
+  
+  dev.copy(pdf, paste0("Clonotype_size_UMAP_Clontype_size_", index.var[i], ".pdf"))
+  dev.off()
+  
+}
+
+
+
+# Reset Idents
+Idents(seurat.tcr.filt) <- seurat.tcr.filt@meta.data$seurat_clusters
+
+
+# Ensure dir back in working
+setwd(working.dir)
+
+```
+
+## TCR analysis - cluster-specific clonotypes {.tabset}
+
+### Reduce dataset to clonotypes per cluster
+```{r Cluster_clonotypes}
+
+# set working dir
+setwd(working.dir)
+
+# Create output directories
+if(!dir.exists("output_tcr/figures/Cluster_clonotypes")){
+  dir.create("output_tcr/figures/Cluster_clonotypes",
+             recursive = T)}
+
+output.dir <- "output_tcr/figures/Cluster_clonotypes"
+setwd(output.dir)
+
+##########################################################
+# Keep only one occurrence of a clonotype in each cluster
+##########################################################
+
+uniq.clonotypes <- seurat.tcr.filt@meta.data %>% 
+  dplyr::distinct(seurat_clusters, CTaa) %>%
+  rownames()
+
+clust.clonotypes.seurat <- subset(seurat.tcr.filt, cells = uniq.clonotypes)
+#3773 clonotypes 
+
+# Set Idents
+Idents(clust.clonotypes.seurat) <- clust.clonotypes.seurat@meta.data$seurat_clusters
+
+# Cluster Clonotypes
+UMAPPlot(clust.clonotypes.seurat, 
+         pt.size = 1, 
+         group.by = "seurat_clusters", 
+         cols = clust.cols) + 
+  ggtitle("Pts = Cluster clonotypes")
+
+dev.copy(pdf, "Cluster_clonotypes.pdf")
+dev.off()
+
+# Cluster Clonotypes // No legend
+UMAPPlot(clust.clonotypes.seurat, 
+         pt.size = 1, 
+         group.by = "seurat_clusters", 
+         label = TRUE,
+         label.size = 6,
+         cols = clust.cols) + 
+  ggtitle("Pts = Cluster clonotypes") + 
+  NoLegend()
+
+dev.copy(pdf, "Cluster_clonotypes_NoLegend.pdf")
+dev.off()
+
+
+# Plot number of clonotypes per cluster
+x <- table(clust.clonotypes.seurat@meta.data$seurat_clusters)
+
+barplot(x, 
+        las = 2, 
+        ylim = c(0, 1000), 
+        ylab = "# of clonotypes",
+        col = clust.cols,
+        main = "# of clonotypes per cluster")
+
+dev.copy(pdf, "Barplot_Num_Cluster_clonotypes.pdf")
+dev.off()
+
+
+
+############################################
+# Scale pt size with clonotype frequency
+############################################
+
+Total.clonotype.scale <- clust.clonotypes.seurat@meta.data$Total_clonotype_scaled 
+
+# Total dataset
+UMAPPlot(clust.clonotypes.seurat, 
+         pt.size = Total.clonotype.scale, 
+         group.by = "seurat_clusters", 
+         cols = clust.cols) + 
+  ggtitle("Clonotypes - scaled by total occurrence")
+
+dev.copy(pdf, "Cluster_clonotypes_scaled_by_occurrence.pdf")
+dev.off()
+
+
+
+# Total dataset // No legend
+UMAPPlot(clust.clonotypes.seurat, 
+         pt.size = Total.clonotype.scale, 
+         group.by = "seurat_clusters", 
+         label = TRUE, 
+         label.size = 4,
+         cols = clust.cols) + 
+  ggtitle("Clonotypes - scaled by total occurrence") +
+  NoLegend()
+
+dev.copy(pdf, "Cluster_clonotypes_scaled_by_occurrence_Nolegend.pdf")
+dev.off()
+
+
+# Remove seurat
+rm(clust.clonotypes.seurat)
+
+
+# set working dir
+setwd(working.dir)
+
+```
+
+### Reduce dataset to clonotypes per cluster per condition
+
+```{r Cluster_condition_clonotypes}
+
+# set working dir
+setwd(working.dir)
+
+# Create output directories
+if(!dir.exists("output_tcr/figures/Cluster_condition_clonotypes")){
+  dir.create("output_tcr/figures/Cluster_condition_clonotypes",
+             recursive = T)}
+
+output.dir <- "output_tcr/figures/Cluster_condition_clonotypes"
+setwd(output.dir)
+
+
+############################################################################
+# Keep only one occurrence of a clonotype in each cluster per condition
+############################################################################
+
+uniq.clonotypes <- seurat.tcr.filt@meta.data %>% 
+  dplyr::distinct(seurat_clusters, CTaa, condition) %>%
+  rownames()
+
+clust.cond.clonotypes.seurat <- subset(seurat.tcr.filt, cells = uniq.clonotypes)
+# 4093 clonotypes
+
+# Set Idents
+Idents(clust.cond.clonotypes.seurat) <- clust.cond.clonotypes.seurat@meta.data$seurat_clusters
+
+
+# Cluster & Condition clonotypes
+UMAPPlot(clust.cond.clonotypes.seurat, 
+         pt.size = 1, 
+         group.by = "seurat_clusters", 
+         split.by = "condition",
+         cols = clust.cols) + 
+  ggtitle("Pts = Cluster and condition clonotypes")
+
+dev.copy(pdf, "Cluster_condition_clonotypes.pdf")
+dev.off()
+
+# Split by condition // no legend
+UMAPPlot(clust.cond.clonotypes.seurat, 
+         pt.size = 1, 
+         group.by = "seurat_clusters", 
+         split.by = "condition",
+         label = TRUE, 
+         label.size = 4,
+         cols = clust.cols) + 
+  ggtitle("Pts = Cluster and condition clonotypes") + 
+  NoLegend()
+
+dev.copy(pdf, "Cluster_condition_clonotypes_Nolegend.pdf")
+dev.off()
+
+
+# Barplot of # of unique clonotypes per clust per condition
+
+x <- table(clust.cond.clonotypes.seurat@meta.data$seurat_clusters, clust.cond.clonotypes.seurat@meta.data$condition)
+
+
+barplot(t(x),
+        las = 2,
+        beside = TRUE,
+        col = Condition.cols,
+        legend = TRUE,
+        ylim = c(0, 600),
+        ylab = "# of clonotypes", 
+        main = "# of unique clonotypes per cluster per condition")
+
+dev.copy(pdf, "Barplot_Num_Cluster_condition_clonotypes.pdf")
+dev.off()
+
+
+############################################
+# Scale pt size with clonotype frequency
+############################################
+
+Condition.clonotype.scale <- clust.cond.clonotypes.seurat@meta.data$Clone_Clust_conditionwise_scaled 
+
+# Split by condition
+UMAPPlot(clust.cond.clonotypes.seurat, 
+         pt.size = Condition.clonotype.scale, 
+         group.by = "seurat_clusters", 
+         split.by = "condition",
+         cols = clust.cols) + 
+  ggtitle("Clust/Cond Clonotype - by normed condition freq") + NoLegend()
+
+dev.copy(pdf, "Cluster_condition_clonotypes_scaled_by_normalised_conditionwise_freq.pdf")
+dev.off()
+
+
+# Split by condition // No legend
+UMAPPlot(clust.cond.clonotypes.seurat, 
+         pt.size = Condition.clonotype.scale, 
+         group.by = "seurat_clusters", 
+         split.by = "condition",
+         label = TRUE, 
+         label.size = 4,
+         cols = clust.cols) + 
+  ggtitle("Clust/Cond Clonotype - by normed condition freq") + 
+  NoLegend()
+
+dev.copy(pdf, "Cluster__condition_clonotypes_scaled_by_normalised_conditionwise_freq_Nolegend.pdf")
+dev.off()
+
+
+# set working dir
+setwd(working.dir)
+
+```
+
+### Cluster-condition-specific clonotypes
+```{r Cluster_condition_specific_clonotypes}
+
+# Create output directories
+setwd(working.dir)
+
+if(!dir.exists("output_tcr/figures/Cluster_condition_specific_clonotypes")){
+  dir.create("output_tcr/figures/Cluster_condition_specific_clonotypes",
+             recursive = T)}
+
+output.dir <- "output_tcr/figures/Cluster_condition_specific_clonotypes"
+setwd(output.dir)
+
+
+# Set Idents to Cluster ID
+Idents(clust.cond.clonotypes.seurat) <- clust.cond.clonotypes.seurat@meta.data$seurat_clusters
+
+
+
+# Get x and y lims for UMAP plots
+z <- UMAPPlot(clust.cond.clonotypes.seurat, 
+              pt.size = 1,
+              group.by = "seurat_clusters",
+              split.by = "condition",
+              cols = clust.cols)
+
+# extract x and y lims
+umap.x.lim <- layer_scales(z)$x$range$range
+umap.y.lim <- layer_scales(z)$y$range$range
+
+
+###################################
+# get Cluster specific clonotypes
+###################################
+
+Cluster.vect <- unique(clust.cond.clonotypes.seurat@meta.data$condition_clust)
+
+for(i in 1:length(Cluster.vect)){
+  
+  print(paste0("Performing analysis for Cluster = ", Cluster.vect[i]))
+  
+  
+  # Extract clonotypes found in a specific clust/condition
+  clonotype.seurat <- get.clonotypes(clust.cond.clonotypes.seurat, "condition_clust", Cluster.vect[i])
+  
+  
+  ########################
+  # Visualisation 
+  ########################
+  
+  # Overall distribution of clonotypes 
+  print(UMAPPlot(clonotype.seurat, 
+                 pt.size = 1,
+                 group.by = "seurat_clusters",
+                 split.by = "condition",
+                 cols = clust.cols) + 
+          xlim(umap.x.lim) + ylim(umap.y.lim) + 
+          ggtitle(paste0("Clonotypes found in ", Cluster.vect[i])))
+  
+  dev.copy(pdf, 
+           paste0("Clonotypes_found_in_", Cluster.vect[i], ".pdf"))
+  dev.off()
+  
+  
+  # Scale clonotype size
+  print(UMAPPlot(clonotype.seurat, 
+                 pt.size = clonotype.seurat@meta.data$Clone_Clust_conditionwise_scaled,
+                 group.by = "seurat_clusters", 
+                 split.by = "condition",
+                 cols = clust.cols) +
+          xlim(umap.x.lim) + ylim(umap.y.lim) + 
+          ggtitle(paste0("Clonotypes found in ", Cluster.vect[i])))
+  
+  dev.copy(pdf, 
+           paste0("Clonotypes_found_in_", Cluster.vect[i], "_pt_scaled.pdf"))
+  dev.off()
+  
+  
+  ############
+  # Barplots
+  ############
+  
+  # Number of unique clones
+  n.clonotypes <- table(clonotype.seurat@meta.data$seurat_clusters)
+  
+  print(barplot(n.clonotypes, 
+                ylim = c(0, 1000),
+                ylab = "# of clonotypes",
+                main = paste0("# clonotypes found in Cluster ", Cluster.vect[i]), 
+                cex.names = 0.7, 
+                las = 2))   
+  
+  dev.copy(pdf, 
+           paste0("Barplot_of_clonotypes_found_in_", Cluster.vect[i], ".pdf"))
+  dev.off()
+  
+  
+  # Freq of clone overlap
+  n.clonotypes <- table(clonotype.seurat@meta.data$seurat_clusters, clonotype.seurat@meta.data$condition)
+  total.n.clonotypes <- table(clust.cond.clonotypes.seurat@meta.data$seurat_clusters, clust.cond.clonotypes.seurat@meta.data$condition)
+  
+  x <- (n.clonotypes/total.n.clonotypes)*100
+  
+  print(barplot(t(x), 
+                ylim = c(0, 100),
+                ylab = "% of clonotype overlap",
+                main = paste0("% of clonotypes present in ", Cluster.vect[i]), 
+                cex.names = 0.9, 
+                col = Condition.cols,
+                legend = TRUE,
+                beside = TRUE,
+                las = 2))   
+  
+  dev.copy(pdf, paste0("Barplot_freq_of_clonotypes_found_in_", Cluster.vect[i], ".pdf"))
+  dev.off()
+  
+  
+  # Remove unneeded variable
+  rm(clonotype.seurat)
+}
+
+
+setwd(working.dir)
+
+
+```
+
+
+### Venn overlap of clonotypes
+```{r clonotypes_overlap_Venn}
+
+# Create output directories
+setwd(working.dir)
+
+if(!dir.exists("output_tcr/figures/Venn_overlap")){
+  dir.create("output_tcr/figures/Venn_overlap",
+             recursive = T)}
+
+output.dir <- "output_tcr/figures/Venn_overlap"
+setwd(output.dir)
+
+####################################
+# Overlap of all clonotypes
+####################################
+
+Idents(seurat.tcr.filt) <- seurat.tcr.filt@meta.data$seurat_clusters
+
+# Get vector of clonotypes found in US cells
+US.clonotypes <- seurat.tcr.filt@meta.data %>%
+  dplyr::filter(condition == "US") %>%
+  dplyr::select(CTaa)
+
+US.clonotypes <- unique(US.clonotypes$CTaa)
+
+length(US.clonotypes) # 1,845 clonotypes
+
+# Get vector of clonotypes found in US cells
+Stim.clonotypes <- seurat.tcr.filt@meta.data %>%
+  dplyr::filter(condition == "Stim") %>%
+  dplyr::select(CTaa)
+
+Stim.clonotypes <- unique(Stim.clonotypes$CTaa)
+
+length(Stim.clonotypes) # 1,754 clonotypes
+
+# Venn clonotypes
+
+clonotype.list <- list(US = US.clonotypes, 
+                       Stim = Stim.clonotypes)
+
+clonotype.list <- Venn(clonotype.list)
+
+
+ggvenn(clonotype.list,
+       fill = rev(Condition.cols),
+       thickness = 0) + 
+  ggtitle("All Clonotypes") 
+
+dev.copy(pdf, "Venn_overlap_All_clonotypes.pdf")
+dev.off()
+
+
+############################################
+# Plot distribution on UMAP projection
+############################################
+
+# Reduce dataset to a single pt per clonotype per cluster
+uniq.clonotypes <- seurat.tcr.filt@meta.data %>% 
+  dplyr::distinct(seurat_clusters, CTaa) %>%
+  rownames()
+
+clust.clonotypes.seurat <- subset(seurat.tcr.filt, cells = uniq.clonotypes) # 3,773 clonotypes 
+
+x <- clust.clonotypes.seurat@meta.data$Total_clonotype_scaled
+
+UMAPPlot(clust.clonotypes.seurat, 
+         pt.size = x, 
+         cols = clust.cols,
+         split.by = "Clonotype_overlap") + 
+  ggtitle("Venn overlap clonotypes")
+
+dev.copy(pdf, "Distribution_of_clonotypes_shared_or_unique_to_condition.pdf")
+dev.off()
+
+# Without legend 
+UMAPPlot(clust.clonotypes.seurat, 
+         pt.size = x, 
+         cols = clust.cols,
+         split.by = "Clonotype_overlap") + 
+  ggtitle("Venn overlap clonotypes") + NoLegend()
+
+dev.copy(pdf, "Distribution_of_clonotypes_shared_or_unique_to_condition_NoLegend.pdf")
+dev.off()
+
+
+################################################################
+# Plot each umap by itself to facilitate nicer final figure 
+################################################################
+
+# Get x axis dims 
+x <- UMAPPlot(clust.clonotypes.seurat, 
+         pt.size = x, 
+         cols = clust.cols,
+         split.by = "Clonotype_overlap")
+
+x.axis.limits <- ggplot_build(x)$layout$panel_scales_x[[1]]$range$range
+y.axis.limits <- ggplot_build(x)$layout$panel_scales_y[[1]]$range$range
+
+
+
+
+
+
+index.vec <- unique(clust.clonotypes.seurat@meta.data$Clonotype_overlap)
+
+Idents(clust.clonotypes.seurat) <- clust.clonotypes.seurat@meta.data$Clonotype_overlap
+
+
+for(i in seq_along(index.vec)){
+  
+  temp.seurat <- subset(clust.clonotypes.seurat, ident = index.vec[i])
+  
+  # Set idents 
+  Idents(temp.seurat) <- temp.seurat@meta.data$seurat_clusters
+  
+  pt.size.vec <- temp.seurat@meta.data$Total_clonotype_scaled
+  
+  print(UMAPPlot(temp.seurat, 
+                 pt.size = pt.size.vec, 
+                 cols = clust.cols,
+                 split.by = "Clonotype_overlap") + 
+          ggtitle("Venn overlap clonotypes") + 
+          NoLegend() + 
+          xlim(x.axis.limits) + 
+          ylim(y.axis.limits)) 
+  
+  dev.copy(pdf, paste0("Distribution_of_clonotypes_shared_or_unique_to_condition_",  index.vec[i], ".pdf"))
+  dev.off()
+  
+}
+
+
+
+###########################
+# Abundant clonotypes only
+###########################
+
+condition.min <- 20
+
+# Get vector of clonotypes found in US cells
+US.clonotypes <- seurat.tcr.filt@meta.data %>%
+  dplyr::filter(condition == "US" & Clone_conditionwise_n >= condition.min) %>%
+  dplyr::select(CTaa)
+
+US.clonotypes <- unique(US.clonotypes$CTaa)
+
+length(US.clonotypes) #
+
+# Get vector of clonotypes found in US cells
+Stim.clonotypes <- seurat.tcr.filt@meta.data %>%
+  dplyr::filter(condition == "Stim" & Clone_conditionwise_n >= condition.min) %>%
+  dplyr::select(CTaa)
+
+Stim.clonotypes <- unique(Stim.clonotypes$CTaa)
+
+length(Stim.clonotypes) #
+
+# Venn overlap
+clonotype.list <- list(US = US.clonotypes, 
+                       Stim = Stim.clonotypes)
+
+clonotype.list <- Venn(clonotype.list)
+
+ggvenn(clonotype.list,
+       fill = rev(Condition.cols),
+       thickness = 0) + 
+  ggtitle("Abundant clonotypes") 
+
+dev.copy(pdf, "Venn_overlap_abundant_clonotypes.pdf")
+dev.off()
+
+
+
+##############################################
+# Low abundance in US and abundant in Stim
+##############################################
+
+# Get vector of clonotypes found in US cells
+US.clonotypes <- seurat.tcr.filt@meta.data %>%
+  dplyr::filter(condition == "US" & Clone_conditionwise_n <= 5) %>%
+  dplyr::select(CTaa)
+
+US.clonotypes <- unique(US.clonotypes$CTaa)
+
+length(US.clonotypes)
+
+# Get vector of clonotypes found in US cells
+Stim.clonotypes <- seurat.tcr.filt@meta.data %>%
+  dplyr::filter(condition == "Stim" & Clone_conditionwise_n >= 30) %>%
+  dplyr::select(CTaa)
+
+Stim.clonotypes <- unique(Stim.clonotypes$CTaa)
+
+length(Stim.clonotypes)
+
+# Venn overlap 
+clonotype.list <- list(US = US.clonotypes, 
+                       Stim = Stim.clonotypes)
+
+clonotype.list <- Venn(clonotype.list)
+
+ggvenn(clonotype.list,
+       fill = rev(Condition.cols),
+       thickness = 0) + 
+  ggtitle("US <= 5 and Stim >= 30") 
+
+dev.copy(pdf, "Venn_overlap_low_US_high_Stim_abundance_clonotypes.pdf")
+dev.off()
+
+
+# return to working directory
+setwd(working.dir)
+
+
+# Remove large objects no longer required
+rm(clust.clonotypes.seurat, 
+   US.clonotypes, 
+   Stim.clonotypes, 
+   clonotype.list)
+
+```
+
+### Plotting top X clonotypes on UMAP projection
+```{r highlight_top_clonotypes}
+
+# set working dir
+setwd(working.dir)
+
+# Create output directories
+if(!dir.exists("output_tcr/figures/Top_clonotypes")){
+  dir.create("output_tcr/figures/Top_clonotypes",
+             recursive = TRUE)}
+
+output.dir <- "output_tcr/figures/Top_clonotypes"
+setwd(output.dir)
+
+
+# Get list of all shared clonotypes (i.e in both US and Stim conditions)
+Query.clonotypes <- seurat.tcr.filt@meta.data %>%
+  dplyr::filter(Clonotype_overlap == "Shared") 
+
+Query.clonotypes <- sort(table(Query.clonotypes$CTaa), decreasing = TRUE)
+
+sum(Query.clonotypes > 20)
+
+
+# Loop over top X clonotypes 
+Top.clonotypes <- 30
+
+for(i in seq_len(Top.clonotypes)){
+  
+  seurat.tcr.filt <- highlightClonotypes(seurat.tcr.filt, 
+                                    cloneCall= "aa", 
+                                    sequence = names(Query.clonotypes)[i])
+  
+  seurat.tcr.filt@meta.data$highlight[is.na(seurat.tcr.filt@meta.data$highlight)] <- "NA"
+  
+  
+  print(DimPlot(seurat.tcr.filt, 
+                pt.size = 2, 
+                split.by = "condition",
+                cols = c("Red", "#BEBEBE33"),
+                group.by = "highlight") + ggtitle(paste0("Top ", i, " ", names(Query.clonotypes)[i])) + NoLegend())
+  
+  dev.copy(pdf, paste0("Top_clone_", i, "_UMAP_distribution.pdf"))
+  dev.off()
+  
+}
+
+
+# set working dir
+setwd(working.dir)
+
+```
+
