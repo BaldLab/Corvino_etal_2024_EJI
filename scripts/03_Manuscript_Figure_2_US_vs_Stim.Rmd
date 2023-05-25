@@ -239,10 +239,6 @@ dev.off()
 ```
 
 
-
-
-
-
 ### Figure 2D
 ```{r Figure_2D}
 

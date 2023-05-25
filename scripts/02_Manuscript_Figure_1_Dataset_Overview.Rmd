@@ -76,10 +76,9 @@ DefaultAssay(seurat.combined) <- "RNA"
 
 
 
-## Figure 1 Overview of dataset {.tabset}
 
 
-### Set up for fig 1
+### Set up output directory for fig 1 and supplementary
 ```{r Fig_1_setup}
 
 # Create output directory
@@ -101,6 +100,9 @@ if(!dir.exists(paste0(output.Supfig1))){
 
 
 ```
+
+
+## Figure 1 Overview of dataset {.tabset}
 
 ### Figure 1B
 ```{r Figure_1B}
@@ -245,7 +247,7 @@ dev.off()
 
 
 
-## Sup Figure 1 Innate clusters {.tabset}
+## Sup Figure 1 dataset overview and Innate clusters {.tabset}
 
 
 ### Read in Innate dataset
@@ -265,6 +267,104 @@ DefaultAssay(Innate.seurat) <- "RNA"
 ### Sup Figure 1A
 ```{r Sup_Figure_1A}
 
+# Get basic stats on cells per cluster and per condition and plot these values 
+
+cells.conditon.clust <- table(seurat.combined@meta.data$condition, seurat.combined@meta.data$Clusters_l1)
+
+# remove innate cluster columns 
+#pattern.val <- c("^gd_T_.*", "^MAIT$")
+#remove.logic <- grepl(paste0(pattern.val, collapse = "|"), colnames(cells.conditon.clust))
+#cells.conditon.clust <- cells.conditon.clust[ , !remove.logic]
+
+
+
+cells.cluster <- colSums(cells.conditon.clust)
+
+
+output.df <- cells.conditon.clust*NA
+
+for(i in 1:length(cells.cluster)){
+output.df[,i] <- (cells.conditon.clust[,i]/cells.cluster[i]) * 100
+}
+
+
+colSums(output.df)
+
+# Plot freq of sample per cluster
+barplot(output.df, 
+        las = 2,
+        col = condition.cols, 
+        cex.names = 0.7)
+
+dev.copy(pdf, paste0(output.Supfig1, "Sup_Figure_1A.pdf"))
+dev.off()
+
+```
+
+
+
+
+
+### Sup Figure 1B
+```{r Sup_Figure_1B}
+
+# set object defaults 
+DefaultAssay(seurat.combined) <- "RNA"
+Idents(seurat.combined) <- seurat.combined@meta.data$Clusters_l1
+
+
+
+# Functional markers
+goi <- c("GZMA", "GZMB", "GZMH", "GZMK", "GNLY")
+
+Stacked_VlnPlot(seurat.combined, 
+                features = goi, 
+                colors_use = clust.cols, 
+                x_lab_rotate = TRUE)
+
+dev.copy(pdf, paste0(output.Supfig1, "Sup_Figure_1B_1.pdf"))
+dev.off()
+
+goi <- c("CRTAM", "TNF", "TNFSF14", "EOMES", "IFIT1")
+
+Stacked_VlnPlot(seurat.combined, 
+                features = goi, 
+                colors_use = clust.cols, 
+                x_lab_rotate = TRUE)
+
+dev.copy(pdf, paste0(output.Supfig1, "Sup_Figure_1B_2.pdf"))
+dev.off()
+
+# Exhaustion markers
+goi <- c("TCF7", "CTLA4", "ENTPD1", "TIGIT", "TNFSF10")
+
+Stacked_VlnPlot(seurat.combined, 
+                features = goi, 
+                colors_use = clust.cols, 
+                x_lab_rotate = TRUE)
+
+dev.copy(pdf, paste0(output.Supfig1, "Sup_Figure_1B_3.pdf"))
+dev.off()
+
+
+# Activation markers
+goi <- c("CD226", "ICOS", "TNFRSF9", "CD28",  "ITGAE")
+
+Stacked_VlnPlot(seurat.combined, 
+                features = goi, 
+                colors_use = clust.cols, 
+                x_lab_rotate = TRUE)
+
+dev.copy(pdf, paste0(output.Supfig1, "Sup_Figure_1B_4.pdf"))
+dev.off()
+
+
+```
+
+
+### Sup Figure 1C
+```{r Sup_Figure_1C}
+
 # Plot UMAP projection
 UMAPPlot(object = Innate.seurat,
          group.by = "Clusters_l1",
@@ -273,13 +373,13 @@ UMAPPlot(object = Innate.seurat,
          pt.size = 1,
          label.size = 6)  + NoLegend()
 
-dev.copy(pdf, paste0(output.Supfig1, "Sup_Figure_1A.pdf"))
+dev.copy(pdf, paste0(output.Supfig1, "Sup_Figure_1C.pdf"))
 dev.off()
 
 ```
 
-### Sup_Figure_1B
-```{r Sup_Figure_1B}
+### Sup_Figure_1D
+```{r Sup_Figure_1D}
 
 
 # plot gene expression of TCR gamma/delta genes + MAIT genes
@@ -289,7 +389,7 @@ average.seurat <- AverageExpression(Innate.seurat,
                                     verbose = TRUE,
                                     return.seurat = TRUE)
 
-# Sup Figure 1B
+# Sup Figure 1D
 
 goi <- c("TRGV9", "TRDV2", "TRGC1", "TRGC2", "TRDC", "TRAV1-2", "KLRB1")
 
@@ -301,20 +401,20 @@ DoHeatmap(average.seurat,
                                                    direction = 1, 
                                                    na.value = "white")
 
-dev.copy(pdf, paste0(output.Supfig1, "Sup_Figure_1B.pdf"))
+dev.copy(pdf, paste0(output.Supfig1, "Sup_Figure_1D.pdf"))
 dev.off()
 
 
 ```
 
 
-### Sup Figure 1C
-```{r Sup_Figure_1C}
+### Sup Figure 1E
+```{r Sup_Figure_1E}
 
 
 # Vln Plots key genes 
 
-# Sup Figure 1C
+# Sup Figure 1E
 
 list.goi <- list("CD3" = c("CD3D", "CD3E", "CD3G"),
                  "CD8" = c("CD8A", "CD8B", "CD4"),
@@ -329,7 +429,7 @@ for(i in seq_along(list.goi)){
                     pt.size = 0)
   )
   
-  dev.copy(pdf, paste0(output.Supfig1, "Sup_Figure_1C_", names(list.goi)[i], ".pdf"))
+  dev.copy(pdf, paste0(output.Supfig1, "Sup_Figure_1E_", names(list.goi)[i], ".pdf"))
   dev.off()
   
 }
@@ -339,8 +439,8 @@ for(i in seq_along(list.goi)){
 
 
 
-### Sup Figure 1D 
-```{r Sup_Figure_1D}
+### Sup Figure 1F 
+```{r Sup_Figure_1F}
 
 
 source("scripts/functions/annotate_seurat_heatmap_function.R")
@@ -402,7 +502,7 @@ annotated.heatmap(small.seurat,
                   col_order = names(innate.cols), 
                   col.colours = innate.cols)
 
-dev.copy(pdf, paste0(output.Supfig1, "Sup_Figure_1D.pdf"))
+dev.copy(pdf, paste0(output.Supfig1, "Sup_Figure_1F.pdf"))
 dev.off()
 
 
@@ -413,9 +513,9 @@ dev.off()
 
 
 
-### Sup Figure 1E
+### Sup Figure 1G
 
-```{r Sup_Figure_1E}
+```{r Sup_Figure_1G}
 
 
 # Searching for TFs
@@ -466,7 +566,7 @@ DoHeatmap(average.seurat,
                                                    direction = 1, 
                                                    na.value = "white")
 
-dev.copy(pdf, paste0(output.Supfig1, "Sup_Figure_1E.pdf"))
+dev.copy(pdf, paste0(output.Supfig1, "Sup_Figure_1G.pdf"))
 dev.off()
 
 
