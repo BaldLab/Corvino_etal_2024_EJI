@@ -53,6 +53,9 @@ setwd("..")
 source("scripts/Setup.R", local = knitr::knit_global())
 
 
+library(Seurat)
+
+
 # pipeline variables
 quick.load <- TRUE
 long.compute <- FALSE
@@ -75,6 +78,8 @@ if(quick.load){
 
 ```{r Trajectory_data_prep, eval = TRUE}
 
+#devtools::install_github("dynverse/dyno")
+
 library(dyno)
 library(dynplot)
 library(dynmethods)
@@ -90,12 +95,30 @@ dynwrap::test_docker_installation(detailed = TRUE)
 # perform pseudotime on just naive,isg, effector axis of dataset 
 
 Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
-pesudotime.input.data <- subset(CD8.seurat, idents = c("Cytotoxic", "Type_I_IFN", "Stimulated_1"))
+input.seurat <- subset(CD8.seurat, idents = c("GZMK", "ISG", "Stimulated_1"))
+
+input.seurat <- Seurat::FindVariableFeatures(input.seurat)
+input.seurat <- Seurat::ScaleData(input.seurat)
+input.seurat <- Seurat::RunPCA(input.seurat)
+input.seurat <- Seurat::RunUMAP(object = input.seurat,
+                           reduction = "pca",
+                           dims = 1:20,
+                           umap.method = "uwot",
+                           n.neighbors = 30, # 5 to 50
+                           min.dist = 0.3, # Sensible values are in the range 0.001 to 0.5
+                           seed.use = 42)
+
+UMAPPlot(input.seurat,
+         group.by = "Clusters_l1", 
+         label = TRUE, 
+         pt.size = 1) + NoLegend()
+
+
 
 
 # Read in dataframes
-raw.data <- as.data.frame(pesudotime.input.data@assays$RNA@counts)
-normed.data <- as.data.frame(pesudotime.input.data@assays$RNA@data)
+raw.data <- as.data.frame(input.seurat@assays$RNA@counts)
+normed.data <- as.data.frame(input.seurat@assays$RNA@data)
 
 
 # data is organized cols = cells and rows = genes
@@ -110,8 +133,8 @@ normed.data <- t(normed.data)
 head(normed.data[1:10, 1:10])
 
 # Check data structure
-dim(raw.data) # 11,658 cells and 16,295 genes
-dim(normed.data) # 11,658 cells and 16,295 genes
+dim(raw.data) # 4,102 cells and 16,295 genes
+dim(normed.data) # 4,102 cells and 16,295 genes
 
 
 if(long.compute){  
@@ -123,43 +146,20 @@ if(long.compute){
                                expression = normed.data)
   
   # Add grouping info
-  metadata.df <- pesudotime.input.data@meta.data
-  
-  group.vect <- metadata.df$Clusters_l1
-  names(group.vect) <- rownames(metadata.df)
+  group.vect <- input.seurat@meta.data$Clusters_l1
+  names(group.vect) <- colnames(input.seurat)
   
   Dyno.data <- add_grouping(Dyno.data,
                             grouping = group.vect)
   
   
   # Add dim reduction
-  logic.vect <- grepl("*UMAP", colnames(metadata.df))
-  
-  UMAP.dims <- metadata.df[ , logic.vect]
-  UMAP.dims <- as.matrix(UMAP.dims)
+    UMAP.dims <- input.seurat@reductions$umap@cell.embeddings
+
   
   Dyno.data <- add_dimred(Dyno.data,
                           dimred = UMAP.dims)
   
-  
-  
-}else{
-  
-  
-  
-  # Create vectors and matrix needed for visualisation of pre-calculated trajectories
-  
-  # Create grouping vector
-  metadata.df <- pesudotime.input.data@meta.data
-  
-  group.vect <- metadata.df$Clusters_l1
-  names(group.vect) <- rownames(metadata.df)
-  
-  # Create dim reduction matrix
-  logic.vect <- grepl("*UMAP", colnames(metadata.df))
-  
-  UMAP.dims <- metadata.df[ , logic.vect]
-  UMAP.dims <- as.matrix(UMAP.dims)
   
   
 }
@@ -197,7 +197,7 @@ if(long.compute){
                                              expected_topology = NULL, 
                                              n_cells = 4102, 
                                              n_features = 20295, 
-                                             memory = "16GB", 
+                                             memory = "200GB", 
                                              prior_information = NULL, 
                                              docker = TRUE)
   
@@ -223,38 +223,10 @@ if(long.compute){
                                 seed = set.seed(42),
                                 verbose = TRUE)
   
+  
+  
   saveRDS(slingshot, file = paste0(save.dir, "slingshot.rds"))
   rm(slingshot)
-
-  
-  ##############
-  # Scorpius
-  ##############
-  
-  scorpius <- infer_trajectory(Dyno.data, 
-                               method = ti_scorpius(), 
-                               parameters = NULL, 
-                               give_priors = NULL, 
-                               seed = set.seed(42),
-                               verbose = TRUE)
-  
-  saveRDS(scorpius, file = paste0(save.dir, "scorpius.rds"))
-  rm(scorpius)
-  
-  
-  ##############
-  # Angle
-  ##############
-  
-  angle <- infer_trajectory(Dyno.data, 
-                            method = ti_angle(), 
-                            parameters = NULL, 
-                            give_priors = NULL, 
-                            seed = set.seed(42),
-                            verbose = TRUE)
-  
-  saveRDS(angle, file = paste0(save.dir, "angle.rds"))
-  rm(angle)
   
 }
 
@@ -304,7 +276,7 @@ slingshot <- add_root(trajectory = slingshot,
 dynplot::plot_dimred(slingshot, 
                      dimred = UMAP.dims,
                      hex_cells = TRUE, 
-                     label_milestones = TRUE,
+                     label_milestones = T,
                      color_cells = "pseudotime")
 
 dev.copy(pdf, "output/figures/Trajectories/Slingshot/Combined_plot_pseudotime.pdf")
@@ -465,20 +437,31 @@ if(!dir.exists("results/figures/Trajectories/monocle")){
 #BiocManager::install("monocle")
 library("monocle")
 #remotes::install_github('satijalab/seurat-wrappers', force = T)
+#devtools::install_github("cole-trapnell-lab/monocle3") #needs to be installed
 
-
-# cole-trapnell-lab/monocle3 needs to be installed
+library(monocle3)
 
 # Set assay and idents
-DefaultAssay(CD8.seurat) <- "RNA"
+DefaultAssay(CD8.seurat) <- "integrated"
 Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
 unique(Idents(CD8.seurat))
 
-input.seurat <- subset(CD8.seurat, idents = c("Naive_like_1_CM", "Naive_like_2_SC", "Naive_like_3", "Type_I_IFN", "Cytotoxic", "Stimulated_1"))
-input.seurat <- subset(CD8.seurat, idents = c("Type_I_IFN", "Cytotoxic", "Stimulated_1"))
+input.seurat <- subset(CD8.seurat, idents = c("ISG", "GZMK", "Stimulated_1"))
+input.seurat <- Seurat::FindVariableFeatures(input.seurat, assay = "integrated")
+input.seurat <- Seurat::ScaleData(input.seurat)
+input.seurat <- Seurat::RunPCA(input.seurat, assay = "integrated")
+input.seurat <- Seurat::RunUMAP(object = input.seurat,
+                           reduction = "pca",
+                           dims = 1:20,
+                           umap.method = "uwot",
+                           n.neighbors = 30, # 5 to 50
+                           min.dist = 0.5, # Sensible values are in the range 0.001 to 0.5
+                           seed.use = 42)
 
-#Idents(input.seurat) <- input.seurat@meta.data$condition
-#input.seurat <- subset(input.seurat, idents = c("US"))
+UMAPPlot(input.seurat,
+         group.by = "Clusters_l1", 
+         label = TRUE, 
+         pt.size = 1) + NoLegend()
 
 
 
@@ -506,14 +489,15 @@ p1|p2
 cds <- monocle3::learn_graph(cds, 
                              use_partition = TRUE,
                              close_loop = TRUE,
-                             learn_graph_control = list(nn.k = NULL, 
+                             
+                             verbose = TRUE)
+
+learn_graph_control = list(nn.k = NULL, 
                                                         prune_graph = TRUE, 
                                                         orthogonal_proj_tip = FALSE, 
                                                         minimal_branch_len = 20, 
                                                         nn.cores = 10,
-                                                        euclidean_distance_ratio = 0.4),
-                             verbose = TRUE)
-
+                                                        euclidean_distance_ratio = 0.4)
 
 
 

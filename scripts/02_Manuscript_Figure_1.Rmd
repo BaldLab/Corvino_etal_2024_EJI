@@ -362,6 +362,14 @@ dev.off()
 ```
 
 
+
+
+
+
+
+
+
+
 ### Sup Figure 1C
 ```{r Sup_Figure_1C}
 
@@ -417,9 +425,7 @@ dev.off()
 # Sup Figure 1E
 
 list.goi <- list("CD3" = c("CD3D", "CD3E", "CD3G"),
-                 "CD8" = c("CD8A", "CD8B", "CD4"),
-                 "cytotoxic" = c("GZMA", "GZMB", "GZMH"), 
-                 "Cytotoxic_2" = c("GZMK", "GZMM", "PRF1", "GNLY"))
+                 "CD8" = c("CD8A", "CD8B", "CD4"))
 
 for(i in seq_along(list.goi)){
   print(

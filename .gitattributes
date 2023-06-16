@@ -184,3 +184,5 @@ scripts/aimed_analysis/_footer.html filter=lfs diff=lfs merge=lfs -text
 scripts/aimed_analysis/analysis.R filter=lfs diff=lfs merge=lfs -text
 scripts/original_analysis_not_modified_for_docker_setup/23_Manuscript_Circos_analysis_V2.Rmd filter=lfs diff=lfs merge=lfs -text
 scripts/original_analysis_not_modified_for_docker_setup/Predict_IFN_function.R filter=lfs diff=lfs merge=lfs -text
+saves/reduced_seurat_tcr.h5Seurat filter=lfs diff=lfs merge=lfs -text
+saves/reduced_seurat.h5Seurat filter=lfs diff=lfs merge=lfs -text

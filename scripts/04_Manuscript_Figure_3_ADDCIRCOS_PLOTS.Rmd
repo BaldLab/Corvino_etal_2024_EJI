@@ -1,0 +1,243 @@
+---
+title: "04_Manuscript_Figure_3"
+author: "Dillon Corvino"
+date: "07/03/2022"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: united
+    highlight: tango
+    df_print: paged
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+  markdown: 
+    wrap: 72
+---
+
+Built with R version `{r} getRversion()`
+
+## Setup {.tabset}
+
+### Environment
+
+```{r setup, message = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,  
+  eval = TRUE, 
+  tidy = TRUE
+)
+
+knitr::opts_knit$set(
+  root.dir = "../"
+)
+
+# Environment Set up
+rm(list = ls()) #Clean workspace
+cat("\014")     #Clean Console
+gc() # Free memory
+
+
+# Establish working directory
+library("rstudioapi")
+
+# Set working directory to source file location
+setwd(dirname(getActiveDocumentContext()$path))
+setwd("..")
+
+# Create output directories & load custom functions & colour scheme
+source("scripts/Setup.R", local = knitr::knit_global())
+
+# pipeline variables
+long.compute <- FALSE
+
+# load required packages
+require(tidyverse)
+require(Seurat)
+library(SeuratDisk)
+library(ggplot2)
+
+# Create output directory
+output.dir <- "results/Manuscript/Figure_3/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
+             recursive = T)
+}
+
+```
+
+
+### Reading data
+
+```{r reading_data}
+
+########################
+# Load all datasets 
+########################
+
+# CD8 dataset
+#CD8.seurat <- LoadH5Seurat("saves/CD8_seurat.h5Seurat")
+
+#Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
+#DefaultAssay(CD8.seurat) <- "RNA"
+
+# CD8 TCR data
+
+# TCR with no minimum clonotype filter
+CD8.seurat.tcr <- LoadH5Seurat("saves/CD8_seurat_tcr.h5Seurat")
+
+Idents(CD8.seurat.tcr) <- CD8.seurat.tcr@meta.data$Clusters_l1
+DefaultAssay(CD8.seurat.tcr) <- "RNA"
+
+# TCR data with a minimum clonotype filter
+CD8.seurat.tcr.filt <- LoadH5Seurat("saves/CD8_seurat_tcr_filt.h5Seurat")
+
+Idents(CD8.seurat.tcr.filt) <- CD8.seurat.tcr.filt@meta.data$Clusters_l1
+DefaultAssay(CD8.seurat.tcr.filt) <- "RNA"
+
+```
+
+
+## Figure 3 {.tabset}
+
+### Figure 3A
+```{r Figure_3A}
+
+library(gplots)
+library(RColorBrewer)
+########################
+# Heatmap functions
+########################
+
+hclust.func <- function(x){
+  hclust(x, method = 'ward.D2')
+}
+
+dist.func <- function(x){
+  dist(x,method = 'binary')
+}
+
+batlow.pal <- scico(100, palette = 'batlow')
+
+
+
+
+# Get data of how many cells in each cluster are assigned to what clonotypes
+clonotype.data <- table(CD8.seurat.tcr@meta.data$CTaa, CD8.seurat.tcr@meta.data$Clusters_l1)
+
+
+# Plot the top 50 clonotypes
+aa.keep <- sort(rowSums(clonotype.data), decreasing = TRUE)[1:50]
+
+keep.vec <- rownames(clonotype.data) %in% names(aa.keep)
+
+plot.data <- clonotype.data[keep.vec, ]
+dim(plot.data)
+
+heatmap.2(as.matrix(log2(plot.data+1)), 
+          scale = "none",
+          trace = "none",
+          ColSideColors = CD8.cols,
+          Colv = TRUE,
+          cexRow = 0.8, 
+          margins = c(8, 15),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = batlow.pal)     
+
+dev.copy(pdf, paste0(output.dir, "Figure_3A.pdf"))
+dev.off()
+
+```
+
+
+### Figure 3B & C 
+# CIRCOS PLOTS!!!
+
+
+
+
+## Supplementary Figure 3 {.tabset}
+
+### Supplementary figure 3A
+```{r Supplementary_figure_3A}
+
+# extract data and generate plot using prism 
+
+# ask the question, for clonotypes found in US dataset, according to their clonotype size in US dataset, what proportion are found (shared) in Stim dataset 
+# and what proportion are unique to US dataset
+
+
+output.df <- CD8.seurat.tcr@meta.data %>%
+  dplyr::filter(condition == "US") %>%
+  dplyr::group_by(cloneType) %>%
+  dplyr::distinct(CTaa, .keep_all = T)
+
+
+output.df <- table(output.df$cloneType, output.df$Clonotype_overlap)
+
+# calculate percentages
+sum.vals <- rowSums(output.df)
+
+output.df <- sweep(output.df, 1, sum.vals, FUN = "/")
+output.df <- output.df*100
+
+# write data to file 
+write.csv(output.df, paste0(output.dir, "supplementary_figure3A.csv"))
+```
+
+
+### Supplementary figure 3B
+```{r Supplementary_figure_3B}
+
+#devtools::install_github("ncborcherding/scRepertoire@dev")
+library("scRepertoire")
+
+
+# Plot bargraph of clonetype frequency per cluster
+
+Idents(CD8.seurat.tcr) <- CD8.seurat.tcr@meta.data$cloneType
+
+cells.clonetype.per.clust<- table(CD8.seurat.tcr@meta.data$cloneType, CD8.seurat.tcr@meta.data$Clusters_l1)
+
+cells.cluster <- colSums(cells.clonetype.per.clust)
+
+output.df <- cells.clonetype.per.clust*NA
+
+for(i in 1:length(cells.cluster)){
+output.df[,i] <- (cells.clonetype.per.clust[,i]/cells.cluster[i]) * 100
+}
+
+
+colSums(output.df)
+
+clonetype.cols <- c("salmon4", "salmon", "orange", "cyan3", "Lightblue")
+names(clonetype.cols) <- c("Hyperexpanded", "Large", "Medium", "Small", "Single")
+
+
+
+# Plot freq of sample per cluster
+barplot(output.df, 
+        las = 2,
+        legend = T,
+        col = clonetype.cols, 
+        cex.names = 0.5)
+
+dev.copy(pdf, paste0(output.dir, "Supplementary_figure_3B.pdf"))
+dev.off()
+
+
+
+
+```
+
+
+
+

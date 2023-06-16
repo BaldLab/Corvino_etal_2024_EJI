@@ -74,6 +74,8 @@ if(!dir.exists(paste0(output.dir))){
 ```
 
 
+
+
 ### Reading data
 
 ```{r reading_data}
@@ -90,9 +92,6 @@ DefaultAssay(CD8.seurat) <- "RNA"
 
 
 ```
-
-
-
 
 
 ## Figure 2 {.tabset}
@@ -112,63 +111,37 @@ UMAPPlot(object = CD8.seurat,
 dev.copy(pdf, paste0(output.dir, "Figure_2A.pdf"))
 dev.off()
 
-
-# Figure 2B
-
-# Note color scheme calls "salmon2" for Stimulated, but appears the function cant utilise this color. 
-# change colour to use hex code 
-
-temp.cols <- condition.cols
-names(temp.cols)[2] <-  "Stim"
-temp.cols[2] <- "#ee8262"
-
-
-UMAPPlot(object = CD8.seurat,
-         group.by = "condition",
-         cols = temp.cols,
-         pt.size = 1,
-         shuffle = T,
-         label = TRUE, 
-         label.size = 6) + 
-    NoLegend()
-
-dev.copy(pdf, paste0(output.dir, "Figure_2B.pdf"))
-dev.off()
-
-
-
-
 ```
 
 
 
-### Figure 2C
-```{r Figure_2C}
+### Figure 2B
+```{r Figure_2B}
 
 if(long.compute){
   
   Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
   DefaultAssay(CD8.seurat) <- "RNA"
   
-# Run DEG analysis
-DEG.markers <- FindAllMarkers(CD8.seurat, 
-                              slot = "data", 
-                              logfc.threshold = 0.25,
-                              test.use = "wilcox",
-                              only.pos = FALSE)
-
-# Filter for significance
-DEG.markers <- 
-  DEG.markers %>%
-  filter(p_val_adj < 0.05)
-
-
-write.csv(DEG.markers, paste0(output.dir, "Figure_2C_DEGs.csv"))
+  # Run DEG analysis
+  DEG.markers <- FindAllMarkers(CD8.seurat, 
+                                slot = "data", 
+                                logfc.threshold = 0.25,
+                                test.use = "wilcox",
+                                only.pos = FALSE)
+  
+  # Filter for significance
+  DEG.markers <- 
+    DEG.markers %>%
+    filter(p_val_adj < 0.05)
+  
+  
+  write.csv(DEG.markers, paste0(output.dir, "Figure_2B_DEGs.csv"))
 }
 
 
 # load data
-DEG.wilcox <- read.csv(paste0(output.dir, "Figure_2C_DEGs.csv"))
+DEG.wilcox <- read.csv(paste0(output.dir, "Figure_2B_DEGs.csv"))
 DEG.wilcox <- DEG.wilcox[,-1]
 
 
@@ -192,23 +165,6 @@ goi <- DEG.wilcox %>%
 goi <- goi$gene[duplicated(goi$gene)]
 
 
-# Average expression
-DoHeatmap(average.seurat, 
-          features = goi,
-          group.colors = clust.cols,
-          assay = "RNA",
-          raster = FALSE,
-          draw.lines = FALSE) + scico::scale_fill_scico(palette = "batlow", 
-                                                        direction = 1, 
-                                                        na.value = "white")
-
-dev.copy(pdf, 
-         paste0(output.dir, "Figure_2C.pdf"))
-dev.off()
-
-
-
-
 source("scripts/functions/annotate_seurat_heatmap_function.R")
 
 
@@ -216,7 +172,7 @@ label.var <- unique(c("IFNG", "GZMB", "TNFRSF9", "FASLG", "CRTAM", "VSIR", "ICOS
 
 goi <- sample(goi)
 
-pdf(paste0(output.dir, "Figure_2C_annotated.pdf"))
+pdf(paste0(output.dir, "Figure_2B.pdf"))
 
 # Plot heatmap
 annotated.heatmap(CD8.seurat, 
@@ -231,16 +187,11 @@ annotated.heatmap(CD8.seurat,
 dev.off()
 
 
-
-
-
-
-
 ```
 
 
-### Figure 2D
-```{r Figure_2D}
+### Figure 2C
+```{r Figure_2C}
 
 
 Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
@@ -264,12 +215,12 @@ DEG.markers <-
   filter(p_val_adj < 0.05)
 
 
-write.csv(DEG.markers, paste0(output.dir, "Figure_2D_DEGs.csv"))
+write.csv(DEG.markers, paste0(output.dir, "Figure_2C_DEGs.csv"))
 }
 
 
 # read in dataset
-DEG.markers <- read.csv(paste0(output.dir, "Figure_2D_DEGs.csv"))
+DEG.markers <- read.csv(paste0(output.dir, "Figure_2C_DEGs.csv"))
 
 
 goi <- DEG.markers %>%
@@ -285,7 +236,7 @@ label.var <- unique(c("IL7R", "XCL1", "TAGLN2", "TNF", "CD69", "CCR7", "TNFSF14"
 
 
 
-pdf(paste0(output.dir, "Figure_2D.pdf"))
+pdf(paste0(output.dir, "Figure_2C.pdf"))
 
 # Plot heatmap
 annotated.heatmap(CD8.seurat, 
@@ -300,12 +251,6 @@ annotated.heatmap(CD8.seurat,
 dev.off()
 
 
-
-
-
-
-
-
 ```
  
  
@@ -314,199 +259,9 @@ dev.off()
 
  
  # up to here i have edited
- 
- 
-```{r}
 
 
-
-
-
-
-########################
-# Perform GO analysis 
-########################
-
-GO.input <- DEG.markers %>%
-  dplyr::filter(p_val_adj < 0.05) %>%
-  dplyr::mutate(abs.log = abs(avg_log2FC)) %>%
-  dplyr::filter(abs.log > 0.5) %>%
-  dplyr::arrange(desc(avg_log2FC))
-
-GO.input.stim1 <- GO.input %>%
-  dplyr::filter(avg_log2FC > 0.5) %>%
-  pull(X)
-
-GO.input.stimexh <- GO.input %>%
-  dplyr::filter(avg_log2FC < -0.5) %>%
-  pull(X)
-
-
-
-# load packages
-library("enrichR")
-#install.packages("SCpubr")
-library("SCpubr")
- 
-# set serach to human genes
-enrichR::setEnrichrSite(site = "Enrichr")
-
-dbs <- enrichR::listEnrichrDbs()
-dbs <- sort(dbs$libraryName)
-
-# Choose the dataset to query against.
-dbs_use <- c("GO_Biological_Process_2021", 
-             "GO_Cellular_Component_2021",
-             "GO_Molecular_Function_2021", 
-             "KEGG_2021_Human",
-             "MSigDB_Hallmark_2020",
-             "Reactome_2022",
-             "WikiPathway_2021_Human",
-             "Azimuth_Cell_Types_2021")
-
-
-x <- list("Stim1" = GO.input.stim1, 
-          "StimExh" = GO.input.stimexh)
-
-for(dataset in seq_along(x)){
-  
-dataset.name <- names(x)[dataset]
-# List of genes to use as input.
-up.genes <- x[[dataset]]
-
-# Retrieve the enriched terms.
-up.enriched.terms <- enrichR::enrichr(up.genes, dbs_use)
-
-# Plot enriched terms 
-upregulated.plots <- SCpubr::do_TermEnrichmentPlot(enriched_terms = up.enriched.terms, 
-                                                   nchar_wrap = 20,
-                                                   font.size = 10, 
-                                                   font.type = "sans", 
-                                                   text_labels_size = 5,
-                                                   colors.use = c("salmon2", "gray"),
-                                                   nterms = 10)
-
-
-# Plot and save all plots generated 
-for(i in seq_len(length(upregulated.plots))){
-  
-  # upregulated plots
-  name.var <- names(upregulated.plots)[i]
-  
-  ggsave(filename = paste0(output.dir, "Upregulated_", dataset.name, "_",  name.var, ".pdf"),
-         plot = upregulated.plots[[i]], 
-         width = 20, 
-         height = 20, 
-         units = "in",
-         device = "pdf")
-  
-}
-
-}
-
-
-
-
-
-
-```
-
-
-### Visualise key gene expression
-```{r vis_key_genes}
-
-# set object defaults 
-DefaultAssay(CD8.seurat) <- "RNA"
-Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
-
-
-
-# Functional markers
-goi <- c("GZMA", "GZMB", "GZMM", "GZMH", "GZMK")
-
-Stacked_VlnPlot(CD8.seurat, 
-                features = goi, 
-                colors_use = CD8.cols, 
-                x_lab_rotate = TRUE)
-
-dev.copy(pdf, paste0(output.dir, "Stacked_VlnPlot_Functional_markers_1.pdf"))
-dev.off()
-
-goi <- c("PRF1", "GNLY", "IFNG", "TNF", "XCL1")
-
-Stacked_VlnPlot(CD8.seurat, 
-                features = goi, 
-                colors_use = CD8.cols, 
-                x_lab_rotate = TRUE)
-
-dev.copy(pdf, paste0(output.dir, "Stacked_VlnPlot_Functional_markers_2.pdf"))
-dev.off()
-
-# Exhaustion markers
-goi <- c("TCF7", "TOX", "HAVCR2", "CTLA4", "PDCD1", "ENTPD1")
-
-Stacked_VlnPlot(CD8.seurat, 
-                features = goi, 
-                colors_use = CD8.cols, 
-                x_lab_rotate = TRUE)
-
-dev.copy(pdf, paste0(output.dir, "Stacked_VlnPlot_Exhaustion_markers_1.pdf"))
-dev.off()
-
-goi <- c("EOMES", "TBX21")
-
-Stacked_VlnPlot(CD8.seurat, 
-                features = goi, 
-                colors_use = CD8.cols, 
-                x_lab_rotate = TRUE)
-
-dev.copy(pdf, paste0(output.dir, "Stacked_VlnPlot_Exhaustion_markers_2.pdf"))
-dev.off()
-
-
-# Activation markers
-goi <- c("CD226", "ICOS", "TNFRSF9", "CD28",  "CD69")
-
-Stacked_VlnPlot(CD8.seurat, 
-                features = goi, 
-                colors_use = CD8.cols, 
-                x_lab_rotate = TRUE)
-
-dev.copy(pdf, paste0(output.dir, "Stacked_VlnPlot_Activation_markers.pdf"))
-dev.off()
-
-
-
-```
-
-### Dotplot of chemokine receptors
-```{r chemokine_dotplot}
-
-# Set dataset defaults 
-Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
-DefaultAssay(CD8.seurat) <- "RNA"
-
-# identify chemokine genes 
-#pattern.var <- c("CCL.*", "CXCR.*", "CXCL.*", "CCR")
-#goi <- grep(paste0(pattern.var, collapse = "|"), rownames(CD8.seurat), value = T)
-# used as a unbised method to check expression of all chemokine genes and then select the ones that showed expression 
-
-goi <- c("CCL3", "CCL4", "CCL4L2", "CCR7", "CXCR4", "CXCR3", "CXCR6", "CXCL13")
-
-scCustomize::DotPlot_scCustom(CD8.seurat, 
-                              colors_use = batlow.pal,
-                              x_lab_rotate = T,
-                              features = goi)
-
-dev.copy(pdf, paste0(output.dir, "DotPlot_Chemokine_genes.pdf"))
-dev.off()
-
-
-```
-
-
-
-### Transcription_factor inference
+### Sup figure ??
 ```{r TF_analysis_inference}
 
 # Create output directory
