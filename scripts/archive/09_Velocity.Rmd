@@ -1,5 +1,5 @@
 ---
-title: "03_Manuscript_Figure_3"
+title: "Velocity"
 author: "Dillon Corvino"
 date: "07/03/2022"
 output:
@@ -62,9 +62,9 @@ long.compute <- FALSE
 
 ```{r reading_data}
 # Read in CD8 only dataset
-CD8.seurat <- LoadH5Seurat("saves/CD8_seurat.h5Seurat")
-Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
-DefaultAssay(CD8.seurat) <- "RNA"
+reduced.seurat <- LoadH5Seurat("saves/reduced_seurat.h5Seurat")
+Idents(reduced.seurat) <- reduced.seurat@meta.data$Clusters_l1
+DefaultAssay(reduced.seurat) <- "integrated"
 ```
 
 ### Loading R packages
@@ -75,17 +75,34 @@ require(ggplot2)
 ```
 
 ### Setting up python environment
-```{r}
-require(reticulate) 
-use_python(python = "/Users/timnoahkempchen/Library/r-miniconda/envs/r-reticulate/bin/python", required = T)
-reticulate::use_condaenv(condaenv = "/Users/timnoahkempchen/Library/r-miniconda/envs/r-reticulate",
-                         required = T)
+```{r establish_python_env}
 
+# load reticulate
+require(reticulate) 
+
+# list conda envs
+reticulate::conda_list(conda = "auto")
+
+# create new conda env if not already established
+reticulate::conda_create(envname = "velocity")
+reticulate::use_condaenv(condaenv = "velocity")
+reticulate::conda_install(envname = "velocity",
+                         packages = c("anndata", "igraph", "Numpy==1.24", 
+                                      "matplotlib", "rpy2", "scanpy", 
+                                      "scipy", "scvelo", "sklearn",
+                                      "velocyto", "cellrank", "deepvelo"))
+
+
+
+#use_python(python = "/Users/timnoahkempchen/Library/r-miniconda/envs/r-reticulate/bin/python", required = T)
+#reticulate::use_condaenv(condaenv = "./Library/r-miniconda/envs/r-reticulate/lib/python3.9/",
+    #                     required = T)
 
 ```
 
 ### Loading python packages
 ```{python}
+install igraph
 import anndata
 import igraph
 import matplotlib
@@ -93,6 +110,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import rpy2.robjects as robj
 import scanpy as sc
+
 import scipy
 import scipy.optimize
 import scvelo as scv

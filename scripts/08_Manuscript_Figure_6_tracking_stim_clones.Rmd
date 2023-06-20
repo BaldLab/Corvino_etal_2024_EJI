@@ -90,14 +90,11 @@ if(quick.load){
 
 
 # TO DO
-# create new umap projection with just ISG, GZMK, and Stim-1
-# apply umap co-ords across tcr and full datasets
 # perform trajectory and output results for traj on full dataset
-# unique ISG clones and GZMK clones on new umap projection 
 # deg, heatmap etc, these three datasets. 
 # vis memory, helper, cyto, functions of ISG cluster
 
-### subsetting seurat object to include just GZMK, ISG, and Stim-1 clusters
+### Preparing dataset
 ```{r reducing_seurat_object}
 if(long.compute){
   ################################################
@@ -170,77 +167,31 @@ if(long.compute){
 
 ```
 
+
+
+
 ### Figure 6A
-```{r figure_6A}
-
-
-Idents(reduced.seurat) <- reduced.seurat@meta.data$Clusters_l1
-DefaultAssay(reduced.seurat) <- "RNA"
-
-GZMK.vs.Stim.markers <- FindMarkers(reduced.seurat, 
-                                    ident.1 = "GZMK",
-                                    ident.2 = "Stimulated_1",
-                                    logfc.threshold = 0.25, 
-                                    min.pct = 0.1, 
-                                    test.use = "wilcox")
-
-
-
-GZMK.vs.Stim.markers <- GZMK.vs.Stim.markers %>%
-  dplyr::filter(p_val_adj < 0.05) %>%
-  dplyr::arrange(desc(avg_log2FC))
-
-
-
-GZMK.vs.Stim.markers %>%
-  top_n(30, avg_log2FC)
-
-
-
-VlnPlot_scCustom(reduced.seurat, features = "PTPRC")
-
-
-
-
-```
-
-
-
-### Figure 6C
-```{r Figure_6C}
+```{r Figure_6A}
 
 # UMAP projection of reduced subset 
 
 cols.vec <- clust.cols[names(clust.cols) %in% c("ISG", "GZMK", "Stimulated_1")]
 
-
-
 UMAPPlot(reduced.seurat,
          group.by = "Clusters_l1", 
          cols = cols.vec,
          label = TRUE, 
          pt.size = 1) + NoLegend()
 
-dev.copy(pdf, paste0(output.dir, "UMAP_Stim_1_GZMK_ISG_clusters_only.pdf"))
+dev.copy(pdf, paste0(output.dir, "Figure_6A.pdf"))
 dev.off()
-
-UMAPPlot(reduced.seurat,
-         group.by = "Clusters_l1", 
-         split.by = "condition",
-         cols = cols.vec,
-         label = TRUE, 
-         pt.size = 1) + NoLegend()
-
-dev.copy(pdf, paste0(output.dir, "UMAP_Stim_1_GZMK_ISG_clusters_only_splitby_condition.pdf"))
-dev.off()
-
 
 
 ```
 
 
-### Identify unique clones in US GZMK and ISG clusters
-```{r Identify_unique_clones}
+### Figure 6B—D
+```{r Figure_6B_D}
 
 ####################################################################################
 # Identify clones that are uniquely found only in US ISG cluster
@@ -290,38 +241,6 @@ meta.data.temp <- reduced.seurat.tcr@meta.data %>%
 reduced.seurat.tcr <- AddMetaData(object = reduced.seurat.tcr, 
                                   col.name = "ISG_unique",
                                   metadata = meta.data.temp)
-
-
-Idents(reduced.seurat.tcr) <- reduced.seurat.tcr@meta.data$condition
-temp.seurat <- subset(reduced.seurat.tcr, idents = "US")
-UMAPPlot(temp.seurat, 
-         group.by = "Clusters_l1", 
-         split.by = "ISG_unique",
-         pt.size = 2)
-
-
-## Key info 
-# Unique US-ISG clones = 27 clones across 60 cells in US dataset and 131 cells in stim dataset
-table(reduced.seurat.tcr@meta.data$ISG_unique, reduced.seurat.tcr@meta.data$condition)
-
-# quick look at clonotype characteristics 
-temp.meta <- reduced.seurat.tcr@meta.data %>%
-  dplyr::filter(Clonotype_overlap == "Shared" & condition == "US") %>%
-  dplyr::filter(CTaa %in% unique.ISG.clones) %>%
-  distinct(CTaa, .keep_all = TRUE)
-
-table(temp.meta$cloneType) # most clones are small size within US dataset
-
-
-reduced.seurat.tcr@meta.data %>%
-  dplyr::filter(Clonotype_overlap == "Shared" & condition == "Stim") %>%
-  dplyr::filter(CTaa %in% "CADDRGSTLGRLYF_CASSHETSLQRYEQYF")
-
-scCustomize::Meta_Highlight_Plot(reduced.seurat.tcr, 
-                                 split.by = "Clusters_l1",
-                                 meta_data_column = "CTaa", 
-                                 meta_data_highlight = "CADDRGSTLGRLYF_CASSHETSLQRYEQYF") + NoLegend() + ggtitle(paste0("CADDRGSTLGRLYF_CASSHETSLQRYEQYF"))
-
 
 ####################################################################################
 # Identify clones that are uniquely found only in US GZMK cluster
@@ -373,29 +292,9 @@ reduced.seurat.tcr <- AddMetaData(object = reduced.seurat.tcr,
                                   metadata = meta.data.temp)
 
 
-Idents(reduced.seurat.tcr) <- reduced.seurat.tcr@meta.data$condition
-temp.seurat <- subset(reduced.seurat.tcr, idents = "US")
-UMAPPlot(temp.seurat, 
-         group.by = "Clusters_l1", 
-         split.by = "GZMK_unique",
-         pt.size = 2)
-
-
-## Key info 
-# Unique US-GZMK clones = 53 clones across 169 cells in US dataset and 143 cells in stim dataset
-table(reduced.seurat.tcr@meta.data$GZMK_unique, reduced.seurat.tcr@meta.data$condition)
-
-# quick look at clonotype characteristics 
-temp.meta <- reduced.seurat.tcr@meta.data %>%
-  dplyr::filter(Clonotype_overlap == "Shared" & condition == "US") %>%
-  dplyr::filter(CTaa %in% unique.GZMK.clones) %>%
-  distinct(CTaa, .keep_all = TRUE)
-
-table(temp.meta$cloneType) # most clones are small size within US dataset
-
-
+####################################################################################################
 # add together GZMK and ISG unique annotations into one column for plotting together on one graph 
-# reduce dataset to only US
+####################################################################################################
 
 meta.data.temp <- reduced.seurat.tcr@meta.data %>%
   dplyr::mutate(unique_ident = case_when(CTaa %in% unique.GZMK.clones ~ "GZMK_unique", 
@@ -429,7 +328,7 @@ UMAPPlot(US.reduced.tcr.seurat,
   xlim(-8,6.5) + 
   ylim(-5.5, 7)
 
-dev.copy(pdf, paste0(output.dir, "Figure_6C.pdf"))
+dev.copy(pdf, paste0(output.dir, "Figure_6B.pdf"))
 dev.off()
 
 
@@ -467,7 +366,7 @@ UMAPPlot(ISG.seurat,
   xlim(-8, 6.5) + 
   ylim(-5.5, 7)
 
-dev.copy(pdf, paste0(output.dir, "Figure_6D.pdf"))
+dev.copy(pdf, paste0(output.dir, "Figure_6C.pdf"))
 dev.off()
 
 
@@ -505,13 +404,14 @@ UMAPPlot(GZMK.seurat,
   xlim(-8, 6.5) + 
   ylim(-5.5, 7)
 
-dev.copy(pdf, paste0(output.dir, "Figure_6E.pdf"))
+dev.copy(pdf, paste0(output.dir, "Figure_6D.pdf"))
 dev.off()
 
 
 ```
 
-```{r clone_movememnt_stats}
+### Figure 6C & D quantification
+```{r Figure_6C_D_quantification}
 
 ## Statsitics of clone movement after stimulation 
 
@@ -546,7 +446,7 @@ clone.distribution.df
 # sanity check
 rowSums(clone.distribution.df)
 
-write.csv(clone.distribution.df, paste0(output.dir, "unique_US_ISG_clonetypes_distribution_after_stimulation_freq.csv"))
+write.csv(clone.distribution.df, paste0(output.dir, "Figure_6C_by_clonotype.csv"))
 
 ########################
 # Unique GZMK clones
@@ -568,7 +468,7 @@ clone.distribution.df
 # sanity check
 rowSums(clone.distribution.df)
 
-write.csv(clone.distribution.df, paste0(output.dir, "unique_US_GZMK_clonetypes_distribution_after_stimulation_freq.csv"))
+write.csv(clone.distribution.df, paste0(output.dir, "Figure_6D_by_clonotype.csv"))
 
 
 
@@ -603,7 +503,7 @@ cell.distribution.df
 # sanity check
 rowSums(cell.distribution.df)
 
-write.csv(cell.distribution.df, paste0(output.dir, "unique_US_ISG_clonetypes_cell_distribution_after_stimulation_freq.csv"))
+write.csv(cell.distribution.df, paste0(output.dir, "Figure_6C_by_cells.csv"))
 
 ########################
 # Unique GZMK clones
@@ -625,13 +525,15 @@ cell.distribution.df
 # sanity check
 rowSums(cell.distribution.df)
 
-write.csv(cell.distribution.df, paste0(output.dir, "unique_US_GZMK_clonetypes_cell_distribution_after_stimulation_freq.csv"))
+write.csv(cell.distribution.df, paste0(output.dir, "Figure_6D_by_cells.csv"))
 
 
 ```
 
-## Pseudotime
-```{r pseudotime}
+
+
+### Figure 6E
+```{r Figure_6E}
 
 ####################################
 # Create dir to hold large objects
@@ -718,7 +620,7 @@ if(long.compute){
   ##############
   
   slingshot <- infer_trajectory(Dyno.data, 
-                                method = "dynverse/ti_slingshot:v0.9.9.01", 
+                                method = ti_slingshot(), 
                                 parameters = NULL, 
                                 give_priors = NULL, 
                                 seed = set.seed(42),
@@ -729,81 +631,55 @@ if(long.compute){
   saveRDS(slingshot, file = paste0(save.dir, "slingshot.rds"))
   rm(slingshot)
   
+  ##############
+  # scorpius
+  ##############
+  scorpius <- infer_trajectory(Dyno.data, 
+                               method = ti_scorpius(), 
+                               parameters = NULL, 
+                               give_priors = NULL, 
+                               seed = set.seed(42),
+                               verbose = TRUE)
+  
+  saveRDS(scorpius, file = paste0(save.dir, "scorpius.rds"))
+  rm(scorpius)
+  
 }
 
 # Read data
 slingshot <- readRDS(paste0(save.dir, "slingshot.rds"))
+scorpius <- readRDS(paste0(save.dir, "scorpius.rds"))
 
-# Set root milestone
+# Set root milestone for slingshot model
 slingshot <- add_root(trajectory = slingshot, 
                         root_milestone_id = "3")
 
+milestone.names <- c("GZMK", "GZMK", "ISG", "Stim_1")
+names(milestone.names) <- c("1", "2", "3", "4")
+slingshot <- label_milestones(slingshot, milestone.names)
+
+
+
+# Plot trajectory ontop of UMAP dimension 
 dynplot::plot_dimred(slingshot, 
+                     dimred = UMAP.dims,
+                     hex_cells = T, 
+                     label_milestones = T,
+                     color_cells = "pseudotime")
+
+dev.copy(pdf, paste0(output.dir, "Figure_E.pdf"))
+dev.off()
+
+# plot scorpius trajectory 
+dynplot::plot_dimred(scorpius, 
                      dimred = UMAP.dims,
                      hex_cells = TRUE, 
                      label_milestones = T,
                      color_cells = "pseudotime")
-
-
-?infer_trajectory
-
-
-
-
-
-
-
-
-# Cacluate trajectory feature importance
-
-overall_feature_importances <- dynfeature::calculate_overall_feature_importance(slingshot, 
-                                                                                expression_source = normed.data)
-
-top.features <- overall_feature_importances %>% 
-  top_n(-10, importance) %>% 
-  pull(feature_id)
-
-
-plot_heatmap(slingshot, 
-             expression_source = normed.data, 
-             features_oi = top.features)
-
-dev.copy(pdf, paste0(output.dir, "Heatmap_top50_important_features.pdf"))
-dev.off()
-
-
-# Calculate milestone importance
-for(i in 1:length(slingshot$milestone_ids)){
-  
-  # Because milestone ids are not in order get the corresponding ID name for each milestone #
-  logic.var <- names(slingshot$milestone_labelling) == i
-  milestone.name <- paste0(slingshot$milestone_labelling[logic.var])
-  
-  
-  milestone.feature.importance <- calculate_milestone_feature_importance(slingshot,
-                                                                         expression_source = normed.data, 
-                                                                         milestones_oi = i, 
-                                                                         verbose = TRUE)
-  
-  
-  top.features <- milestone.feature.importance %>% 
-    top_n(25, importance) %>% 
-    pull(feature_id)
-  
-  print(plot_heatmap(slingshot, 
-                     expression_source = normed.data, 
-                     features_oi = top.features))
-  
-  dev.copy(pdf, paste0("output/figures/Trajectories/Slingshot/Combined_heatmap_top25_milestone_", milestone.name, "_important_features.pdf"))
-  dev.off()
-  
-  
-}
+# data not shown
 
 
 ```
-
-
 
 
 
