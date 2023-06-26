@@ -59,15 +59,10 @@ long.compute <- FALSE
 require(tidyverse)
 require(Seurat)
 require(useful)
-require(ggrepel)
-require(clusterProfiler)
-require(enrichplot)
-require(org.Hs.eg.db)
 require(UCell)
 require(Nebulosa)
-require(ggsci)
 library(harmony)
-require(irGSEA)
+
 #source("scripts/aimed_analysis/functions.R")
 
 
@@ -81,7 +76,7 @@ if(!dir.exists(paste0(output.dir))){
 ```
 
 
-## Type I IFN score pancancer dataset {.tabset}
+## Figure 5 {.tabset}
 
 ### Prepare dataset / read and filter for CD8 / or load dataset
 

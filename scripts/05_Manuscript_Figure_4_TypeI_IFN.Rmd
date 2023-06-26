@@ -1,5 +1,5 @@
 ---
-title: "04_Manuscript_Figure_4"
+title: "05_Manuscript_Figure_4"
 author: "Dillon Corvino"
 date: "07/03/2022"
 output:
@@ -80,18 +80,11 @@ long.compute <- FALSE
 require(tidyverse)
 require(Seurat)
 require(useful)
-require(ggrepel)
 require(clusterProfiler)
 require(enrichplot)
-require(org.Hs.eg.db)
 require(UCell)
-require(Nebulosa)
-require(ggsci)
-library(harmony)
-require(irGSEA)
+
 #source("scripts/aimed_analysis/functions.R")
-
-
 
 # Create output directory
 output.dir <- "results/Manuscript/Figure4/"
@@ -104,12 +97,7 @@ if(!dir.exists(paste0(output.dir))){
 
 
 
-
-<<<<<<< Updated upstream
-## Type I IFN {.tabset}
-=======
-## Type I IFN score HNSCC dataset {.tabset}
->>>>>>> Stashed changes
+## Figure 4 {.tabset}
 
 ### Reading data
 ```{r reading_data}
@@ -183,26 +171,14 @@ signature.names <- paste0(names(Signature.list), "_UCell")
 
 ```
 
-
-### Heatmaps of IFN cluster DEGs
-```{r IFN_cluster_DEG_Heatmaps}
-
-
-# Create output directory
-output.dir <- "results/Manuscript/Figure4/Heatmaps/"
-
-if(!dir.exists(paste0(output.dir))){
-  dir.create(paste0(output.dir), 
-             recursive = TRUE)
-}
+### Figure 4 A & B
+```{r Figure_4A_B}
 
 
   # read in data
 input.dir <- "results/Manuscript/Figure4/"
 
 IFN.clust.DEGs <- read.csv(paste0(input.dir, "IFN_clust_DEGs.csv"))
-
-
 
 
 # Prepare dataset for heatmap
@@ -230,7 +206,7 @@ DoHeatmap(average.seurat,
                           direction = 1, 
                           na.value = "white")
 
-dev.copy(pdf, paste0(output.dir, "Heatmap_DEGs_IFN_cluster_greater_0_25_FC_UP.pdf"))
+dev.copy(pdf, paste0(output.dir, "Figure_4A.pdf"))
 dev.off()
 
 
@@ -245,33 +221,51 @@ DoHeatmap(average.seurat,
                           direction = 1, 
                           na.value = "white")
 
-dev.copy(pdf, paste0(output.dir, "Heatmap_ISG_cluster_top_10_Signature.pdf"))
+dev.copy(pdf, paste0(output.dir, "Figure_4B.pdf"))
 dev.off()
 
 
-pattern <- c("ISG", "IRF", "IFI", "OAS", "STAT", "GZM")
-label.goi <- grep(paste0(pattern, collapse = "|"), goi, value = T)
+```
 
-annotated.heatmap(CD8.seurat, 
-                  cluster.id = "Clusters_l1",
-                  assay.use = "RNA",
-                  average.expression = TRUE,
-                  goi = goi, 
-                  genes.to.label = label.goi, 
-                  col_order = names(CD8.cols), 
-                  col.colours = CD8.cols)
+### Figure 4C
+```{r Figure_4C}
 
-dev.copy(pdf, paste0(output.dir, "HNSCC_IFN_cluster_DEGs_highlighted_average.pdf"))
+# install required packages
+#BiocManager::install("decoupleR") 
+#BiocManager::install("OmnipathR") 
+#BiocManager::install("ComplexHeatmap")
+
+library("decoupleR")
+
+# Retrieve prior knowledge network.
+network <- decoupleR::get_progeny(organism = "human")
+
+
+# Run weighted means algorithm.
+activities <- decoupleR::run_wmean(mat = as.matrix(CD8.seurat@assays$RNA@data),
+                                   network = network,
+                                   .source = "source",
+                                   .targe = "target",
+                                   .mor = "weight",
+                                   times = 100,
+                                   minsize = 5)
+
+
+# General heatmap.
+out <- SCpubr::do_PathwayActivityPlot(sample = CD8.seurat,
+                                      cluster_rows = FALSE,
+                                      activities = activities)
+p <- out$heatmaps$average_scores
+p
+dev.copy(pdf, paste0(output.dir, "Figure_4C.pdf"))
 dev.off()
-
-
 
 ```
 
 
 
-### visualise IFN cluster DEG enrichment terms
-```{r IFN_cluster_enrichment_terms}
+### Figure 4D
+```{r Figure_4D}
 
 
 # load packages
@@ -286,15 +280,7 @@ dbs <- enrichR::listEnrichrDbs()
 dbs <- sort(dbs$libraryName)
 
 # Choose the dataset to query against.
-dbs_use <- c("GO_Biological_Process_2021", 
-             "GO_Cellular_Component_2021",
-             "GO_Molecular_Function_2021", 
-             "KEGG_2021_Human",
-             "MSigDB_Hallmark_2020",
-             "Reactome_2022",
-             "WikiPathway_2021_Human",
-             "Azimuth_Cell_Types_2021")
-
+dbs_use <- c("GO_Biological_Process_2021")
 
 
 # read in IFN clust DEGS
@@ -384,93 +370,14 @@ for(i in seq_len(length(upregulated.plots))){
 
 
 
-
-
-```
-
-
-### IFN cluster pathway activity inference analysis 
-```{r IFN_cluster_pathway_inference}
-
-# install required packages
-#BiocManager::install("decoupleR") 
-#BiocManager::install("OmnipathR") 
-#BiocManager::install("ComplexHeatmap")
-
-library("decoupleR")
-
-# Retrieve prior knowledge network.
-network <- decoupleR::get_progeny(organism = "human")
-
-
-# Run weighted means algorithm.
-activities <- decoupleR::run_wmean(mat = as.matrix(CD8.seurat@assays$RNA@data),
-                                   network = network,
-                                   .source = "source",
-                                   .targe = "target",
-                                   .mor = "weight",
-                                   times = 100,
-                                   minsize = 5)
-
-
-# General heatmap.
-out <- SCpubr::do_PathwayActivityPlot(sample = CD8.seurat,
-                                      cluster_rows = FALSE,
-                                      activities = activities)
-p <- out$heatmaps$average_scores
-p
-dev.copy(pdf, paste0(output.dir, "Pathway_activity_heatmap.pdf"))
-dev.off()
-
-# Feature plots function from SCpubr didn't work. used a work around to get a similar result
-
-
-# Add progeny data to seurat object
-CD8.seurat[["progeny"]] <- activities %>% 
-  dplyr::filter(.data$statistic == "norm_wmean") %>% 
-  tidyr::pivot_wider(id_cols = "source", names_from = "condition", values_from = "score") %>% 
-  tibble::column_to_rownames("source") %>% 
-  Seurat::CreateAssayObject()
-
-Seurat::DefaultAssay(CD8.seurat) <- "progeny"
-
-CD8.seurat <- Seurat::ScaleData(object = CD8.seurat, 
-                                 verbose = FALSE)
-
-
-for(i in seq_along(rownames(CD8.seurat))){
-
-# Density plots 
-  print(
-Plot_Density_Custom(CD8.seurat, 
-                    features =  rownames(CD8.seurat)[i],
-                    custom_palette = batlow.pal,
-                    joint = FALSE, 
-                    pt.size = 1, 
-                    reduction = "umap")
-)
-  
-dev.copy(pdf, paste0(output.dir, "Density_", rownames(CD8.seurat)[i], "_pathway_activity.pdf"))
-dev.off()
-
-}
-
-
 ```
 
 
 
-### Type 1 or Type 2 IFN
-```{r TypeI_or_II_IFN}
 
+### Figure 4E
+```{r Figure_4E}
 
-# Create output directory
-output.dir <- "results/Manuscript/Figure4/Type1_or_2/"
-
-if(!dir.exists(paste0(output.dir))){
-  dir.create(paste0(output.dir), 
-             recursive = TRUE)
-}
 
 # Prepare dataset for heatmap
 Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
@@ -490,11 +397,8 @@ HLA.genes <- grep("^HLA.*", rownames(CD8.seurat), value = T)
 Type2.signature <- c(Type2.signature, HLA.genes)
 
 
-
 Signature.list <- list(Type1.sig = Type1.signature, 
                        Type2.sig = Type2.signature)
-
-
 
 
 if(long.compute){
@@ -520,7 +424,7 @@ VlnPlot(CD8.seurat,
         pt.size = 0) + 
   NoLegend()
 
-dev.copy(pdf, paste0(output.dir, "VlnPlot_Type1_signature.pdf"))
+dev.copy(pdf, paste0(output.dir, "Figure_4E_Type1_signature.pdf"))
 dev.off()
 
 
@@ -531,122 +435,8 @@ VlnPlot(CD8.seurat,
         pt.size = 0) + 
   NoLegend()
 
-dev.copy(pdf, paste0(output.dir, "VlnPlot_Type2_signature.pdf"))
+dev.copy(pdf, paste0(output.dir, "Figure_4E_Type2_signature.pdf"))
 dev.off()
-
-
-
-#https://www.nature.com/articles/nri1604
-
-# Prepare dataset for heatmap
-Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
-DefaultAssay(CD8.seurat) <- "RNA"
-
-average.seurat <- AverageExpression(CD8.seurat, return.seurat = T)
-
-DoHeatmap(average.seurat, 
-          draw.lines = F,
-          raster = FALSE,
-          features = c("STAT1", "STAT2", "IRF9", "OAS1"), 
-          group.colors = CD8.cols) + scico::scale_fill_scico(palette = "batlow", 
-                                                    direction = 1, 
-                                                    na.value = "white")
-
-dev.copy(pdf, paste0(output.dir, "Heatmap_Type1_vs_Type2_IFN.pdf"))
-dev.off()
-
 
 ```
-
-### Heatmap of IFN genes across clusters 
-```{r IFN gene expression}
-
-genes <- unique(rownames(CD8.seurat@assays[["RNA"]]))
-
-IFN_genes <- genes[grepl("^IFN.*", genes)]
-
-
-# manual reorder of genes 
-IFN_genes <- c("IFNAR1", "IFNAR2", "IFNGR1", "IFNGR2", "IFNLR1", "IFNG-AS1", "IFNG", "IFNL1")
-
-
-# Prepare dataset for heatmap
-Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
-DefaultAssay(CD8.seurat) <- "RNA"
-
-average.seurat <- AverageExpression(CD8.seurat, return.seurat = T)
-
-DoHeatmap(average.seurat, 
-          draw.lines = F,
-          raster = FALSE,
-          features = c(IFN_genes), 
-          group.colors = CD8.cols) + scico::scale_fill_scico(palette = "batlow", 
-                                                    direction = 1, 
-                                                    na.value = "white")
-
-dev.copy(pdf, paste0(output.dir, "Heatmap_IFN_genes.pdf"))
-dev.off()
-
-
-
-```
-
-
-
-
-
-
- 
-### Visualise Type I IFN cluster 
-```{r heatmap_gene_expression}
-
-
- #extract hallmark pathways
- x <- msigdbr::msigdbr(species = "Homo sapiens",
-                       category = "H")
- 
- Hallmark.IFNa.response <- x[x$gs_name == "HALLMARK_INTERFERON_ALPHA_RESPONSE", ]$gene_symbol
- Hallmark.IFNa.response <- unique(Hallmark.IFNa.response)
- 
- 
- Hallmark.IFNg.response <- x[x$gs_name == "HALLMARK_INTERFERON_GAMMA_RESPONSE", ]$gene_symbol
- Hallmark.IFNg.response <- unique(Hallmark.IFNg.response)
-
- Hallmark.IFN.both <- unique(c(Hallmark.IFNa.response, Hallmark.IFNg.response))
- 
- # Prepare dataset for heatmap
-Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
-DefaultAssay(CD8.seurat) <- "RNA"
-
-average.seurat <- AverageExpression(CD8.seurat, return.seurat = T)
-
-DoHeatmap(average.seurat, 
-          draw.lines = F,
-          raster = FALSE,
-          features = Hallmark.IFNa.response, 
-          group.colors = CD8.cols) + scico::scale_fill_scico(palette = "batlow", 
-                                                    direction = 1, 
-                                                    na.value = "white")
-
-dev.copy(pdf, paste0(output.dir, "HNSCC_Hallmark_IFNa_Averaged.pdf"))
-dev.off()
-
-
-
-
-
-
-
-
-Plot_Density_Custom(CD8.seurat, 
-                    "IRF7")
-
-Plot_Density_Custom(CD8.seurat, 
-                    "ZEB2")
-
-
-
-
-```
-
 
