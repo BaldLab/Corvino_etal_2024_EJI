@@ -186,3 +186,6 @@ scripts/original_analysis_not_modified_for_docker_setup/23_Manuscript_Circos_ana
 scripts/original_analysis_not_modified_for_docker_setup/Predict_IFN_function.R filter=lfs diff=lfs merge=lfs -text
 saves/reduced_seurat_tcr.h5Seurat filter=lfs diff=lfs merge=lfs -text
 saves/reduced_seurat.h5Seurat filter=lfs diff=lfs merge=lfs -text
+saves/covid_seurat_symbol.h5Seurat filter=lfs diff=lfs merge=lfs -text
+saves/liana_cillo_covid_celltype_ISGanno.rds filter=lfs diff=lfs merge=lfs -text
+saves/liana_cillo_covid_minor_subset_ISGanno.rds filter=lfs diff=lfs merge=lfs -text

@@ -1,6 +1,8 @@
 # History files
 .Rhistory
 .Rapp.history
+.RDataTmp
+
 
 # Session Data files
 .RData
@@ -15,7 +17,9 @@ archive/**/**
 results/**/**
 
 # saved objects
+saves/**/**
 saves/archive/**/**
+saved/**/**
 
 # Data
 data/archive/**/**

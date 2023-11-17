@@ -63,6 +63,10 @@ long.compute <- FALSE
 
 # load required packages
 require(tidyverse)
+#BiocManager::install("EDASeq")
+require("EDASeq")
+#BiocManager::install("survminer")
+require("survminer")
 
 #source("scripts/aimed_analysis/functions.R")
 
@@ -112,11 +116,12 @@ usefulfunctions::moving.average(tcga.datasets = c("hnsc_tcga", "brca_tcga", "esc
 ```{r tcga_survival}
 
 
+ISG.sig <- c("IFI6", "ISG15", "IFIT3", "MX1", "ISG20", "IFITM1", "LY6E", "IFIT1", "MX2", "OAS1")
 
 
 usefulfunctions::TCGA.OS(TCGA.dataset = "TCGA-HNSC", 
-                         gene.signature = "IFI6", 
-                         rda.file.path = "scripts/Output/TCGA-HNSC/Data/TCGA-HNSC_Transcriptome_Profiling_raw_counts.rda")
+                         gene.signature = "ISG15", 
+                         rda.file.path = "results/archive/Output/TCGA-HNSC/Data/TCGA-HNSC_Transcriptome_Profiling_raw_counts.rda")
 
 
 

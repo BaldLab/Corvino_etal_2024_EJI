@@ -440,3 +440,55 @@ dev.off()
 
 ```
 
+
+
+
+
+
+### TEMP
+```{r temp}
+
+
+
+# Create output directory
+output.dir <- "results/Manuscript/temp/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
+             recursive = TRUE)
+}
+
+
+
+
+exhaustion.sig <- c("CD96", "PDCD1", "LAG3", "HAVCR2", "TIGIT", "CTLA4", "CD244", "CD160", "TOX", "TCF7", "ENTPD1", "ITGAE", "TNFRSF9", "TNFRSF18")
+# TNFRSF9 = CD137 = 4-1BB
+#TNFRSF18 = GITR
+effector.sig <- c("GZMA", "GZMB", "NKG7", "PRF1", "IFNG", "XCL1", "SP140")
+
+# SP140
+
+
+DoHeatmap(temp.seurat, 
+          features = exhaustion.sig)
+
+
+
+Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
+average.seurat <- AverageExpression(CD8.seurat, 
+                                    return.seurat = T)
+
+
+exhaustion.sig <- c("CD96", "PDCD1", "LAG3", "HAVCR2", "TIGIT", "CTLA4", "CD244", "CD160", "TOX", "TCF7", "ENTPD1", "ITGAE", "TNFRSF9", "TNFRSF18", "BTLA", "IL10", "IL27")
+effector.sig <- c("GZMA", "GZMB", "NKG7", "PRF1", "IFNG", "XCL1", "SP140")
+
+DoHeatmap(average.seurat, 
+          features = effector.sig, 
+          draw.lines = F)
+
+VlnPlot(CD8.seurat, feature = "LAG3", pt.size = 0)
+
+
+```
+
+

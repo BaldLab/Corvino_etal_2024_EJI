@@ -1,0 +1,2608 @@
+---
+title: "Analysis_of_various_diseases"
+author: "Dillon Corvino"
+date: "06/10/2023"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: united
+    highlight: tango
+    df_print: paged
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+  markdown: 
+    wrap: 72
+---
+
+Built with R version `{r} getRversion()`
+
+## Setup {.tabset}
+
+### Environment
+
+```{r setup, message = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,  
+  eval = TRUE, 
+  tidy = TRUE
+)
+
+knitr::opts_knit$set(
+  root.dir = "../"
+)
+
+# Environment Set up
+rm(list = ls()) #Clean workspace
+cat("\014")     #Clean Console
+gc() # Free memory
+
+
+# Establish working directory
+library("rstudioapi")
+
+# Set working directory to source file location
+setwd(dirname(getActiveDocumentContext()$path))
+setwd("..")
+
+# Create output directories & load custom functions & colour scheme
+source("scripts/Setup.R", local = knitr::knit_global())
+
+# pipeline variables
+long.compute <- FALSE
+quick.load <- TRUE
+
+
+# load required packages
+require(tidyverse)
+require(Seurat)
+require(useful)
+require(UCell)
+require(Nebulosa)
+library(harmony)
+library(scCustomize)
+
+#source("scripts/aimed_analysis/functions.R")
+
+
+# Create output directory
+output.dir <- "results/temp/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
+             recursive = TRUE)
+}
+
+```
+
+
+### Define signature
+```{r define_signature}
+
+# Hard code the signature to prevent any alternations with statistical drift 
+Sig.10 <- c("IFI6", "ISG15", "IFIT3", "MX1", "ISG20", "IFITM1", "LY6E", "IFIT1", "MX2", "OAS1")
+
+Sig.10.up <- paste0(Sig.10, "+")
+
+Signature.list <- list(Top_10 = Sig.10.up)
+
+
+# note COMBAT dataset uses ensemble IDs. therefore need to convert gene to ensemble 
+# this was done using https://biit.cs.ut.ee/gprofiler/convert
+Sig.10.ensembl <- read.csv(file = "data/ISG_sig_ensemble.csv")
+Sig.10.ensembl <- Sig.10.ensembl$converted_alias
+
+```
+
+
+
+
+
+
+## COMBAT COVID dataset {.tabset}
+
+### Load COMBAT COVID dataset, subset for CD8 and score for ISG
+
+```{r read_covid_dataset}
+
+# Create output directory
+output.dir <- "results/COMBAT_COVID_dataset/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
+             recursive = TRUE)
+}
+
+if(long.compute){
+  
+  # load dataset
+  covid.seurat <- readRDS("/Users/ieo/Documents/scRNAseq_datasets/COVID_datasets/COMBAT_Blood_Atlas_of_COVID_19/blood_atlas_covid.rds")
+  
+  # quick overview of dataset 
+  covid.seurat # 37,412 genes and 836,148 cells
+  
+  # All data is: 
+  # Human derived
+  # PBMCs
+  # three disease = normal, influenza, and COVID-19
+  # male and female donors
+  # 124 donors?
+  
+  
+  covid.seurat %>% 
+    glimpse()
+  
+  head(covid.seurat@meta.data)
+  colnames(covid.seurat@meta.data)
+  
+  
+  # info on disease vs source annotation
+  table(covid.seurat@meta.data$Source, covid.seurat@meta.data$disease)
+  
+  # note major_subset and cell_type annotation is equiv 
+  vars.plot <- c("disease", "sex", "cell_type", "major_subset", "minor_subset", "Source")
+  
+  for(i in seq_along(vars.plot)){
+    print(
+      UMAPPlot(covid.seurat,
+               pt.size = 1,
+               group.by = vars.plot[i], 
+               label = T, 
+               raster = T)
+    )
+    dev.copy(pdf, paste0(output.dir, "UMAP_", vars.plot[i], ".pdf"))
+    dev.off()
+    
+  }
+  
+  
+  # subset for CD8 T-cells
+  unique(covid.seurat@meta.data$major_subset)
+  
+  Idents(covid.seurat) <- covid.seurat@meta.data$major_subset
+  cd8.covid.seurat <- subset(covid.seurat, idents = "CD8")
+  
+  cd8.covid.seurat # 37,412 genes across 106,025 cells
+  
+  # remove large dataset 
+  rm(covid.seurat)
+  gc()
+  
+  # quick vis
+  UMAPPlot(cd8.covid.seurat,
+           pt.size = 1,
+           group.by = "minor_subset", 
+           label = T) + NoLegend()
+  
+  
+  # three cells annotated as "nan" remove these cells
+  table(cd8.covid.seurat@meta.data$minor_subset)
+  Idents(cd8.covid.seurat) <- cd8.covid.seurat@meta.data$minor_subset
+  
+  cd8.covid.seurat <- subset(cd8.covid.seurat, idents = "nan", invert = TRUE)
+  
+  # renorm, and dim reduction reduced dataset
+  cd8.covid.seurat <- 
+    cd8.covid.seurat %>%
+    NormalizeData() %>%
+    FindVariableFeatures() %>%
+    ScaleData() %>%
+    RunPCA() %>%
+    RunUMAP(reduction = "pca", 
+            dims = 1:20, 
+            min.dist = 0.5, 
+            spread = 1,
+            n.neighbors = 30, # 5 - 50 , larger = more global
+            densmap = F,
+            seed.use = 42)  %>%
+    FindNeighbors(reduction = "pca",
+                  dims = 1:20) %>%
+    FindClusters(resolution = 0.3)
+  
+  
+  ############################
+  # score for ISG signature
+  ############################
+  
+  cores <- parallel::detectCores(all.tests = FALSE, logical = TRUE)
+  
+  # replace sig list with ensemble IDs
+  Signature.list[[1]] <- paste0(Sig.10.ensembl, "+")
+  
+  
+  # Calculate Ucell scores for signatures
+  DefaultAssay(cd8.covid.seurat) <- "RNA"
+  cd8.covid.seurat <- UCell::AddModuleScore_UCell(cd8.covid.seurat,
+                                                  features = Signature.list,
+                                                  ncores = cores)
+  
+  
+  
+  
+  # VlnPlots
+  VlnPlot(cd8.covid.seurat,
+          pt.size = 0, 
+          same.y.lims = T,
+          features = "Top_10_UCell",
+          group.by = "seurat_clusters") + 
+    NoLegend()
+  
+  dev.copy(pdf, paste0(output.dir, "Vlnplot_ISG_signature.pdf"))
+  dev.off()
+  
+  
+  
+  # make new metadata to specifically isolate ISG cluster 
+  # cluster 6 = ISG 
+  
+  cd8.covid.seurat@meta.data <- cd8.covid.seurat@meta.data %>%
+    mutate(ISG_status = case_when(seurat_clusters == "6" ~ "ISG_cluster",
+                                  TRUE ~ "Non_ISG"))
+  
+  
+  # reorder disease factor levels for downstream plotting
+  cd8.covid.seurat@meta.data$disease <- factor(cd8.covid.seurat@meta.data$disease, levels = c("normal", "COVID-19", "influenza"))
+  
+  
+  SaveH5Seurat(cd8.covid.seurat,
+               file = "data/external_datasets/COMBAT_COVID_CD8.h5Seurat")
+  
+}else if(quick.load){
+  cd8.covid.seurat <- LoadH5Seurat("data/external_datasets/COMBAT_COVID_CD8.h5Seurat")
+}
+
+
+
+
+```
+
+### Vis ISG score in COVID dataset
+```{r vis_ISG_score_covid_dataset}
+
+########################################
+# General visualisation of dataset
+########################################
+
+
+UMAPPlot(cd8.covid.seurat,
+         pt.size = 1,
+         group.by = "seurat_clusters", 
+         label = T, 
+         raster = T) + NoLegend()
+
+dev.copy(pdf, paste0(output.dir, "UMAP_seurat_clusters_CD8_only.pdf"))
+dev.off()
+
+
+UMAPPlot(cd8.covid.seurat,
+         pt.size = 1,
+         group.by = "minor_subset", 
+         label = T, 
+         raster = T) + NoLegend()
+
+dev.copy(pdf, paste0(output.dir, "UMAP_minor_subset_CD8_only.pdf"))
+dev.off()
+
+##############################
+# visualise ISG cluster
+##############################
+
+library(scCustomize)
+
+# Density plots 
+Plot_Density_Custom(cd8.covid.seurat, 
+                    features =  "Top_10_UCell",
+                    custom_palette = batlow.pal,
+                    joint = FALSE, 
+                    pt.size = 1, 
+                    reduction = "umap")
+
+dev.copy(pdf, paste0(output.dir, "Density_plot_ISG_signature.pdf"))
+dev.off()
+
+
+# VlnPlots
+VlnPlot(cd8.covid.seurat,
+        pt.size = 0, 
+        same.y.lims = T,
+        features = "Top_10_UCell",
+        group.by = "ISG_status") + 
+  NoLegend()
+
+dev.copy(pdf, paste0(output.dir, "Vlnplot_ISG_signature_ISG_cluster_vs_else.pdf"))
+dev.off()
+
+
+
+
+# Specifically colour IFN cluster
+Idents(cd8.covid.seurat) <- cd8.covid.seurat@meta.data$ISG_status
+
+scCustomize::Cluster_Highlight_Plot(cd8.covid.seurat, 
+                                    cluster_name = "ISG_cluster", 
+                                    highlight_color = "Red", 
+                                    background_color = "lightgray", 
+                                    pt.size = 0.5, 
+                                    raster = FALSE) + NoLegend()
+
+dev.copy(pdf, paste0(output.dir, "UMAP_ISG_cluster_highlighted.pdf"))
+dev.off()
+
+
+
+# Downsample to allow even representation of disease and split across disease
+Idents(cd8.covid.seurat) <- cd8.covid.seurat@meta.data$disease
+table(cd8.covid.seurat@meta.data$disease) # min is infl at 2,322 cells
+
+small.seurat <- subset(cd8.covid.seurat, downsample = 2000)
+
+# want a plot of each disease, but dont want it squashed in the way it comes out when using split.by 
+# therefore iterate across dataset 
+Idents(small.seurat) <- small.seurat@meta.data$disease
+
+vars.plot <- unique(small.seurat@meta.data$disease)
+for(i in seq_along(vars.plot)){
+  
+  temp.seurat.1 <- subset(small.seurat, idents = vars.plot[i])
+  
+  print(
+    UMAPPlot(temp.seurat.1, 
+             group.by = "ISG_status", 
+             cols = c("blue", "lightgray"),
+             pt.size = 2,
+             raster = TRUE) + NoLegend() + 
+      xlim(-7, 11) + 
+      ylim(-10, 10) + ggtitle(paste0("ISG status of ", vars.plot[i]))
+  )
+  
+  
+  dev.copy(pdf, paste0(output.dir, "UMAP_downsampled_ISG_cluster_highlighted_", vars.plot[i], ".pdf"))
+  dev.off()
+}
+
+
+
+
+```
+
+### Calculate frequencies and plot boxplot of ISG population in COVID dataset
+```{r boxplots_covid_dataset}
+
+
+#################################################
+# Proportion of ISG_cluster by Disease Group
+#################################################
+
+plot_data <- cd8.covid.seurat@meta.data %>%
+  group_by(donor_id, disease, ISG_status) %>%
+  summarise(freq = n()) %>%
+  ungroup() %>%
+  group_by(donor_id, disease) %>%
+  mutate(prop = freq / sum(freq)) %>%
+  filter(ISG_status == "ISG_cluster")
+
+plot_data$prop <- plot_data$prop*100
+
+
+# Create a data frame for the t-test groups
+t_test_groups <- data.frame(
+  group1 = c("normal", "COVID-19"),
+  group2 = c("COVID-19", "influenza"), 
+  group3 = c("normal", "influenza")
+)
+
+ggplot(plot_data, aes(x = disease, y = prop, color = disease, fill = disease)) +
+  geom_boxplot(alpha = 0.3, position = position_dodge(width = 0.75), aes(color = disease, fill = disease), outlier.shape = NA, width = 0.75) +
+  geom_point(aes(color = disease), position = position_jitter(width = 0.1), shape = 19, size = 2) + 
+  labs(x = "disease", y = "Proportion of ISG_cluster") +
+  #scale_color_manual(values = c("normal" = "red", "COVID-19" = "blue", "influenza" = "green")) + 
+  #scale_fill_manual(values = c("normal" = "red", "COVID-19" = "blue", "influenza" = "green")) +
+  theme_pubr() + 
+  theme(
+    axis.line = element_line(linewidth = 0.5), 
+    axis.title.y = element_text(margin = margin(r = 0)), 
+    axis.text.y = element_text(size = 10, color = c("black", NA)), # pass black and NA to hide labels and create minor ticks
+    axis.ticks.y = element_line(size = 0.5, color = "black", linetype = "solid"), 
+    plot.margin = margin(1,10,1,1, unit = "cm")
+  ) + 
+  scale_y_continuous(expand = expansion(add = c(0, 0.01)), limits = c(0, 100), breaks = seq(0, 100, by = 10)) + 
+  stat_compare_means(comparisons = t_test_groups, 
+                     method = "t.test", 
+                     label = "p.signif",
+                     hide.ns = FALSE,
+                     label.y = c(80, 85, 90)) + # Perform t-test and add statistics
+  ggtitle("Proportion of ISG_cluster by Disease Group")
+
+ggsave(filename = paste0(output.dir, "Boxplot_ISG_vs_disease_group.pdf"),
+       device = "pdf")
+
+
+
+#################################################
+# Proportion of ISG_cluster by disease status
+#################################################
+
+table(cd8.covid.seurat@meta.data$Source , cd8.covid.seurat@meta.data$disease)
+#table(cd8.covid.seurat@meta.data$Source , cd8.covid.seurat@meta.data$donor_id)
+#table(cd8.covid.seurat@meta.data$disease , cd8.covid.seurat@meta.data$donor_id)
+length(unique(cd8.covid.seurat@meta.data$donor_id)) # 122 donors 
+
+# note sepsis is annotated as COVID-19 but not sure if this is correct based on paper, looks like sepsis is maybe/maybenot covid attributed
+# not sure what COVID_HCW_MILD or COVID_LDN are
+# therefore, will remove these and keep only HV, and COVID annotations
+
+
+plot_data <- cd8.covid.seurat@meta.data %>%
+  filter(Source %in% c("HV", "COVID_MILD", "COVID_SEV", "COVID_CRIT", "Sepsis")) %>%
+  group_by(donor_id, Source, ISG_status) %>%
+  summarise(freq = n()) %>%
+  ungroup() %>%
+  group_by(donor_id, Source) %>%
+  mutate(prop = freq / sum(freq)) %>%
+  filter(ISG_status == "ISG_cluster")
+
+plot_data$prop <- plot_data$prop*100
+
+unique(plot_data$Source)
+
+# Create a data frame for the t-test groups
+t_test_groups <- data.frame(
+  group1 = c("HV", "COVID_MILD"),
+  group2 = c("HV", "COVID_SEV")
+)
+
+ggplot(plot_data, aes(x = Source, y = prop, color = Source, fill = Source)) +
+  geom_boxplot(alpha = 0.3, position = position_dodge(width = 0.75), aes(color = Source, fill = Source), outlier.shape = NA, width = 0.75) +
+  geom_point(aes(color = Source), position = position_jitter(width = 0.1), shape = 19, size = 2) + 
+  labs(x = "Source", y = "Proportion of ISG_cluster") +
+  #scale_color_manual(values = c("normal" = "red", "COVID-19" = "blue", "influenza" = "green")) + 
+  #scale_fill_manual(values = c("normal" = "red", "COVID-19" = "blue", "influenza" = "green")) +
+  theme_pubr() + 
+  theme(
+    axis.line = element_line(linewidth = 0.5), 
+    axis.title.y = element_text(margin = margin(r = 0)), 
+    axis.text.y = element_text(size = 10, color = c("black", NA)), # pass black and NA to hide labels and create minor ticks
+    axis.ticks.y = element_line(size = 0.5, color = "black", linetype = "solid"), 
+    axis.text.x = element_text(angle = 90, hjust = 1), 
+    plot.margin = margin(1,10,1,1, unit = "cm")
+  ) + 
+  scale_y_continuous(expand = expansion(add = c(0, 0.01)), limits = c(0, 60), breaks = seq(0, 60, by = 5)) + 
+  stat_compare_means(comparisons = t_test_groups, 
+                     label = "p.signif",
+                     method = "t.test", 
+                     label.y = c(55, 45), 
+                     hide.ns = TRUE) + 
+  ggtitle("Proportion of ISG_cluster by Disease status")
+
+ggsave(filename = paste0(output.dir, "Boxplot_ISG_vs_disease_status.pdf"),
+       device = "pdf")
+
+
+
+#################################################
+# Proportion of ISG_cluster by sex
+#################################################
+
+plot_data <- cd8.covid.seurat@meta.data %>%
+  filter(disease == "COVID-19") %>%
+  group_by(donor_id, sex, ISG_status) %>%
+  summarise(freq = n()) %>%
+  ungroup() %>%
+  group_by(donor_id, sex) %>%
+  mutate(prop = freq / sum(freq)) %>%
+  filter(ISG_status == "ISG_cluster")
+
+plot_data$prop <- plot_data$prop*100
+
+# Create a data frame for the t-test groups
+t_test_groups <- data.frame(
+  group1 = c("female", "male")
+)
+
+
+
+ggplot(plot_data, aes(x = sex, y = prop, color = sex, fill = sex)) +
+  geom_boxplot(alpha = 0.3, position = position_dodge(width = 0.75), aes(color = sex, fill = sex), outlier.shape = NA, width = 0.75) +
+  geom_point(aes(color = sex), position = position_jitter(width = 0.1), shape = 19, size = 2) + 
+  labs(x = "sex", y = "Proportion of ISG_cluster") +
+  #scale_color_manual(values = c("normal" = "red", "COVID-19" = "blue", "influenza" = "green")) + 
+  #scale_fill_manual(values = c("normal" = "red", "COVID-19" = "blue", "influenza" = "green")) +
+  theme_pubr() + 
+  theme(
+    axis.line = element_line(linewidth = 0.5), 
+    axis.title.y = element_text(margin = margin(r = 0)), 
+    axis.text.y = element_text(size = 10, color = c("black", NA)), # pass black and NA to hide labels and create minor ticks
+    axis.ticks.y = element_line(size = 0.5, color = "black", linetype = "solid"), 
+    plot.margin = margin(1,10,1,1, unit = "cm"),
+  ) + 
+  scale_y_continuous(expand = expansion(add = c(0, 0.01)), limits = c(0, 60), breaks = seq(0, 60, by = 5)) + 
+  stat_compare_means(comparisons = t_test_groups, 
+                     label = "p.signif",
+                     method = "t.test", 
+                     label.y = c(55), 
+                     hide.ns = F) + 
+  ggtitle("Proportion of ISG_cluster by sex")
+
+ggsave(filename = paste0(output.dir, "Boxplot_ISG_vs_sex.pdf"),
+       device = "pdf")
+
+```
+
+### cell cell communication COVID dataset
+```{r cell_cell_communication_COVID}
+
+# Create output directory
+output.dir <- "results/COMBAT_COVID_dataset/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
+             recursive = TRUE)
+}
+
+if(long.compute){
+  # load dataset
+  covid.seurat <- readRDS("/Users/ieo/Documents/scRNAseq_datasets/COVID_datasets/COMBAT_Blood_Atlas_of_COVID_19/blood_atlas_covid.rds")
+  
+  # quick overview of dataset 
+  covid.seurat # 37,412 genes and 836,148 cells
+  
+  # All data is: 
+  # Human derived
+  # PBMCs
+  # three disease = normal, influenza, and COVID-19
+  # male and female donors
+  # 124 donors?
+  
+  # load CD8 subsetted covid dataset to extract out the cell.ids for ISG population 
+  cd8.covid.seurat <- LoadH5Seurat("data/external_datasets/COMBAT_COVID_CD8.h5Seurat")
+  
+  # get vector of ISG population cells 
+  ISG.cells <- cd8.covid.seurat@meta.data %>%
+    filter(ISG_status == "ISG_cluster")
+  
+  ISG.cells <- rownames(ISG.cells)
+  
+  
+  length(ISG.cells) # 5,417 cells 
+  
+  
+  # add rownames to metadata as cellID
+  covid.seurat@meta.data$cellID <- rownames(covid.seurat@meta.data)
+  
+  
+  ###########################################################################
+  # identify ISG cells and annotate at different levels of resolution 
+  ###########################################################################
+  
+  colnames(covid.seurat@meta.data)
+  covid.seurat@meta.data[1:10, ]
+  
+  unique(covid.seurat@meta.data$cluster) # 347 levels
+  unique(covid.seurat@meta.data$minor_subset) # 41 levels
+  unique(covid.seurat@meta.data$major_subset) # 18 levels with nan cells
+  
+  unique(covid.seurat@meta.data$cell_type) # 17 levels
+  unique(covid.seurat@meta.data$cell_type_original) # 8 levels with nan cells
+  
+  
+  covid.seurat@meta.data <- covid.seurat@meta.data %>%
+    mutate(ISG_status = case_when(cellID %in% ISG.cells ~ "CD8_ISG_cells",
+                                  TRUE ~ "Non_ISG")) %>% 
+    mutate(cell_type_ISGanno = case_when(ISG_status == "CD8_ISG_cells" ~ "CD8_ISG_cells",
+                                         TRUE ~ as.character(cell_type))) %>%
+    mutate(major_subset_ISGanno = case_when(ISG_status == "CD8_ISG_cells" ~ "CD8_ISG_cells",
+                                            TRUE ~ as.character(major_subset))) %>%
+    mutate(minor_subset_ISGanno = case_when(ISG_status == "CD8_ISG_cells" ~ "CD8_ISG_cells",
+                                            TRUE ~ as.character(minor_subset)))
+  
+  table(covid.seurat@meta.data$ISG_status) # 5,417 cells which matches what is expected
+  
+  
+  library(biomaRt)
+  library(org.Hs.eg.db)
+  
+  
+  # convert ensemble IDs to gene names
+  ensembl <- useMart("ensembl", dataset="hsapiens_gene_ensembl")
+  bm <- getBM(attributes=c("ensembl_gene_id", "hgnc_symbol"), values=rownames(covid.seurat), mart=ensembl)
+  nrow(bm) # 70,126
+  
+  # there are duplicate entries in ensemble ID
+  duplicated_entries <- duplicated(bm$ensembl_gene_id) | duplicated(bm$ensembl_gene_id, fromLast = TRUE)
+  duplicated_bm_entries <- bm[duplicated_entries, ]
+  # these are not very many, so, will just remove duplicate entries 
+  
+  bm <- bm[!duplicated(bm$ensembl_gene_id),]
+  nrow(bm) # 70,116
+  
+  
+  hgnc.symbols <- left_join(data.frame(ensembl_gene_id = rownames(covid.seurat)), bm, by = "ensembl_gene_id")
+  nrow(hgnc.symbols)
+  length(rownames(covid.seurat))
+  
+  # create a new column that is a mixture of annotation types, to preserve data downstream 
+  
+  # capture empty values in symbol column 
+  logic.vec <- grepl("^$", hgnc.symbols$hgnc_symbol)
+  sum(logic.vec) # 11,882 genes not converted
+  sum(!logic.vec) # 25,530 genes converted
+  
+  hgnc.symbols$ensem_symbol <- hgnc.symbols$hgnc_symbol
+  hgnc.symbols$ensem_symbol[logic.vec] <- hgnc.symbols$ensembl_gene_id[logic.vec]
+  
+  sum(is.na(hgnc.symbols$hgnc_symbol)) # 129 NA entries 
+  # replace NA with ensembl ID
+  na.logic <- is.na(hgnc.symbols$hgnc_symbol)
+  hgnc.symbols$ensem_symbol[na.logic] <- hgnc.symbols$ensembl_gene_id[na.logic]
+  
+  sum(is.na(hgnc.symbols$ensem_symbol)) # 0 NA entries 
+  
+  
+  # duplicated symbol entries exist
+  sum(duplicated(hgnc.symbols$ensem_symbol)) # 9 genes are duplicated
+  duplicated_entries <- duplicated(hgnc.symbols$ensem_symbol) | duplicated(hgnc.symbols$ensem_symbol, fromLast = TRUE)
+  duplicated_hgnc.symbols_entries <- hgnc.symbols[duplicated_entries, ]
+  duplicated_hgnc.symbols_entries
+  
+  # these are duplicated symbols but unique ensembl IDs. therefore, use the ensemblID to preserve data
+  
+  hgnc.symbols$ensem_symbol[duplicated_entries] <- hgnc.symbols$ensembl_gene_id[duplicated_entries]
+  sum(duplicated(hgnc.symbols$ensem_symbol)) # 0 duplicated
+  
+  
+  
+  #temp.seurat <- subset(covid.seurat, downsample = 100)
+  
+  # extract data to recreate seurat object 
+  
+  assay.counts <- GetAssayData(covid.seurat, slot = "counts")
+  #assay.data <- GetAssayData(covid.seurat, slot = "data")
+  
+  # genes are in correct order, can just replace
+  logic.var <- rownames(assay.counts) == hgnc.symbols$ensembl_gene_id
+  sum(logic.var) # 37412
+  
+  length(rownames(assay.counts))
+  length(hgnc.symbols$ensembl_gene_id)
+  
+  # add new gene IDs to rownames
+  rownames(assay.counts) <- hgnc.symbols$ensem_symbol
+  
+  head(assay.counts)
+  
+  
+  covid.seurat.symbol <- CreateSeuratObject(counts = assay.counts, meta.data = covid.seurat@meta.data)
+  
+  
+  # get UMAP details 
+  umap.data <- covid.seurat@reductions$umap@cell.embeddings
+  
+  umap.data <- as.matrix(umap.data)
+  head(umap.data)
+  
+  # add UMAP details to seurat object
+  covid.seurat.symbol[["umap"]] <- CreateDimReducObject(embeddings = umap.data, 
+                                                        key = "umap_",
+                                                        assay = DefaultAssay(covid.seurat))
+  
+  # normalise and scale data
+  covid.seurat.symbol <- 
+    covid.seurat.symbol %>%
+    NormalizeData() %>%
+    FindVariableFeatures() %>%
+    ScaleData()
+  
+  
+  
+  #remotes::install_github('saezlab/liana')
+  library(liana)
+  library(tidyverse)
+  library(magrittr)
+  library(circlize)
+  
+  
+  # Resource currently included in OmniPathR (and hence `liana`) include:
+  show_resources()
+  
+  
+  # Resource currently included in OmniPathR (and hence `liana`) include:
+  show_methods()
+  
+  covid.seurat %>% dplyr::glimpse()
+  
+  # set idents
+  Idents(covid.seurat.symbol) <- covid.seurat.symbol@meta.data$minor_subset_ISGanno
+  DefaultAssay(covid.seurat.symbol) <- "RNA"
+  unique(Idents(covid.seurat.symbol))
+  
+  
+  
+  cores <- parallel::detectCores(all.tests = FALSE, logical = TRUE)
+  
+  # reduce dataset as cellphonedb is not possible to compute on the full dataset
+  x <- table(covid.seurat.symbol@meta.data$minor_subset_ISGanno)
+  x
+  min(x)
+  max(x)
+  median(x)
+  small.seurat <- subset(covid.seurat.symbol, downsample = 5000) # 10K cell_type and 5K for minor subset
+  
+  small.seurat # for cell type = 122,011 cells | for minor subset = 173,257
+  table(small.seurat@meta.data$minor_subset_ISGanno)
+  
+  output.dir <- "saves/"
+  
+  # Run liana
+  liana_cillo <- liana_wrap(small.seurat, 
+                            method = c("natmi", "connectome", "logfc", "sca", "cellphonedb"),
+                            resource = "Consensus",
+                            parallelize = TRUE, 
+                            workers = cores)
+  
+  saveRDS(liana_cillo, file = paste0(output.dir, "liana_cillo_covid_minor_subset_ISGanno.rds"))
+  
+  # also save objects
+  SaveH5Seurat(covid.seurat.symbol, paste0(output.dir, "covid_seurat_symbol.h5Seurat"))
+  
+  # reset output dir 
+  output.dir <- "results/COMBAT_COVID_dataset/"
+}
+
+
+
+
+input.dir <- "saves/"
+
+# load computed data
+liana_cillo <- readRDS(paste0(input.dir, "liana_cillo_covid_minor_subset_ISGanno.rds"))
+
+# Liana returns a list of results, each element of which corresponds to a method
+liana_cillo %>% dplyr::glimpse()
+
+# We can aggregate these results into a tibble with consensus ranks
+liana_cillo <- liana_cillo %>%
+  liana_aggregate()
+
+dplyr::glimpse(liana_cillo)
+
+#(*) The aggregate consensus rank (aggregate_rank) is obtained using a re-implementation of the RRA method from the RobustRankAggreg package.
+#RRA scores can be interpreted as p-values and interactions which are ranked consistently higher than random are assigned low scores/p-values.
+
+
+liana_trunc <- liana_cillo %>% 
+  filter(aggregate_rank <= 0.01) # only keep interactions concordant between methods
+
+# Chord diagram of the top 20 interactions for each source
+
+top_20_ints_source <- liana_trunc %>%
+  group_by(source) %>%
+  top_n(-20, aggregate_rank)
+
+top_20_ints_source
+chord_freq(top_20_ints_source)
+
+dev.copy(pdf, paste0(output.dir, "chord_top_20_source_minor_subset.pdf"))
+dev.off()
+
+# Chord diagram of the top 20 interactions for each target
+
+top_20_ints_target <- liana_trunc %>%
+  group_by(target) %>%
+  top_n(-20, aggregate_rank)
+
+top_20_ints_target
+chord_freq(top_20_ints_target)
+
+dev.copy(pdf, paste0(output.dir, "chord_top_20_target_minor_subset.pdf"))
+dev.off()
+
+
+
+top_20_ints_source <- liana_trunc %>%
+  group_by(source) %>%
+  top_n(-50, aggregate_rank)
+
+unique(top_20_ints_source$source)
+liana_dotplot(top_20_ints_source, source_groups = c("CD8_ISG_cells"))
+
+dev.copy(pdf, paste0(output.dir, "dotplot_top_50_source_minor_subset_ISG_only.pdf"))
+dev.off()
+
+
+
+
+top_20_ints_target <- liana_trunc %>%
+  group_by(target) %>%
+  top_n(-50, aggregate_rank)
+
+unique(top_20_ints_target$source)
+liana_dotplot(top_20_ints_target, target_groups = c("CD8_ISG_cells"))
+
+dev.copy(pdf, paste0(output.dir, "dotplot_top_50_target_minor_subset_ISG_only.pdf"))
+dev.off()
+
+
+# plot interactions
+
+#devtools::install_github("Sarah145/CCPlotR")
+library("CCPlotR")
+
+# filter for just ISG as source or target
+ISG.only <- liana_trunc %>%
+  filter(source == "CD8_ISG_cells" | target == "CD8_ISG_cells") 
+
+
+ISG.only <- ISG.only %>%
+  dplyr::select(c(source, target, ligand.complex, receptor.complex, aggregate_rank)) 
+
+colnames(ISG.only) <- c("source", "target", "ligand", "receptor", "score")
+
+# invert score as lower score = better but cc_network assumes larger = better
+ISG.only$score <- 1/ISG.only$score
+
+cc_network(ISG.only, 
+           option = "B")
+
+
+dev.copy(pdf, paste0(output.dir, "top_ISG_interactions_minor_subsets.pdf"))
+dev.off()
+
+```
+
+## Gideon_etal Macaque tuberculosis {.tabset}
+
+### Load tuberculosis dataset and score for ISG signature
+```{r read_TB_dataset}
+
+# Create output directory
+output.dir <- "results/TB_dataset/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
+             recursive = TRUE)
+}
+
+
+input.dir <- "/Users/ieo/Documents/scRNAseq_datasets/Gideon_etal_2022_Immunity_Macaque_tuberculosis/"
+
+if(long.compute){
+  
+  input.vec <- c("counts_pt_1", "counts_pt_2", "lognormalized_pt_1", "lognormalized_pt_2")
+  
+  # log counts are not needed
+  input.vec <- input.vec[-c(3,4)]
+  
+  for(i in seq_along(input.vec)){
+    tictoc::tic()
+    temp.df <- read.csv(file = paste0(input.dir, input.vec[i], ".csv"))
+    
+    saveRDS(temp.df, file = paste0(input.dir, input.vec[i], ".rds"))
+    
+    tictoc::toc()
+    
+    rm(temp.df)
+    gc()
+  }
+  
+}else if(!quick.load){
+  
+  #####################
+  # read in metadata
+  #####################
+  
+  meta.data <- read.delim(paste0(input.dir, "Updated10wk_alexandria_structured_metadata10.txt"))
+  dim(meta.data)
+  head(meta.data)
+  # remove first row as this unnecessary format data
+  meta.data <- meta.data[-1,]
+  
+  ######################################################
+  # read in previously saved .rds files 
+  ######################################################
+  
+  raw.counts.1 <- readRDS(paste0(input.dir, "counts_pt_1.rds"))
+  raw.counts.2 <- readRDS(paste0(input.dir, "counts_pt_2.rds"))
+  
+  #log.counts.1 <- readRDS(paste0(input.dir, "lognormalized_pt_1.rds"))
+  #log.counts.2 <- readRDS(paste0(input.dir, "lognormalized_pt_2.rds"))
+  
+  # after exploring the data it appears that log.counts and raw.counts contain same cells
+  # also, there is no overlap between raw.counts.1 cells and raw.counts.2 cells 
+  # also raw.counts.1 matches log.counts.1 cells 
+  # approx ~1,000 cells across the dataset were found to not match with metadata 
+  # this was due to "-1" and ".1" suffixes on cell IDs
+  # therefore, first remove these suffixes from counts and metadata 
+  
+  # ensure all cell IDs dont have "-1" suffix
+  colnames(raw.counts.1) <- gsub("-1$", "",  colnames(raw.counts.1))
+  colnames(raw.counts.2) <- gsub("-1$", "",  colnames(raw.counts.2))
+  
+  # ensure all cell IDs dont have ".1" suffix
+  colnames(raw.counts.1) <- gsub("\\.1$", "", colnames(raw.counts.1))
+  colnames(raw.counts.2) <- gsub("\\.1$", "", colnames(raw.counts.2))
+  
+  # do the same for metadata
+  meta.data$NAME <- gsub("-1$", "",  meta.data$NAME)
+  meta.data$NAME <- gsub("\\.1$", "",  meta.data$NAME)
+  
+  
+  # put cell_ids into rownames 
+  rownames(meta.data) <- meta.data$NAME
+  # remove name column 
+  meta.data <- meta.data[, -which(colnames(meta.data) == "NAME")]
+  
+  
+  # add gene ID to rownames for counts tables
+  # put gene into rownames 
+  rownames(raw.counts.1) <- raw.counts.1$GENE
+  rownames(raw.counts.2) <- raw.counts.2$GENE
+  
+  # remove GENE column 
+  raw.counts.1 <- raw.counts.1[, -which(colnames(raw.counts.1) == "GENE")]
+  raw.counts.2 <- raw.counts.2[, -which(colnames(raw.counts.2) == "GENE")]
+  
+  # combine data tables 
+  raw.counts <- cbind(raw.counts.1, raw.counts.2)
+  raw.counts[1:10, 1:10]
+  
+  # datasets appear to be same dimensions in terms of cell number
+  dim(raw.counts)
+  dim(meta.data)
+  
+  
+  ###########################
+  # create seurat object 
+  ###########################
+  
+  tb.seurat <- CreateSeuratObject(counts = raw.counts, 
+                                  meta.data = meta.data, 
+                                  assay = "RNA")
+  
+  tb.seurat # 28155 genes and 109,584 cells
+  
+  ##################
+  # add umap dims 
+  ##################
+  
+  umap.data <- read.delim(paste0(input.dir, "all_cells_umap.txt"))
+  dim(umap.data)
+  head(umap.data)
+  # remove first row as this unnecessary format data
+  umap.data <- umap.data[-1,]
+  
+  umap.data[1:10,]
+  # put cellIDs as rownames 
+  rownames(umap.data) <- umap.data$NAME
+  # remove NAME column 
+  umap.data <- umap.data[,-1]
+  
+  # amend column names 
+  colnames(umap.data) <- c("umap_1", "umap_2")
+  
+  # ensure no cell_ids have "-1" or ".1" suffixes
+  rownames(umap.data) <- gsub("\\.1$", "", rownames(umap.data))
+  rownames(umap.data) <- gsub("-1$", "", rownames(umap.data))
+  
+  # convert to matrix but first ensure data is numeric 
+  umap.data$umap_1 <- as.numeric(umap.data$umap_1)
+  umap.data$umap_2 <- as.numeric(umap.data$umap_2)
+  
+  # convert to matrix
+  umap.data <- as.matrix(umap.data)
+  
+  head(umap.data)
+  
+  tb.seurat[["umap"]] <- CreateDimReducObject(embeddings = umap.data, 
+                                              key = "umap_",
+                                              assay = DefaultAssay(tb.seurat))
+  
+  
+  
+  ##############################################################
+  # visualise full dataset
+  ##############################################################
+  
+  plot.vars <- c("GranulomaTiming", "GenericFinal", "SpecificFinal", "GranulomaBurden", "organ__ontology_label", "biosample_id", "donor_id")
+  
+  for(i in seq_along(plot.vars)){
+    
+    print(
+      DimPlot(tb.seurat,
+              group.by = plot.vars[i],
+              pt.size = 1,
+              reduction = "umap")
+      
+    )
+    dev.copy(pdf, paste0(output.dir, "UMAP_tb_dataset_", plot.vars[i], ".pdf"))
+    dev.off()
+    
+  }
+  
+  
+  ###########################################################
+  # Normalise and scale with SCTransform 
+  ###########################################################
+  # Note used vst.flavor = "v2" as this is updated, fixing some errors
+  # additionally, allows for SCT data slot to serve as input for all visualisation and DEGs 
+  # Just need to ensure DEG calculations are pre-faced with PrepSCTFindMarkers()
+  
+  # different organs were taken from different donors
+  table(tb.seurat@meta.data$donor_id, tb.seurat@meta.data$organ__ontology_label)
+  
+# need to increase globals.maxSize 
+  # in bytes, need at least 2.47Gib, so will target 20 GiBs
+  20 * 1024 # 20 GiB = 20480 MiB
+  20480 * 1024 # is equal to 20971520 KB
+  20971520 * 1024 # 21474836480 bytes
+
+# therefore 20 GiB * 1024^3 = Bytes
+  20*1024^3
+  
+  options(future.globals.maxSize= 21474836480)
+getOption("future.globals.maxSize")
+  
+tb.seurat <- Seurat::SCTransform(tb.seurat, 
+                                   method = "glmGamPoi", 
+                                   vars.to.regress = c("donor_id"), 
+                                   vst.flavor = "v2",
+                                   verbose = TRUE) 
+  
+  
+  ####################################
+  # reduce object to T-cells only 
+  ####################################
+  
+  # read in T-cell umap
+  tcell.umap.data <- read.delim(paste0(input.dir, "T_cells_umap.txt"))
+  dim(tcell.umap.data)
+  head(tcell.umap.data)
+  # remove first row as this unnecessary format data
+  tcell.umap.data <- tcell.umap.data[-1,]
+  
+  tcell.umap.data[1:10,]
+  
+  # ensure no suffixes in cell ids
+  tcell.umap.data$NAME <- gsub("-1$", "",  tcell.umap.data$NAME)
+  tcell.umap.data$NAME <- gsub("\\.1$", "",  tcell.umap.data$NAME)
+  
+  # make rownames the cell ids
+  rownames(tcell.umap.data) <- tcell.umap.data$NAME
+  tcell.umap.data <- tcell.umap.data[,-1]
+  
+  colnames(tcell.umap.data) <- c("umap_1", "umap_2", "Tcell_subcluster")
+  
+  head(tcell.umap.data)
+  
+  # subset seurat by T-cell metadata cell IDs
+  tb.seurat.tcells <- subset(tb.seurat, cells = rownames(tcell.umap.data))
+  tb.seurat.tcells # 41,222 cells 
+  dim(tcell.umap.data) # also 41,222 cells 
+  
+  # split T-cell meta data into UMAP and metadata
+  Tcell.meta <- tcell.umap.data %>%
+    dplyr::select(Tcell_subcluster)
+  
+  Tcell.umap <- tcell.umap.data %>%
+    dplyr::select(umap_1, umap_2)
+  
+  # ensure umap is numeric 
+  Tcell.umap$umap_1 <- as.numeric(Tcell.umap$umap_1)
+  Tcell.umap$umap_2 <- as.numeric(Tcell.umap$umap_2)
+  
+  # convert to matrix 
+  Tcell.umap <- as.matrix(Tcell.umap)
+  
+  # add to seurat object
+  tb.seurat.tcells[["umap"]] <- CreateDimReducObject(embeddings = Tcell.umap, 
+                                                     key = "umap_",
+                                                     assay = DefaultAssay(tb.seurat.tcells))
+  
+  
+  # add metadata 
+  tb.seurat.tcells <- AddMetaData(tb.seurat.tcells, 
+                                  metadata = Tcell.meta)
+  head(tb.seurat.tcells@meta.data)
+  
+  
+  # visualise T-cell only dataset
+  DimPlot(tb.seurat.tcells,
+          group.by = "Tcell_subcluster",
+          pt.size = 1,
+          reduction = "umap",
+          label = T) + NoLegend()
+  
+  dev.copy(pdf, paste0(output.dir, "UMAP_tcell_subcluster.pdf"))
+  dev.off()
+  
+  ############################
+  # score for ISG signature
+  ############################
+  
+  cores <- parallel::detectCores(all.tests = FALSE, logical = TRUE)
+  
+  # how many human genes overlap with monkey 
+  rownames(tb.seurat.tcells)[1:10] #annotation for genes is similar to human. all caps 
+  temp.sig <- paste0("^", Sig.10, "$")
+  grep(paste0(temp.sig, collapse = "|"), rownames(tb.seurat.tcells), value = T)
+  # all 10 genes are found 
+  
+  # therefore can use signature against monkey genes 
+  
+  # Calculate Ucell scores for signatures
+  DefaultAssay(tb.seurat.tcells) <- "RNA"
+  tb.seurat.tcells <- UCell::AddModuleScore_UCell(tb.seurat.tcells,
+                                                  features = Signature.list,
+                                                  ncores = cores)
+  
+  
+  
+  # VlnPlots
+  VlnPlot(tb.seurat.tcells,
+          pt.size = 0, 
+          same.y.lims = T,
+          features = "Top_10_UCell",
+          group.by = "Tcell_subcluster") + 
+    NoLegend()
+  
+  dev.copy(pdf, paste0(output.dir, "Vlnplot_ISG_signature.pdf"))
+  dev.off()
+  
+  #################################################################################
+  # Create new cell cluster annotation by incorporating ISG cluster designation  
+  #################################################################################
+  
+  colnames(tb.seurat.tcells@meta.data)
+  tb.seurat.tcells@meta.data[1:10, ]
+  
+  unique(tb.seurat@meta.data$GenericFinal) # 13 levels
+  unique(tb.seurat@meta.data$SpecificFinal) # 37 levels
+  
+  unique(tb.seurat.tcells@meta.data$Tcell_subcluster) # 13 levels
+  
+  # actually unnecessary to reannotate specific final as ifn cluster is allready called. but maybe its makes downstream annotation easier if the anno is consistent 
+  
+  
+  # for T-cell only dataset 
+  tb.seurat.tcells@meta.data <- tb.seurat.tcells@meta.data %>%
+    mutate(ISG_status = case_when(Tcell_subcluster == "Interferon" ~ "ISG_cluster",
+                                  TRUE ~ "Non_ISG")) %>%
+    mutate(GenericFinal_ISGanno = case_when(ISG_status == "ISG_cluster" ~ "ISG_cluster",
+                                            TRUE ~ as.character(GenericFinal))) %>%
+    mutate(SpecificFinal_ISGanno = case_when(ISG_status == "ISG_cluster" ~ "ISG_cluster",
+                                             TRUE ~ as.character(SpecificFinal))) %>%
+    mutate(Tcell_subcluster_ISGanno = case_when(ISG_status == "ISG_cluster" ~ "ISG_cluster",
+                                                TRUE ~ as.character(Tcell_subcluster)))
+  
+  # for complete dataset 
+  tb.seurat@meta.data <- tb.seurat@meta.data %>%
+    mutate(ISG_status = case_when(SpecificFinal == "TInterferon" ~ "ISG_cluster",
+                                  TRUE ~ "Non_ISG")) %>%
+    mutate(GenericFinal_ISGanno = case_when(ISG_status == "ISG_cluster" ~ "ISG_cluster",
+                                            TRUE ~ as.character(GenericFinal))) %>%
+    mutate(SpecificFinal_ISGanno = case_when(ISG_status == "ISG_cluster" ~ "ISG_cluster",
+                                             TRUE ~ as.character(SpecificFinal)))
+  
+  
+  
+  
+  # save both T-cell only and complete datasets to file 
+  SaveH5Seurat(tb.seurat, filename = paste0("data/external_datasets/Gideon_etal_2022_Immunity_Macaque_tuberculosis_full_dataset.h5Seurat"))
+  SaveH5Seurat(tb.seurat.tcells, filename = paste0("data/external_datasets/Gideon_etal_2022_Immunity_Macaque_tuberculosis_tcells_only.h5Seurat"))
+  
+}else if(quick.load){
+  
+  tb.seurat.tcells <- LoadH5Seurat(file = paste0("data/external_datasets/Gideon_etal_2022_Immunity_Macaque_tuberculosis_tcells_only.h5Seurat"))
+  
+  
+  
+}
+
+
+
+
+
+
+
+```
+
+
+### quantify ISG population across metadata
+```{r ISG_vs_metadata_TB}
+
+
+
+
+
+
+## TO DO 
+
+# clean up this analysis 
+# look at TCR expression between GZMK and ISG cluster? also for COVID dataset 
+# Cell/cell communication - TB dataset and COVID dataset
+
+
+
+
+
+
+
+
+table(tb.seurat.tcells@meta.data$GranulomaTiming, tb.seurat.tcells@meta.data$GranulomaBurden)
+
+table(tb.seurat.tcells@meta.data$GranulomaTiming, tb.seurat.tcells@meta.data$Tcell_subcluster)
+table(tb.seurat.tcells@meta.data$GranulomaBurden, tb.seurat.tcells@meta.data$Tcell_subcluster)
+
+
+table(tb.seurat.tcells@meta.data$GranulomaBurden, tb.seurat.tcells@meta.data$biosample_id)
+
+
+length(unique(tb.seurat.tcells@meta.data$donor_id))
+
+
+library(ggplot2)
+library(ggpubr) # Load the ggpubr package
+
+
+
+plot_data <- tb.seurat.tcells@meta.data %>%
+  group_by(biosample_id, GranulomaTiming, ISG_status) %>%
+  summarise(freq = n()) %>%
+  ungroup() %>%
+  group_by(biosample_id, GranulomaTiming) %>%
+  mutate(prop = freq / sum(freq)) %>%
+  filter(ISG_status == "ISG_cluster")
+
+plot_data$prop <- plot_data$prop*100
+
+
+
+ggplot(plot_data, aes(x = GranulomaTiming, y = prop, color = GranulomaTiming, fill = GranulomaTiming)) +
+  geom_boxplot(alpha = 0.3, position = position_dodge(width = 0.75), aes(color = GranulomaTiming, fill = GranulomaTiming), outlier.shape = NA) +
+  geom_point(aes(color = GranulomaTiming), position = position_jitter(width = 0.1), shape = 19, size = 2) + 
+  labs(x = "GranulomaTiming", y = "Proportion of ISG_cluster") +
+  #scale_color_manual(values = c("high" = "red", "low" = "blue")) + 
+  scale_fill_manual(values = c("high" = "red", "low" = "blue")) +
+  theme_pubr() + 
+  theme(
+    axis.line = element_line(linewidth = 0.5), 
+    axis.title.y = element_text(margin = margin(r = 0))
+  ) + 
+  scale_y_continuous(expand = expansion(add = c(0, 0.01)), 
+                     breaks = seq(0, 20, by = 1)) + 
+  stat_compare_means(method = "t.test", vjust = 5)  + # Perform t-test and add statistics
+  ggtitle("temp") + 
+  geom_signif(comparisons = list(c("Early", "Late")), textsize = 5, step_increase = 0.1)
+
+
+
+# calculate frequency of ISG cells per granuloma burden 
+
+stats.table <- table(tb.seurat.tcells@meta.data$ISG_status, tb.seurat.tcells@meta.data$GranulomaBurden)
+stats.table
+
+table(tb.seurat.tcells@meta.data$ISG_status, tb.seurat.tcells@meta.data$donor_id)
+
+
+
+sequenced.cells <- colSums(stats.table)
+
+x <- sweep(stats.table, 2, sequenced.cells, FUN = "/")
+x <- x * 100
+rowSums(x)
+colSums(x)
+
+library("Hmisc")
+
+barplot(x, 
+        las = 2,
+        col = c("blue", "gray"), 
+        cex.names = 0.6, 
+        axis.lty = 1, 
+        ylab = "Frequency of cluster",
+        xlab = "disease status",
+        main = "Frequency of ISG cluster per granuloma burden",
+        ylim = c(0, 100), 
+        legend = T) + 
+  minor.tick(nx = 1, ny = 2)
+
+dev.copy(pdf, paste0(output.dir, "Barplot_frequency_ISG_cluster_per_granuloma_burden.pdf"))
+dev.off()
+
+
+
+# calculate frequency of ISG cells per granuloma timing 
+
+stats.table <- table(tb.seurat.tcells@meta.data$ISG_status, tb.seurat.tcells@meta.data$GranulomaTiming)
+stats.table
+
+
+sequenced.cells <- colSums(stats.table)
+
+x <- sweep(stats.table, 2, sequenced.cells, FUN = "/")
+x <- x * 100
+rowSums(x)
+colSums(x)
+
+library("Hmisc")
+
+barplot(x, 
+        las = 2,
+        col = c("blue", "gray"), 
+        cex.names = 0.6, 
+        axis.lty = 1, 
+        ylab = "Frequency of cluster",
+        xlab = "disease status",
+        main = "Frequency of ISG cluster per granuloma timing",
+        ylim = c(0, 100), 
+        legend = T) + 
+  minor.tick(nx = 1, ny = 2)
+
+dev.copy(pdf, paste0(output.dir, "Barplot_frequency_ISG_cluster_per_granuloma_timing.pdf"))
+dev.off()
+
+
+
+
+
+
+
+
+
+
+
+
+
+# calculate frequency of cells in each disease that is from ISG cluster 
+
+sequenced.cells.burden <- table(tb.seurat.tcells@meta.data$GranulomaTiming)
+sequenced.cells.burden
+
+
+cells.isg.burden <- table(tb.seurat.tcells@meta.data$Tcell_subcluster, tb.seurat.tcells@meta.data$GranulomaTiming)
+cells.isg.burden
+
+
+x <- sweep(cells.isg.burden, 2, sequenced.cells.burden, FUN = "/")
+x <- x * 100
+rowSums(x)
+colSums(x)
+
+
+library("Hmisc")
+
+barplot(t(x), 
+        las = 2,
+        col = c("blue", "gray"), 
+        cex.names = 0.6, 
+        axis.lty = 1, 
+        ylab = "Frequency of cluster",
+        xlab = "disease",
+        main = "Frequency of ISG cluster per disease",
+        ylim = c(0, 100), 
+        legend = T) + 
+  minor.tick(nx = 1, ny = 2)
+
+dev.copy(pdf, paste0(output.dir, "Barplot_frequency_ISG_cluster_per_disease.pdf"))
+dev.off()
+
+
+
+FeaturePlot_scCustom(tb.seurat.tcells, 
+                     "Top_10_UCell")
+
+dev.copy(pdf, paste0(output.dir, "Feature_plot_ISG_signature.pdf"))
+dev.off()
+
+
+library(scCustomize)
+
+# Density plots 
+Plot_Density_Custom(cd8.covid.seurat, 
+                    features =  "Top_10_UCell",
+                    custom_palette = batlow.pal,
+                    joint = FALSE, 
+                    pt.size = 1, 
+                    reduction = "umap")
+
+dev.copy(pdf, paste0(output.dir, "Density_plot_ISG_signature.pdf"))
+dev.off()
+
+
+
+
+
+
+# make new metadata to specifically isolate ISG cluster 
+# cluster 6 = ISG 
+
+cd8.covid.seurat@meta.data <- cd8.covid.seurat@meta.data %>%
+  mutate(ISG_status = case_when(seurat_clusters == "6" ~ "ISG_cluster",
+                                TRUE ~ "Non_ISG"))
+
+unique(cd8.covid.seurat@meta.data$ISG_status)
+
+
+
+# VlnPlots
+VlnPlot(cd8.covid.seurat,
+        pt.size = 0, 
+        same.y.lims = T,
+        features = "Top_10_UCell",
+        group.by = "ISG_status") + 
+  NoLegend()
+
+dev.copy(pdf, paste0(output.dir, "Vlnplot_ISG_signature_ISG_cluster_vs_else.pdf"))
+dev.off()
+
+
+
+# Specifically colour IFN cluster
+Idents(cd8.covid.seurat) <- cd8.covid.seurat@meta.data$ISG_status
+
+scCustomize::Cluster_Highlight_Plot(cd8.covid.seurat, 
+                                    cluster_name = "ISG_cluster", 
+                                    highlight_color = "Red", 
+                                    background_color = "lightgray", 
+                                    pt.size = 0.5, 
+                                    raster = FALSE) + NoLegend()
+
+dev.copy(pdf, paste0(output.dir, "UMAP_ISG_cluster_highlighted.pdf"))
+dev.off()
+
+
+
+
+
+
+# Downsample to allow even representation of disease and split across disease
+# first reorder the levels of disease factor
+cd8.covid.seurat@meta.data$disease <- factor(cd8.covid.seurat@meta.data$disease, levels = c("normal", "COVID-19", "influenza"))
+
+Idents(cd8.covid.seurat) <- cd8.covid.seurat@meta.data$disease
+table(cd8.covid.seurat@meta.data$disease) # min is infl at 2,322 cells
+
+temp.seurat <- subset(cd8.covid.seurat, downsample = 2000)
+
+# Specifically colour IFN cluster
+Idents(temp.seurat) <- temp.seurat@meta.data$ISG_status
+
+
+scCustomize::Cluster_Highlight_Plot(temp.seurat, 
+                                    cluster_name = "ISG_cluster", 
+                                    highlight_color = "Red", 
+                                    background_color = "lightgray", 
+                                    pt.size = 1, 
+                                    split_seurat = T,
+                                    split.by = "disease",
+                                    raster = FALSE) + NoLegend()
+
+
+dev.copy(pdf, paste0(output.dir, "UMAP_ISG_cluster_highlighted_downsampled_and_split_across_disease.pdf"))
+dev.off()
+
+
+
+
+
+
+```
+
+
+
+## Freq of ISG across all diseases {.tabset}
+
+### Load data and extract metadata for diseases
+```{r load_diseases}
+
+
+# Create output directory
+output.dir <- "results/dataset_comparison/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
+             recursive = TRUE)
+}
+
+
+if(long.compute){
+  
+  # load COVID dataset (use object with symbol as ISG_anno was also appended to this object)
+  covid.seurat.symbol <- LoadH5Seurat(covid.seurat.symbol, "saves/covid_seurat_symbol.h5Seurat")
+  
+  # extract metadata
+  temp.df <- covid.seurat.symbol@meta.data
+  saveRDS(temp.df, file = paste0(output.dir, "COVID_metadata.rds"))
+  
+  
+  # load TB dataset
+  tb.seurat.tcells <- LoadH5Seurat(file = paste0("data/external_datasets/Gideon_etal_2022_Immunity_Macaque_tuberculosis_tcells_only.h5Seurat"))
+  
+  # extract metadata
+  temp.df <- tb.seurat.tcells@meta.data
+  saveRDS(temp.df, file = paste0(output.dir, "TB_tcell_metadata.rds"))
+  
+  
+  # load pancancer 
+  pancancer.cd8 <- LoadH5Seurat("data/external_datasets/pancancer_cd8_normed.h5Seurat")
+  
+  # extract metadata
+  temp.df <- pancancer.cd8@meta.data
+  saveRDS(temp.df, file = paste0(output.dir, "pancancer_cd8_metadata.rds"))
+  
+  
+}else{
+  
+  # load metadata
+  
+    covid.metadata <- readRDS(file = paste0(output.dir, "COVID_metadata.rds"))
+    tb.tcell.metadata <- readRDS(file = paste0(output.dir, "TB_tcell_metadata.rds"))
+    pancancer.cd8.metadata <- readRDS(file = paste0(output.dir, "pancancer_cd8_metadata.rds"))
+
+  
+}
+
+########################
+# Filter COVID dataset
+########################
+
+colnames(covid.metadata)
+covid.metadata[1:10, ]
+
+# filter for CD8 annotation 
+# remove donors with less than 300 cells sequenced
+
+cols.keep <- c("rowname.temp", "Source", "cluster", "major_subset", "minor_subset", "donor_id", "TCR_clone_count", "disease", "sex", "cell_type", "ISG_status", "cell_type_ISGanno", "major_subset_ISGanno", "minor_subset_ISGanno")
+
+# for some reason rownames to column was not working, kept losing string and becoming numerical 
+# therefore explicitly do this outside dplyr chain
+covid.metadata.filt <- covid.metadata
+covid.metadata.filt$rowname.temp <- rownames(covid.metadata)
+
+covid.metadata.filt <- covid.metadata.filt %>% 
+  dplyr::filter(major_subset == "CD8") %>%
+  dplyr::group_by(donor_id) %>%
+  dplyr::mutate(count = n()) %>%
+  dplyr::ungroup() %>%
+  dplyr::filter(count >= 300) %>%
+  dplyr::select(all_of(cols.keep)) %>%
+  tibble::column_to_rownames(var = "rowname.temp") %>%
+  mutate(ISG_status = case_when(ISG_status == "CD8_ISG_cells" ~ "ISG_cluster", # convert annotation to match with other datasets 
+                                TRUE ~ ISG_status))
+
+
+########################
+# Filter TB dataset
+########################
+
+colnames(tb.tcell.metadata)
+tb.tcell.metadata[1:10, ]
+
+table(tb.tcell.metadata$Tcell_subcluster, tb.tcell.metadata$SpecificFinal)
+
+anno.keep <- c("Effector CD8", "GZMK+ CD8", "Interferon", "Metallothionein", "Naive", "Proliferating", "SRRM2")
+# therefore removing NK, Gamma-Delta, T1T17, Treg, Unknown, and XCL1-NK
+
+# note in original publication, its unclear what Metalothionein, prolif, and SRRM2 cells are (i.e CD4 or CD8)
+
+unique(tb.tcell.metadata$donor_id) # 4 donors
+
+# filter for CD8 annotation 
+# no need to remove donors, plenty of cells in each donor 
+
+cols.keep <- c("rowname.temp", "GenericFinal", "Tcell_subcluster", "biosample_id", "disease__ontology_label", "donor_id", "organ__ontology_label", "Log10_CFU_per_granuloma", "Log10_CEQ_per_granuloma", "GranulomaBurden", "GranulomaTiming", "Top_10_UCell", "ISG_status", "GenericFinal_ISGanno", "Tcell_subcluster_ISGanno")
+
+# for some reason rownames to column was not working, kept losing string and becoming numerical 
+# therefore explicitly do this outside dplyr chain
+tb.tcell.metadata.filt <- tb.tcell.metadata
+tb.tcell.metadata.filt$rowname.temp <- rownames(tb.tcell.metadata)
+
+tb.tcell.metadata.filt <- tb.tcell.metadata.filt %>% 
+  dplyr::filter(GenericFinal == "T") %>%
+  dplyr::filter(Tcell_subcluster %in% anno.keep) %>%
+  dplyr::select(all_of(cols.keep)) %>%
+  mutate(ISG_status = case_when(ISG_status == "CD8_ISG_cells" ~ "ISG_cluster", # convert annotation to match with other datasets 
+                                TRUE ~ ISG_status))
+
+
+
+##############################
+# Filter pancancer dataset
+##############################
+
+#VlnPlot(pancancer.cd8, "Top_10_UCell", group.by = "seurat_clusters", pt.size = 0)
+# cluster 7 = ISG cluster 
+# annotation not already in pancancer.cd8 object so needs to be added as part of filtering process
+
+colnames(pancancer.cd8.metadata)
+pancancer.cd8.metadata[1:10, ]
+
+
+# note use Sample as donor_id not SampleID
+# note can use HPCA.labels but not HPCA.first.labels as this has some cells annotated as CD4, B cell etc etc. 
+# this is despite filtering on consensus.major and consensus.Tcell for CD8 T annotations 
+
+#HPCA.labels
+#Sample
+x <- unique(pancancer.cd8.metadata$Sample) 
+x
+length(x) # 67 donors 
+
+table(pancancer.cd8.metadata$DICE.labels)
+# some have low cell numbers of less than 300, therefore should remove this to limit analysis variation
+# i.e "Patient 64" only has 53 cells 
+# dataset contains normal and tumor 
+# also 10 tumor types
+
+table(pancancer.cd8.metadata$Sorted, pancancer.cd8.metadata$Sample)
+
+# filter for CD8 annotation
+# some filtering is unnecessary as was already done as part of constructing object, but ensure its done by redoing
+# also helps with clarity in understanding how the object is filtered
+# remove donors with low cell counts 
+# for clarity, rename Sample to donor_id
+# also filter dataset to remove unnecessary columns and data
+
+pancancer.cd8.metadata[1:5, ]
+cols.keep <- c("rowname.temp", "donor_id", "GEO_RNA", "Cohort", "Type", "Tissue", "HPCA.labels", "functional.cluster", "functional.cluster.conf", "consensus.major", "consensus.Tcell", "CTgene", "CTaa", "cloneType", "seurat_clusters")
+
+# for some reason rownames to column was not working, kept losing string and becoming numerical 
+# therefore explicitly do this outside dplyr chain
+pancancer.cd8.metadata.filt <- pancancer.cd8.metadata
+pancancer.cd8.metadata.filt$rowname.temp <- rownames(pancancer.cd8.metadata.filt)
+
+pancancer.cd8.metadata.filt <- pancancer.cd8.metadata.filt %>% 
+  dplyr::filter(consensus.major == "T_cell") %>%
+  dplyr::filter(consensus.Tcell == "CD8") %>%
+  dplyr::rename(donor_id = Sample) %>%
+  dplyr::group_by(donor_id) %>%
+  dplyr::mutate(count = n()) %>%
+  dplyr::ungroup() %>%
+  dplyr::filter(count >= 300) %>%
+  dplyr::select(all_of(cols.keep), ends_with("_UCell")) %>%
+  tibble::column_to_rownames(var = "rowname.temp") %>%
+  dplyr::mutate(seurat_clusters = case_when(seurat_clusters == "7" ~ "ISG_cluster", 
+                                            TRUE ~ "Non_ISG")) %>%
+  dplyr::rename(ISG_status = seurat_clusters)
+
+
+
+##############################################################
+# Quantify freq of ISG population per disease per donor
+##############################################################
+
+#####################
+# COVID dataset
+#####################
+
+disease.freq.table <- covid.metadata.filt %>%
+  group_by(donor_id, disease, Source, ISG_status) %>%
+  summarise(count = n()) %>%
+  ungroup() %>%
+  group_by(donor_id, disease, Source) %>%
+  mutate(prop = count / sum(count)) 
+
+
+# note some donors do not have a single cell annotated as ISG_cluster therefore these are lost
+# need identify these donors and append the value 0 for their freq of ISG_cluster
+additional.values <- disease.freq.table %>% 
+  filter(ISG_status == "Non_ISG" & prop == 1) %>% 
+  mutate(ISG_status = "ISG_cluster",
+         prop = 0,
+         count = 0)
+
+# add data together and filter for just ISG values
+if(dim(additional.values)[1] != 0 && dim(additional.values)[2] != 0) {
+  plot.data.covid <- disease.freq.table %>%
+    bind_rows(additional.values) %>%
+    filter(ISG_status == "ISG_cluster") %>% 
+    mutate(prop = prop * 100) # adjust to 0-100% scale
+  
+}else{
+  
+  plot.data.covid <- disease.freq.table %>%
+    filter(ISG_status == "ISG_cluster") %>% 
+    mutate(prop = prop * 100) # adjust to 0-100% scale
+  
+  
+}
+
+
+#####################
+# TB dataset
+#####################
+tb.tcell.metadata.filt[1:10, ]
+table(tb.tcell.metadata.filt$disease__ontology_label)
+
+
+disease.freq.table <- tb.tcell.metadata.filt %>%
+  group_by(donor_id, ISG_status) %>%
+  summarise(count = n()) %>%
+  ungroup() %>%
+  group_by(donor_id) %>%
+  mutate(prop = count / sum(count)) 
+
+
+# ensure no donors are lost by having no cells in ISG cluster 
+additional.values <- disease.freq.table %>% 
+  filter(ISG_status == "Non_ISG" & prop == 1) %>% 
+  mutate(ISG_status = "ISG_cluster",
+         prop = 0,
+         count = 0)
+
+# add data together and filter for just ISG values
+if(dim(additional.values)[1] != 0 && dim(additional.values)[2] != 0) {
+  
+  plot.data.tb <- disease.freq.table %>%
+    bind_rows(additional.values) %>%
+    filter(ISG_status == "ISG_cluster") %>% 
+    mutate(prop = prop * 100) # adjust to 0-100% scale
+  
+}else{
+  
+  plot.data.tb <- disease.freq.table %>%
+    filter(ISG_status == "ISG_cluster") %>% 
+    mutate(prop = prop * 100) # adjust to 0-100% scale
+  
+  
+}
+
+#####################
+# pancancer dataset
+#####################
+pancancer.cd8.metadata.filt[1:10, ]
+
+
+disease.freq.table <- pancancer.cd8.metadata.filt %>%
+  group_by(donor_id, Type, Tissue, ISG_status) %>%
+  summarise(count = n()) %>%
+  ungroup() %>%
+  group_by(donor_id, Type, Tissue) %>%
+  mutate(prop = count / sum(count)) 
+
+
+# ensure no donors are lost by having no cells in ISG cluster 
+additional.values <- disease.freq.table %>% 
+  filter(ISG_status == "Non_ISG" & prop == 1) %>% 
+  mutate(ISG_status = "ISG_cluster",
+         prop = 0,
+         count = 0)
+
+# add data together and filter for just ISG values
+if(dim(additional.values)[1] != 0 && dim(additional.values)[2] != 0) {
+  
+  plot.data.cancer <- disease.freq.table %>%
+    bind_rows(additional.values) %>%
+    filter(ISG_status == "ISG_cluster") %>% 
+    mutate(prop = prop * 100) # adjust to 0-100% scale
+  
+}else{
+  
+  plot.data.cancer <- disease.freq.table %>%
+    filter(ISG_status == "ISG_cluster") %>% 
+    mutate(prop = prop * 100) # adjust to 0-100% scale
+  
+  
+}
+
+
+
+################################
+# Add datasets together 
+################################
+# do any final formatting required to add datasets together
+
+plot.data.cancer
+plot.data.covid
+plot.data.tb
+
+
+# plot.data.1 <- plot.data.cancer %>%
+#   dplyr::rename(disease = Type) %>%
+#   dplyr::mutate(disease = case_when(disease == "Normal" ~ "normal_tumor", 
+#                                     TRUE ~ disease)) %>%
+#   dplyr::select(donor_id, disease, ISG_status, prop)
+
+
+plot.data.1 <- plot.data.cancer %>%
+  dplyr::ungroup() %>%
+  dplyr::rename(disease = Type) %>%
+  dplyr::mutate(disease = paste(disease, Tissue, sep = "_")) %>%
+  dplyr::select(donor_id, disease, ISG_status, prop)
+
+
+# plot.data.2 <- plot.data.covid %>%
+#   dplyr::mutate(disease = case_when(disease == "normal" ~ "normal_covid", 
+#                                     TRUE ~ disease)) %>%
+#     dplyr::select(donor_id, disease, ISG_status, prop)
+
+
+plot.data.2 <- plot.data.covid %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(Source = case_when(Source == "HV" ~ "normal_covid", 
+                                    TRUE ~ Source)) %>%
+    dplyr::select(donor_id, Source, ISG_status, prop) %>%
+  dplyr::rename(disease = Source)
+
+
+plot.data.3 <- plot.data.tb %>%
+  dplyr::mutate(disease = "TB") %>%
+    dplyr::select(donor_id, disease, ISG_status, prop)
+
+# add datasets together 
+plot.data <- bind_rows(plot.data.1, plot.data.2, plot.data.3) %>%
+  dplyr::group_by(disease) %>%
+  dplyr::mutate(temp.var = median(prop)) %>%
+  dplyr::arrange(desc(temp.var)) %>%
+  dplyr::select(!temp.var)
+
+# Convert disease to factor with ordered levels
+plot.data$disease <- factor(plot.data$disease, levels = unique(plot.data$disease))
+
+
+
+##############
+# Plot data
+##############
+library(ggpubr)
+
+# Preprocess the data to get the counts for each disease
+legend_data <- plot.data %>%
+  group_by(disease) %>%
+  summarise(n = n_distinct(donor_id))
+
+ggplot(plot.data, aes(x = disease,
+                      y = prop,
+                      color = disease, 
+                      fill = disease)) +
+  geom_boxplot(alpha = 0.3, 
+               position = position_dodge(width = 0.75), 
+               aes(color = disease,
+                   fill = disease), 
+               outlier.shape = NA, 
+               width = 0.75) +
+  geom_point(aes(color = disease),
+             position = position_jitter(width = 0.1),
+             shape = 19,
+             size = 2) + 
+  labs(x = "disease",
+       y = "%") +
+  theme_pubr() + 
+  theme(
+    axis.line = element_line(linewidth = 0.5), 
+    axis.title.y = element_text(margin = margin(r = 0)), 
+    axis.text.y = element_text(size = 10, 
+                               color = c("black", NA)), # pass black and NA to hide labels and create minor ticks
+    axis.ticks.y = element_line(linewidth = 0.5, 
+                                color = "black",
+                                linetype = "solid"), 
+    axis.text.x = element_text(angle = 90,
+                               hjust = 1), 
+    plot.margin = margin(1,5,1,5, 
+                         unit = "cm"), 
+        plot.title = element_text(hjust = 0.5,
+                                  size = 30)
+  ) + 
+  scale_y_continuous(expand = expansion(add = c(0, 0.01)),
+                     limits = c(0, 70),
+                     breaks = seq(0, 100, by = 5)) +
+   scale_fill_manual(values = unique(plot.data$disease), 
+                    labels = paste(unique(plot.data$disease), " (n=", legend_data$n, ")", sep = "")) +
+  scale_color_manual(values = unique(plot.data$disease), 
+                     labels = paste(unique(plot.data$disease), " (n=", legend_data$n, ")", sep = "")) +
+     ggtitle("Proportion of cells within each donor that is assigned to ISG cluster across various disease status'")
+
+# save plot
+     ggsave(filename = paste0(output.dir, "Boxplot_ISG_vs_disease_status.pdf"),
+            width = 25, height = 15, units = "in", dpi = 300,
+       device = "pdf")
+     
+     
+     
+#    #+ 
+#   stat_compare_means(comparisons = t_test_groups, 
+#                      label = "p.signif",
+#                      method = "t.test", 
+#                      label.y = c(55, 45), 
+#                      hide.ns = TRUE) + 
+# 
+# 
+# 
+# 
+# unique(plot_data$disease)
+# 
+# # Create a data frame for the t-test groups
+# t_test_groups <- data.frame(
+#   group1 = c("normal", "COVID-19"),
+#   group2 = c("normal", "influenza")
+# )
+
+
+
+
+
+
+
+
+
+
+# note sepsis is annotated as COVID-19 but not sure if this is correct based on paper, looks like sepsis is maybe/maybenot covid attributed
+# not sure what COVID_HCW_MILD or COVID_LDN are
+# therefore, will remove these and keep only HV, and COVID annotations
+  #filter(Source %in% c("HV", "COVID_MILD", "COVID_SEV", "COVID_CRIT", "Sepsis")) %>%
+
+
+
+
+```
+
+
+### GZMK overlap ISG pancancer
+```{r remedy001}
+
+VlnPlot(pancancer.cd8, "GZMK", pt.size = 0, group.by = "seurat_clusters")
+VlnPlot(pancancer.cd8, "Top_10_UCell", pt.size = 0, group.by = "seurat_clusters")
+
+
+
+
+table(pancancer.cd8@meta.data$seurat_clusters)
+
+library(scRepertoire)
+clonalOverlap(pancancer.cd8, 
+              cloneCall = "aa", 
+              method = "morisita")
+
+x <- contig_list
+combined <- combineTCR(x, rep(c("PX", "PY", "PZ"), each=2), 
+rep(c("P", "T"), 3), cells ="T-AB")
+
+clonalOverlap(combined, cloneCall = "gene", method = "overlap")
+
+clonalNetwork(pancancer.cd8, 
+              reduction = "umap", 
+              identity = "seurat_clusters",
+              filter.identity = "7",
+              cloneCall = "aa")
+
+
+pancancer.cd8@meta.data <- pancancer.cd8@meta.data %>%
+  dplyr::mutate(ISG_status = case_when(seurat_clusters == "7" ~ "ISG_cluster", 
+                                       seurat_clusters == "0" ~ "GZMK_cluster", 
+                                       TRUE ~ "other_cells"))
+  
+  
+  
+combined2 <- expression2List(pancancer.cd8, 
+                             split.by = "ISG_status")
+
+clonalHomeostasis(combined2, 
+                  cloneCall = "aa")
+
+clonalProportion(combined2, 
+                 cloneCall = "aa")
+
+clonalOverlap(combined2, 
+              cloneCall="aa", 
+              method="overlap")
+
+
+
+clonalDiversity(combined2, 
+                cloneCall = "aa")
+
+Idents(pancancer.cd8) <- pancancer.cd8@meta.data$seurat_clusters
+StartracDiversity(pancancer.cd8, 
+                  type = "Type", 
+                  sample = "Sample", 
+                  by = "overall")
+
+library(circlize)
+library(scales)
+
+circles <- getCirclize(pancancer.cd8, 
+                       group.by = "seurat_clusters")
+
+#Just assigning the normal colors to each cluster
+grid.cols <- scales::hue_pal()(length(unique(pancancer.cd8@active.ident)))
+names(grid.cols) <- levels(pancancer.cd8@active.ident)
+
+#Graphing the chord diagram
+circlize::chordDiagram(circles,
+                       self.link = 1, 
+                       grid.col = grid.cols)
+
+
+
+occupiedscRepertoire(pancancer.cd8, x.axis = "seurat_clusters")
+
+table(pancancer.cd8@meta.data$seurat_clusters)
+temp.seurat <- subset(pancancer.cd8, downsample =5000)
+temp.seurat
+
+clonalNetwork(temp.seurat, 
+              reduction = "umap", 
+              identity = "seurat_clusters",
+              filter.identity = "7",
+              cloneCall = "aa")
+
+
+
+x <- table(pancancer.cd8@meta.data$CTaa, pancancer.cd8@meta.data$ISG_status)
+
+pancancer.cd8@meta.data %>% 
+  dplyr::group_by(CTaa, ISG_status) %>%
+  dplyr::summarise(count = n()) %>%
+  dplyr::ungroup() %>%
+  dplyr::filter(ISG_status == "ISG_cluster") %>%
+  dplyr::top_n(20, count)
+
+
+pancancer.cd8 <- highlightClonotypes(pancancer.cd8, 
+              cloneCall= "aa", 
+              sequence = c("CAMREFAYNTDKLIF_CASSPLGQSGANVLTF", "CAVSSLGVTGGGNKLTF_CASSGTNKEQFF"))
+
+table(pancancer.cd8@meta.data$highlight, pancancer.cd8@meta.data$seurat_clusters)
+
+
+table(pancancer.cd8@meta.data$functional.cluster, pancancer.cd8@meta.data$seurat_clusters)
+
+
+
+
+temp.seurat <- highlightClonotypes(temp.seurat, 
+              cloneCall= "aa", 
+              sequence = c("CAMREFAYNTDKLIF_CASSPLGQSGANVLTF", "CAVSSLGVTGGGNKLTF_CASSGTNKEQFF"))
+
+unique(temp.seurat@meta.data$highlight)
+temp.seurat@meta.data$highlight[is.na(temp.seurat@meta.data$highlight)] <- "NA"
+DimPlot(temp.seurat, 
+        group.by = "highlight",
+        pt.size = 1, 
+        cols = c("#BEBEBE19", "red"), 
+        raster = F, 
+        order = c("CAMREFAYNTDKLIF_CASSPLGQSGANVLTF")) + 
+  theme(plot.title = element_blank())
+
+
+p1 <- DimPlot(temp.seurat, group.by = "seurat_clusters", pt.size = 1, label = T)
+p1
+
+
+
+p1 <- DimPlot(temp.seurat, group.by = "functional.cluster", pt.size = 1, label = T)
+p1
+
+temp.seurat@meta.data$functional.cluster
+
+?DimPlot
+usefulfunctions::makeTransparent("gray", percent = 90)
+
+
+# Create a transparent gray color using rgb
+transparent_gray <- rgb(red, green, blue, alpha = alpha, maxColorValue = 255)
+
+# Print the hex code for the transparent gray color
+print(transparent_gray)
+
+
+
+
+
+pancancer.cd8@meta.data[1:10, ]
+
+stats.table <- table(pancancer.cd8@meta.data$functional.cluster, pancancer.cd8@meta.data$seurat_clusters)
+sum.vals <- colSums(stats.table)
+x <- sweep(stats.table, 2, sum.vals, FUN = "/")
+x <- x*100
+colSums(x)
+
+
+library(ggplot2)
+
+ggplot(x) +
+ aes(x = Var2, y = Freq, fill = Var1) +
+ geom_col() +
+ scale_fill_hue(direction = 1) +
+ theme_minimal()
+
+
+VlnPlot(pancancer.cd8, "Glycogen_Metabolism_UCell", group.by = "ISG_status", pt.size = 0)
+
+```
+
+
+### dont use below
+
+## Perez et al., Lupus dataset {.tabset}
+
+### Load lupus dataset // cant convert h5ad object to seurat object
+
+```{r read_lupus_dataset}
+
+# Create output directory
+output.dir <- "results/Lupus_dataset/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
+             recursive = TRUE)
+}
+
+
+input.dir <- "/Users/ieo/Documents/scRNAseq_datasets/Perez_etal_2022_Science_Lupus/"
+
+if(long.compute){
+  library(SeuratDisk)
+  
+  
+  SeuratDisk::Convert(source = paste0(input.dir, "perez_lupus.h5ad"), 
+                      dest = paste0(input.dir, "perez_etal_lupus.h5Seurat"))
+  
+  lupus.seurat <- SeuratDisk::LoadH5Seurat(paste0(input.dir, "perez_etal_lupus.h5Seurat"))
+  
+}else{
+  
+  lupus.seurat <- SeuratDisk::LoadH5Seurat(paste0(input.dir, "perez_etal_lupus.h5Seurat"))
+  
+  
+}
+
+
+#devtools::install_github("cellgeni/sceasy")
+#BiocManager::install(c("LoomExperiment", "SingleCellExperiment"))
+library("sceasy")
+library("reticulate")
+
+#usethis::edit_r_environ() # use python RETICULATE_PYTHON="/usr/local/bin/python3"
+
+# dont use reticulate to create conda env, it creates env under library/r-miniconda instead of miniconda3/envs 
+# this makes issues downstream 
+
+# in terminal run 
+# conda install -n sceasy_convert anndata -c bioconda
+
+reticulate::use_condaenv('sceasy_convert')
+
+
+
+sceasy::convertFormat(paste0(input.dir, "perez_lupus.h5ad"),
+                      from="anndata",
+                      to="seurat",
+                      outFile=paste0(input.dir, "perez_lupus.rds"))
+
+
+library(reticulate)
+# in terminal 
+#conda create -n py_scRNAseq anndata scanpy numpy scipy 
+reticulate::use_condaenv("py_scRNAseq")
+
+#install.packages("anndata")
+library(anndata)
+library(Seurat) 
+library(Matrix)
+
+
+sc <-  reticulate::import('scanpy', convert = FALSE)
+numpy <-  reticulate::import('numpy', convert = FALSE)
+anndata<-  reticulate::import('anndata', convert = FALSE)
+scipy<-  reticulate::import('scipy', convert = FALSE)
+
+adata <- reticulate::py_to_r(sc$read_h5ad("/Users/ieo/Documents/scRNAseq_datasets/Perez_etal_2022_Science_Lupus/perez_lupus.h5ad") )
+library(Matrix)
+counts <- reticulate::py_to_r(adata$X)
+
+colnames(counts) <- adata$obs_names$to_list()
+rownames(counts) <- adata$var_names$to_list()
+counts <- Matrix::Matrix(as.matrix(counts), sparse = T)
+
+
+```
+
+```{python}
+
+import scanpy as sc
+import numpy as numpy
+import anndata as anndata 
+import scipy as scipy 
+
+sc.read_h5ad("/Users/ieo/Documents/scRNAseq_datasets/Perez_etal_2022_Science_Lupus/perez_lupus.h5ad")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+obj_HDF5 <- Connect(paste0(input.dir, "perez_etal_lupus.h5Seurat"), mode = "r+")
+
+Transpose(obj_HDF5[["assays/RNA/counts"]], overwrite = TRUE)
+Transpose(obj_HDF5[["assays/RNA/data"]], overwrite = TRUE)
+obj_HDF5$link_delete("assays/RNA/counts")
+obj_HDF5$link_delete("assays/RNA/data")
+obj_HDF5$link_move_from(obj_HDF5, "assays/RNA/t_counts", "assays/RNA/counts")
+obj_HDF5$link_move_from(obj_HDF5, "assays/RNA/t_data", "assays/RNA/data")
+old_dims <- hdf5r::h5attr(obj_HDF5[["assays/RNA/data"]], "dims")
+new_dims <- rev(old_dims)
+hdf5r::h5attr(obj_HDF5[["assays/RNA/counts"]], "dims") <- new_dims
+hdf5r::h5attr(obj_HDF5[["assays/RNA/data"]], "dims") <- new_dims
+obj_HDF5$close()
+
+
+
+
+
+
+# load dataset
+covid.seurat <- readRDS("/Users/ieo/Documents/scRNAseq_datasets/COVID_datasets/COMBAT_Blood_Atlas_of_COVID_19/blood_atlas_covid.rds")
+
+# quick overview of dataset 
+covid.seurat # 37,412 genes and 836,148 cells
+
+# All data is: 
+# Human derived
+# PBMCs
+# three disease = normal, influenza, and COVID-19
+# male and female donors
+# 124 donors?
+
+
+covid.seurat %>% 
+glimpse()
+
+head(covid.seurat@meta.data)
+colnames(covid.seurat@meta.data)
+
+
+# info on disease vs source annotation
+table(covid.seurat@meta.data$Source, covid.seurat@meta.data$disease)
+
+# note major_subset and cell_type annotation is equiv 
+vars.plot <- c("disease", "sex", "cell_type", "major_subset", "minor_subset", "Source")
+
+for(i in seq_along(vars.plot)){
+  print(
+    UMAPPlot(covid.seurat,
+    pt.size = 1,
+    group.by = vars.plot[i], 
+    label = T, 
+    raster = T)
+    )
+    dev.copy(pdf, paste0(output.dir, "UMAP_", vars.plot[i], ".pdf"))
+    dev.off()
+    
+    }
+    
+    
+    # subset for CD8 T-cells
+    unique(covid.seurat@meta.data$major_subset)
+    
+    Idents(covid.seurat) <- covid.seurat@meta.data$major_subset
+    cd8.covid.seurat <- subset(covid.seurat, idents = "CD8")
+    
+    cd8.covid.seurat # 37,412 genes across 106,025 cells
+    
+    # quick vis
+    UMAPPlot(cd8.covid.seurat,
+    pt.size = 1,
+    group.by = "minor_subset", 
+    label = T) + NoLegend()
+    
+    
+    # three cells annotated as "nan" remove these cells
+    table(cd8.covid.seurat@meta.data$minor_subset)
+    Idents(covid.seurat) <- covid.seurat@meta.data$minor_subset
+    
+    cd8.covid.seurat <- subset(cd8.covid.seurat, idents = "nan", invert = TRUE)
+    
+    
+    
+    
+    # renorm, and dim reduction reduced dataset
+    cd8.covid.seurat <- 
+    cd8.covid.seurat %>%
+    NormalizeData() %>%
+    FindVariableFeatures() %>%
+    ScaleData() %>%
+    RunPCA() %>%
+    RunUMAP(reduction = "pca", 
+    dims = 1:20, 
+    min.dist = 0.5, 
+    spread = 1,
+    n.neighbors = 30, # 5 - 50 , larger = more global
+    densmap = F,
+    seed.use = 42)  %>%
+    FindNeighbors(reduction = "pca",
+    dims = 1:20) %>%
+    FindClusters(resolution = 0.2)
+    
+    cd8.covid.seurat <- FindClusters(cd8.covid.seurat, resolution = 0.3)
+    
+    UMAPPlot(cd8.covid.seurat,
+    pt.size = 1,
+    group.by = "seurat_clusters", 
+    label = T, 
+    raster = T) + NoLegend()
+    
+    dev.copy(pdf, paste0(output.dir, "UMAP_seurat_clusters_CD8_only.pdf"))
+    dev.off()
+    
+    
+    UMAPPlot(cd8.covid.seurat,
+    pt.size = 1,
+    group.by = "minor_subset", 
+    label = T, 
+    raster = T) + NoLegend()
+    
+    dev.copy(pdf, paste0(output.dir, "UMAP_minor_subset_CD8_only.pdf"))
+    dev.off()
+    
+    
+    
+    ```
+    
+    ### Score COVID dataset for signature and visualise
+    ```{r score_and_vis_covid_dataset}
+    
+    ############################
+    # score for ISG signature
+    ############################
+    
+    cores <- parallel::detectCores(all.tests = FALSE, logical = TRUE)
+    
+    # replace sig list with ensemble IDs
+    Signature.list[[1]] <- paste0(Sig.10.ensembl, "+")
+    
+    
+    # Calculate Ucell scores for signatures
+    DefaultAssay(cd8.covid.seurat) <- "RNA"
+    cd8.covid.seurat <- UCell::AddModuleScore_UCell(cd8.covid.seurat,
+                                                    features = Signature.list,
+                                                    ncores = cores)
+    
+    
+    
+    
+    FeaturePlot_scCustom(cd8.covid.seurat, 
+                         "Top_10_UCell")
+    
+    dev.copy(pdf, paste0(output.dir, "Feature_plot_ISG_signature.pdf"))
+    dev.off()
+    
+    
+    library(scCustomize)
+    
+    # Density plots 
+    Plot_Density_Custom(cd8.covid.seurat, 
+                        features =  "Top_10_UCell",
+                        custom_palette = batlow.pal,
+                        joint = FALSE, 
+                        pt.size = 1, 
+                        reduction = "umap")
+    
+    dev.copy(pdf, paste0(output.dir, "Density_plot_ISG_signature.pdf"))
+    dev.off()
+    
+    
+    
+    # VlnPlots
+    VlnPlot(cd8.covid.seurat,
+            pt.size = 0, 
+            same.y.lims = T,
+            features = "Top_10_UCell",
+            group.by = "seurat_clusters") + 
+      NoLegend()
+    
+    dev.copy(pdf, paste0(output.dir, "Vlnplot_ISG_signature.pdf"))
+    dev.off()
+    
+    
+    # make new metadata to specifically isolate ISG cluster 
+    # cluster 6 = ISG 
+    
+    cd8.covid.seurat@meta.data <- cd8.covid.seurat@meta.data %>%
+      mutate(ISG_status = case_when(seurat_clusters == "6" ~ "ISG_cluster",
+                                    TRUE ~ "Non_ISG"))
+    
+    unique(cd8.covid.seurat@meta.data$ISG_status)
+    
+    
+    
+    # VlnPlots
+    VlnPlot(cd8.covid.seurat,
+            pt.size = 0, 
+            same.y.lims = T,
+            features = "Top_10_UCell",
+            group.by = "ISG_status") + 
+      NoLegend()
+    
+    dev.copy(pdf, paste0(output.dir, "Vlnplot_ISG_signature_ISG_cluster_vs_else.pdf"))
+    dev.off()
+    
+    
+    
+    # Specifically colour IFN cluster
+    Idents(cd8.covid.seurat) <- cd8.covid.seurat@meta.data$ISG_status
+    
+    scCustomize::Cluster_Highlight_Plot(cd8.covid.seurat, 
+                                        cluster_name = "ISG_cluster", 
+                                        highlight_color = "Red", 
+                                        background_color = "lightgray", 
+                                        pt.size = 0.5, 
+                                        raster = FALSE) + NoLegend()
+    
+    dev.copy(pdf, paste0(output.dir, "UMAP_ISG_cluster_highlighted.pdf"))
+    dev.off()
+    
+    
+    
+    
+    
+    
+    # Downsample to allow even representation of disease and split across disease
+    # first reorder the levels of disease factor
+    cd8.covid.seurat@meta.data$disease <- factor(cd8.covid.seurat@meta.data$disease, levels = c("normal", "COVID-19", "influenza"))
+    
+    Idents(cd8.covid.seurat) <- cd8.covid.seurat@meta.data$disease
+    table(cd8.covid.seurat@meta.data$disease) # min is infl at 2,322 cells
+    
+    temp.seurat <- subset(cd8.covid.seurat, downsample = 2000)
+    
+    # Specifically colour IFN cluster
+    Idents(temp.seurat) <- temp.seurat@meta.data$ISG_status
+    
+    
+    scCustomize::Cluster_Highlight_Plot(temp.seurat, 
+                                        cluster_name = "ISG_cluster", 
+                                        highlight_color = "Red", 
+                                        background_color = "lightgray", 
+                                        pt.size = 1, 
+                                        split_seurat = T,
+                                        split.by = "disease",
+                                        raster = FALSE) + NoLegend()
+    
+    
+    dev.copy(pdf, paste0(output.dir, "UMAP_ISG_cluster_highlighted_downsampled_and_split_across_disease.pdf"))
+    dev.off()
+    
+    
+    
+    # calculate frequency of cells in each disease that is from ISG cluster 
+    
+    sequenced.cells.disease <- table(cd8.covid.seurat@meta.data$disease)
+    sequenced.cells.disease
+    
+    
+    cells.isg.disease <- table(cd8.covid.seurat@meta.data$ISG_status, cd8.covid.seurat@meta.data$disease)
+    cells.isg.disease
+    
+    
+    x <- sweep(cells.isg.disease, 2, sequenced.cells.disease, FUN = "/")
+    x <- x * 100
+    rowSums(x)
+    colSums(x)
+    
+    
+    library("Hmisc")
+    
+    barplot(x, 
+            las = 2,
+            col = c("blue", "gray"), 
+            cex.names = 0.6, 
+            axis.lty = 1, 
+            ylab = "Frequency of cluster",
+            xlab = "disease",
+            main = "Frequency of ISG cluster per disease",
+            ylim = c(0, 100), 
+            legend = T) + 
+      minor.tick(nx = 1, ny = 2)
+    
+    dev.copy(pdf, paste0(output.dir, "Barplot_frequency_ISG_cluster_per_disease.pdf"))
+    dev.off()
+    
+    
+    
+    
+    
+    # calculate frequency of cells in each disease status that is from ISG cluster 
+    
+    stats.table <- table(cd8.covid.seurat@meta.data$ISG_status, cd8.covid.seurat@meta.data$Source)
+    stats.table
+    
+    
+    sequenced.cells <- colSums(stats.table)
+    
+    x <- sweep(stats.table, 2, sequenced.cells, FUN = "/")
+    x <- x * 100
+    rowSums(x)
+    colSums(x)
+    
+    library("Hmisc")
+    
+    barplot(x, 
+            las = 2,
+            col = c("blue", "gray"), 
+            cex.names = 0.6, 
+            axis.lty = 1, 
+            ylab = "Frequency of cluster",
+            xlab = "disease status",
+            main = "Frequency of ISG cluster per disease status",
+            ylim = c(0, 100), 
+            legend = T) + 
+      minor.tick(nx = 1, ny = 2)
+    
+    dev.copy(pdf, paste0(output.dir, "Barplot_frequency_ISG_cluster_per_disease_status.pdf"))
+    dev.off()
+    
+    ```
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    # convert gene name - not used
+    ```{r}
+    
+    
+    #######################################################
+    ## create table to convert ensemble to gene ID 
+    #######################################################
+    
+    
+    # generate a table with ensemble and symbol for each gene in your data (good to keep it as a reference)
+    library(org.Hs.eg.db)
+    
+    
+    
+    gene.ensemble.vect <- mapIds(org.Hs.eg.db,
+                                 keys = rownames(cd8.covid.seurat),
+                                 keytype = "ENSEMBL", 
+                                 column="SYMBOL")
+    
+    # check is in the same order as was input
+    sum(rownames(cd8.covid.seurat) != names(gene.ensemble.vect))
+    gene.ensemble.vect[1:150] # note many NA values 
+    sum(is.na(gene.ensemble.vect)) # 129,46 NAs
+    length(gene.ensemble.vect) # 37,412 genes in total 
+    #therefore significant amount of NA values. so keep ensemble ID when NA is found 
+    na.logic <- is.na(gene.ensemble.vect)
+    gene.ensemble.vect[na.logic] <- names(gene.ensemble.vect)[na.logic]
+    gene.ensemble.vect[1:150]
+    sum(is.na(gene.ensemble.vect)) # 0 NAs
+    
+    sum(duplicated(gene.ensemble.vect)) # 92 gene IDs are duplicated
+    dup.logic <- duplicated(gene.ensemble.vect)
+    gene.ensemble.vect[dup.logic]
+    # duplicates are not many and are not of great importance. 
+    # but will just append a unique counter to the end of the ID to make it a unique ID 
+    names.vec <- names(gene.ensemble.vect)
+    gene.ensemble.vect <- make.unique(names = gene.ensemble.vect, sep = "_")
+    names(gene.ensemble.vect) <- names.vec
+    gene.ensemble.vect[dup.logic]
+    sum(duplicated(gene.ensemble.vect)) # 0 gene IDs are duplicated
+    gene.ensemble.vect
+    
+    
+    
+    
+    ```
+    
+    
+    
+    
+    
