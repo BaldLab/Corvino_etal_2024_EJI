@@ -10,23 +10,16 @@
 # User-specific files
 .Ruserdata
 
+# files to large for GitHub 
+saves/covid_seurat_symbol.h5Seurat
+data/external_datasets/Gideon_etal_2022_Immunity_Macaque_tuberculosis_full_dataset.h5Seurat
+data/external_datasets/pancancer_cd8_normed.h5Seurat
+
 # archived files
 archive/**/**
 
-# All output files
-results/**/**
-
-# saved objects
-saves/**/**
-saves/archive/**/**
-saved/**/**
-
 # Data
 data/archive/**/**
-
-# files to large for gilt's
-data/velocity/**/**
-data/external_datasets/**/**
 
 # vignettes
 vignettes/archive/**/**

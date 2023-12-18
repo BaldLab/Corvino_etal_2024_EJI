@@ -1,0 +1,726 @@
+---
+title: "03_Figure_2"
+author: "Dillon Corvino"
+date: "07/03/2022"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: united
+    highlight: tango
+    df_print: paged
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+  markdown: 
+    wrap: 72
+---
+
+Built with R version `{r} getRversion()`
+
+## Setup {.tabset}
+
+
+### Environment
+
+```{r setup, message = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,  
+  eval = TRUE, 
+  tidy = TRUE
+)
+
+knitr::opts_knit$set(
+  root.dir = "../"
+)
+
+# Environment Set up
+rm(list = ls()) #Clean workspace
+cat("\014")     #Clean Console
+gc() # Free memory
+
+
+# Establish working directory
+library("rstudioapi")
+
+# Set working directory to source file location
+setwd(dirname(getActiveDocumentContext()$path))
+setwd("..")
+
+# Create output directories & load custom functions & colour scheme
+source("scripts/Setup.R", local = knitr::knit_global())
+
+# pipeline variables
+long.compute <- FALSE
+
+# load required packages
+require(tidyverse)
+require(Seurat)
+library(ggplot2)
+
+
+
+# Create output directories
+output.dir <- "results/Figure_2/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
+             recursive = T)
+}
+
+
+# Create output directory
+sup.output.dir <- "results/Supplementary_Figure_2/"
+
+if(!dir.exists(paste0(sup.output.dir))){
+  dir.create(paste0(sup.output.dir), 
+             recursive = T)
+}
+
+
+```
+
+
+
+
+### Reading data
+
+```{r reading_data}
+
+########################
+# Load dataset
+########################
+
+# CD8 dataset
+CD8.seurat <- LoadH5Seurat("saves/CD8_seurat.h5Seurat")
+
+Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
+DefaultAssay(CD8.seurat) <- "RNA"
+
+```
+
+
+## Figure 2 {.tabset}
+
+### Figure 2A
+```{r Figure_2A}
+
+# Figure 2A
+UMAPPlot(object = CD8.seurat,
+         group.by = "Clusters_l1",
+         label = TRUE, 
+         cols = CD8.cols,
+         pt.size = 1,
+         label.size = 6)  + 
+  NoLegend()
+
+dev.copy(pdf, paste0(output.dir, "Figure_2A.pdf"))
+dev.off()
+
+```
+
+
+### Figure 2B
+```{r Figure_2B}
+
+
+Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
+DefaultAssay(CD8.seurat) <- "RNA"
+
+
+if(long.compute){
+
+  # Run DEG analysis
+  DEG.markers <- FindMarkers(CD8.seurat, 
+                             ident.1 = "Stimulated_1",
+                             ident.2 = "Stimulated_exhausted",
+                             slot = "data", 
+                             logfc.threshold = 0.25,
+                             test.use = "wilcox",
+                             only.pos = FALSE)
+  
+# Filter for significance
+DEG.markers <- 
+  DEG.markers %>%
+  filter(p_val_adj < 0.05)
+
+
+write.csv(DEG.markers, paste0(output.dir, "Figure_2B_DEGs.csv"))
+}
+
+
+# read in dataset
+DEG.markers <- read.csv(paste0(output.dir, "Figure_2B_DEGs.csv"))
+
+
+goi <- DEG.markers %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::mutate(abs.log = abs(avg_log2FC)) %>%
+  dplyr::filter(abs.log > 0.5) %>%
+  dplyr::arrange(desc(avg_log2FC))
+
+
+goi <- unique(goi$X)
+
+label.var <- unique(c("IL7R", "XCL1", "TAGLN2", "TNF", "CD69", "CCR7", "TNFSF14", "GZMK", "LTB", "CD28", "TCF7", "ISG20", "CD28", "TOX", "CD96", "TNFSF10", "HAVCR2", "GNLY", "LAG3", "TIGIT", "ENTPD1", "KLRC1", "CD226", "GZMA"))
+
+
+# for some reason annotated.heatmap has changed "_" to "-" and cant map colours to names anymore
+temp.cols <- CD8.cols
+names(temp.cols) <- gsub("_", "-", names(CD8.cols))
+
+pdf(paste0(output.dir, "Figure_2B.pdf"))
+
+# Plot heatmap
+annotated.heatmap(CD8.seurat, 
+                  cluster.id = "Clusters_l1",
+                  assay.use = "RNA",
+                  average.expression = TRUE,
+                  goi = goi, 
+                  genes.to.label = label.var, 
+                  col_order = names(temp.cols), 
+                  col.colours = temp.cols)
+
+dev.off()
+
+
+```
+ 
+
+## Figure 2 - TCR data {.tabset}
+
+### Reading TCR data
+
+```{r reading_tcr_data}
+
+########################
+# Load all datasets 
+########################
+
+# CD8 TCR data
+
+# TCR with no minimum clonotype filter
+CD8.seurat.tcr <- LoadH5Seurat("saves/CD8_seurat_tcr.h5Seurat")
+
+Idents(CD8.seurat.tcr) <- CD8.seurat.tcr@meta.data$Clusters_l1
+DefaultAssay(CD8.seurat.tcr) <- "RNA"
+
+
+# TCR with minimum clonotype filter
+CD8.seurat.tcr.filt <- LoadH5Seurat("saves/CD8_seurat_tcr_filt.h5Seurat")
+
+Idents(CD8.seurat.tcr.filt) <- CD8.seurat.tcr.filt@meta.data$Clusters_l1
+DefaultAssay(CD8.seurat.tcr.filt) <- "RNA"
+
+```
+
+### Figure 2C
+```{r Figure_2C}
+
+library(gplots)
+library(RColorBrewer)
+library(scico)
+########################
+# Heatmap functions
+########################
+
+hclust.func <- function(x){
+  hclust(x, method = 'ward.D2')
+}
+
+dist.func <- function(x){
+  dist(x,method = 'binary')
+}
+
+batlow.pal <- scico(100, palette = 'batlow')
+
+
+
+
+# Get data of how many cells in each cluster are assigned to what clonotypes
+clonotype.data <- table(CD8.seurat.tcr@meta.data$CTaa, CD8.seurat.tcr@meta.data$Clusters_l1)
+
+
+# Plot the top 50 clonotypes
+aa.keep <- sort(rowSums(clonotype.data), decreasing = TRUE)[1:50]
+
+keep.vec <- rownames(clonotype.data) %in% names(aa.keep)
+
+plot.data <- clonotype.data[keep.vec, ]
+dim(plot.data)
+
+heatmap.2(as.matrix(log2(plot.data+1)), 
+          scale = "none",
+          trace = "none",
+          ColSideColors = CD8.cols,
+          Colv = TRUE,
+          cexRow = 0.8, 
+          margins = c(8, 15),
+          cexCol = 0.8, 
+          distfun = dist.func,
+          hclustfun = hclust.func,
+          srtCol = 90,
+          col = batlow.pal)     
+
+dev.copy(pdf, paste0(output.dir, "Figure_2C.pdf"))
+dev.off()
+
+```
+
+### Figure 2D & E - Circos plots 
+
+```{r Figure_2D_E}
+
+# majority of this code was written by Nick Borcherding (https://www.borch.dev/) or (https://github.com/ncborcherding) 
+
+# notes
+# Here is a little more inuitive for me, seperate the Stim and US cells, create a matrix that counts the shared clonotype by clusters, correct for overcounting and visuaize both conditions using Chord Diagrams. 
+
+# For the most part the function `getCircles()` does all the processing. 
+# Proportion parameter to get getGircles(), will divide by total size of none-NA clonotypes
+# clonotypesOnly can be used to just count the clonotypes shared between cluster (removes cell numbers from the equation)
+
+# load function
+source("scripts/functions/getCircles_functionV2.R", local = knitr::knit_global())
+
+
+############################################
+# Set up data for circos diagrams
+############################################
+
+
+# Set up variables 
+remove.self.ribbons <- TRUE
+
+# Subset dataset by condition
+meta.tcr <- CD8.seurat.tcr.filt@meta.data
+
+US <- subset(meta.tcr, condition == "US")
+
+Stim <- subset(meta.tcr, condition == "Stim")
+
+
+# Collect clonotype overlaps and format data for Circos plots
+US <- getCircles(US, 
+                 proportion = TRUE, 
+                 clonotypesOnly = TRUE)
+
+Stim <- getCircles(Stim,
+                   proportion = TRUE, 
+                   clonotypesOnly = TRUE)
+
+Chord.list <- list(US, Stim)
+
+names(Chord.list) <- c("US", "Stim")
+
+
+# Remove ribbons originating and ending in the same cluster
+if(remove.self.ribbons){
+  for(i in seq_along(names(Chord.list))){
+    logic.vec <- Chord.list[[i]][ ,1] == Chord.list[[i]][ ,2]
+    Chord.list[[i]] <- Chord.list[[i]][!logic.vec, ]
+  }
+}
+
+
+# Defining grid colors
+grid.cols <- CD8.cols
+
+
+
+################################
+# Plot circos diagrams
+################################
+
+# load library
+library(circlize)
+
+# 
+# 2020/09/01 Still needs adjustment for very small groups to get secondary track - as of now, the code will segregate the clusters between #conditions, but errors at the **for(species in unique(combined$from))** loop
+
+
+# Set colour scheme 
+color_species  <- CD8.cols
+color_regions  <- condition.cols
+
+# Calculate overlap
+output <- getIntegratedCircle(meta.tcr, 
+                              proportion = F, 
+                              clonotypesOnly = TRUE) # clonotypesOnly will ignore cell # and just count the # of clonotypes that overlap
+
+dim(output) # 253
+
+######################################
+# Remove intra-condition links 
+######################################
+
+# preserve self links (note: there are only 6 clones unique to condition/cluster)
+output[output$from == output$to & output$from_group == output$to_group, ]
+
+# Self-links
+self.links <- output$from == output$to & output$from_group == output$to_group
+sum(self.links)
+
+# Inter-condition links only
+inter.condition <- output$from_group != output$to_group
+
+# Keep all inter.condition links or self-links
+output <- output[self.links | inter.condition, ]
+dim(output) # 143
+
+
+# note there is no directionality in the dataset - simply overlap between clusters in conditions 
+df2 <- data.frame(clust_1 = paste(output[[5]], output[[2]], sep = "|"),
+                  clust_2 = paste(output[[4]], output[[1]], sep = "|"),
+                  value = output[[3]], 
+                  stringsAsFactors = FALSE)
+
+##############################
+# Set plotting params
+##############################
+
+# Ensure plotting params are all cleared
+circos.clear()
+
+# Plotting order
+df2 <- df2 %>%
+  dplyr::arrange(clust_1, clust_2)
+
+# manually curate the order to plot clusters in
+order.val <- c("GZMK", "Exhausted_1", "Exhausted_2", "Naive_like_1", "Naive_like_2", "Naive_like_3", "Proliferative", "Stimulated_1", "Stimulated_exhausted", "TRM", "ISG")
+order.val <- c(paste0("Stim|", order.val), paste0("US|", order.val))
+
+# Track colour
+grid.col.1 <- color_species
+names(grid.col.1) <- paste0("US|", names(grid.col.1))
+
+grid.col.2 <- color_species
+names(grid.col.2) <- paste0("Stim|", names(grid.col.2))
+
+grid.col <- c(grid.col.1, grid.col.2)
+
+# Set gap variable
+gap.var <- rep(1, length(unique(names(grid.col))))
+names(gap.var) <- unique(names(grid.col))
+
+logic.vec <- grepl("US\\|ISG", names(gap.var))
+gap.var[logic.vec] <- 10
+
+logic.vec <- grepl("Stim\\|ISG", names(gap.var))
+gap.var[logic.vec] <- 10
+
+circos.par(gap.after = gap.var)
+
+
+
+################### 
+# Plot all data
+################### 
+
+# Set gap
+circos.par(gap.after = gap.var)
+
+
+####Ploting
+#pdf(paste0(output.dir, "/Circos_inter_condition_all_ribbons.pdf"), height=10, width=10)
+
+
+chordDiagram(df2, 
+             self.link = 1, 
+             annotationTrack = c("grid"),
+             grid.col = grid.col,
+             order = order.val,
+             directional = 0,
+             link.overlap = FALSE,
+             preAllocateTracks = list(
+               track.height = 0.3,
+               track.margin = c(0.05, 0)
+             )
+)
+
+
+circos.track(track.index = 1, 
+             panel.fun = function(x, y) {
+               xlim = get.cell.meta.data("xlim")
+               xplot = get.cell.meta.data("xplot")
+               ylim = get.cell.meta.data("ylim")
+               sector.name = get.cell.meta.data("sector.index")
+               
+               circos.text(mean(xlim), 
+                           ylim[1], 
+                           sector.name, 
+                           facing = "clockwise",
+                           niceFacing = TRUE, 
+                           adj = c(0, 0.5)) 
+             }, 
+             bg.border = NA)
+
+
+#dev.off()
+
+circos.clear()
+
+
+
+
+#########################################################################################################
+# Plot circos and specifically highlight ribbons originating from US-ISG, US-GZMK or US-Tex-1 clusters
+#########################################################################################################
+
+US.origin.to.plot <- color_species[c(4,5,8)]
+names(US.origin.to.plot)
+
+# Colour ribbons by originating node (i.e US node)
+for(i in seq_along(US.origin.to.plot)){
+  
+  
+  link.col <- rep(usefulfunctions::makeTransparent("Gray", percent = 80), length(df2$clust_1))
+  
+  link.col[df2$clust_1 == paste0("US|", names(US.origin.to.plot)[i])] <- US.origin.to.plot[i]
+  
+  # Set gap
+  circos.par(gap.after = gap.var)
+  
+  
+  ####Ploting
+  pdf(paste0(output.dir, "/Figure_2D_E_ribbons_originating_from_US_", names(US.origin.to.plot)[i], ".pdf"), height=10, width=10)
+  
+  
+  chordDiagram(df2, 
+               self.link = 1, 
+               annotationTrack = c("grid"),
+               grid.col = grid.col,
+               col = link.col,
+               order = order.val,
+               directional = 0,
+               link.overlap = FALSE,
+               preAllocateTracks = list(
+                 track.height = 0.3,
+                 track.margin = c(0.05, 0)
+               )
+  )
+  
+  
+  circos.track(track.index = 1, 
+               panel.fun = function(x, y) {
+                 xlim = get.cell.meta.data("xlim")
+                 xplot = get.cell.meta.data("xplot")
+                 ylim = get.cell.meta.data("ylim")
+                 sector.name = get.cell.meta.data("sector.index")
+                 
+                 circos.text(mean(xlim), 
+                             ylim[1], 
+                             sector.name, 
+                             facing = "clockwise",
+                             niceFacing = TRUE, 
+                             adj = c(0, 0.5)) 
+               }, 
+               bg.border = NA)
+  
+  
+  dev.off()
+  
+  circos.clear()
+  
+}
+
+
+#########################################################################################################
+# Plot circos and specifically highlight ribbons terminating in Stim-Stim-1 and Stim-StimEx clusters
+#########################################################################################################
+
+
+Stim.target.to.plot <- color_species[c(6,7)]
+names(Stim.target.to.plot)
+
+# Colour ribbons by target node (i.e Stim node)
+for(i in seq_along(Stim.target.to.plot)){
+  
+temp.df <- df2
+  
+temp.df$clust_1 <- gsub(".*\\|", "", df2$clust_1)
+temp.df$clust_2 <- gsub(".*\\|", "", df2$clust_2)
+
+temp.df$node_col <- NA
+
+for(j in seq_along(names(color_species))){
+index.var <- which(temp.df$clust_1 == names(color_species)[j])
+
+temp.df$node_col[index.var] <- color_species[j]
+
+
+}
+
+
+  # Initialise colour vector
+  link.col <- rep(usefulfunctions::makeTransparent("Gray", percent = 80), length(df2$clust_2))
+  
+  # Find ribbons for ending at target node
+  logic.vec <- df2$clust_2 == paste0("Stim|", names(Stim.target.to.plot)[i])
+  
+  # Identify source node colours to use for ribbons
+  link.col[logic.vec] <- temp.df$node_col[logic.vec]
+
+
+  # Set gap
+  circos.par(gap.after = gap.var)
+  
+  
+  # Ploting
+  pdf(paste0(output.dir, "/Figure_2D_E_ribbons_terminating_in_Stim_", names(Stim.target.to.plot)[i], ".pdf"), height=10, width=10)
+  
+  
+  chordDiagram(df2, 
+               self.link = 1, 
+               annotationTrack = c("grid"),
+               grid.col = grid.col,
+               col = link.col,
+               order = order.val,
+               directional = 0,
+               link.overlap = FALSE,
+               preAllocateTracks = list(
+                 track.height = 0.3,
+                 track.margin = c(0.05, 0)
+               )
+  )
+  
+  
+  circos.track(track.index = 1, 
+               panel.fun = function(x, y) {
+                 xlim = get.cell.meta.data("xlim")
+                 xplot = get.cell.meta.data("xplot")
+                 ylim = get.cell.meta.data("ylim")
+                 sector.name = get.cell.meta.data("sector.index")
+                 
+                 circos.text(mean(xlim), 
+                             ylim[1], 
+                             sector.name, 
+                             facing = "clockwise",
+                             niceFacing = TRUE, 
+                             adj = c(0, 0.5)) 
+               }, 
+               bg.border = NA)
+  
+  
+  dev.off()
+  
+  circos.clear()
+  
+}
+
+
+```
+
+
+## Supplementary figures {.tabset}
+
+### Supplementary Figure 2A
+```{r Sup_Figure_2A}
+
+if(long.compute){
+  
+  Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
+  DefaultAssay(CD8.seurat) <- "RNA"
+  
+  # Run DEG analysis
+  DEG.markers <- FindAllMarkers(CD8.seurat, 
+                                slot = "data", 
+                                logfc.threshold = 0.25,
+                                test.use = "wilcox",
+                                only.pos = FALSE)
+  
+  # Filter for significance
+  DEG.markers <- 
+    DEG.markers %>%
+    filter(p_val_adj < 0.05)
+  
+  
+  write.csv(DEG.markers, paste0(sup.output.dir, "Sup_Figure_2A_DEGs.csv"))
+}
+
+
+# load data
+DEG.wilcox <- read.csv(paste0(sup.output.dir, "Sup_Figure_2A_DEGs.csv"))
+DEG.wilcox <- DEG.wilcox[,-1]
+
+
+# prepare dataset
+Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
+DefaultAssay(CD8.seurat) <- "RNA"
+
+
+# Average dataset
+average.seurat <- AverageExpression(CD8.seurat, return.seurat = TRUE)
+
+
+# Top DEGs
+
+# DEGs > 0.5 log2FC
+goi <- DEG.wilcox %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::filter(cluster == "Stimulated_1" | cluster == "Stimulated_exhausted") %>%
+  dplyr::filter(avg_log2FC > 0.5)
+
+goi <- goi$gene[duplicated(goi$gene)]
+
+
+source("scripts/functions/annotate_seurat_heatmap_function.R")
+
+
+label.var <- unique(c("IFNG", "GZMB", "TNFRSF9", "FASLG", "CRTAM", "VSIR", "ICOS", "CD48"))
+
+goi <- sample(goi)
+
+# for some reason annotated.heatmap has changed "_" to "-" and cant map colours to names anymore
+temp.cols <- CD8.cols
+names(temp.cols) <- gsub("_", "-", names(CD8.cols))
+
+
+pdf(paste0(sup.output.dir, "Sup_Figure_2A.pdf"))
+
+# Plot heatmap
+annotated.heatmap(CD8.seurat, 
+                  cluster.id = "Clusters_l1",
+                  assay.use = "RNA",
+                  average.expression = TRUE,
+                  goi = goi, 
+                  genes.to.label = label.var, 
+                  col_order = names(temp.cols), 
+                  col.colours = temp.cols)
+
+dev.off()
+
+
+```
+
+### Supplementary Figure 2B
+```{r Sup_Figure_2B}
+
+# extract data and generate plot using prism 
+
+# ask the question, for clonotypes found in US dataset, according to their clonotype size in US dataset, what proportion are found (shared) in Stim dataset 
+# and what proportion are unique to US dataset
+
+
+output.df <- CD8.seurat.tcr@meta.data %>%
+  dplyr::filter(condition == "US") %>%
+  dplyr::group_by(cloneType) %>%
+  dplyr::distinct(CTaa, .keep_all = T)
+
+
+output.df <- table(output.df$cloneType, output.df$Clonotype_overlap)
+
+# calculate percentages
+sum.vals <- rowSums(output.df)
+
+output.df <- sweep(output.df, 1, sum.vals, FUN = "/")
+output.df <- output.df*100
+
+# write data to file 
+write.csv(output.df, paste0(sup.output.dir, "Sup_Figure_2B.csv"))
+```
+
+
