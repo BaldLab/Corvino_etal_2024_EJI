@@ -172,8 +172,8 @@ if(long.compute){
 
 
 
-### Figure 6A
-```{r Figure_6A}
+### Figure 3A
+```{r Figure_3A}
 
 
 # UMAP projection of reduced subset 
@@ -186,15 +186,15 @@ UMAPPlot(reduced.seurat,
          label = TRUE, 
          pt.size = 1) + NoLegend()
 
-dev.copy(pdf, paste0(output.dir, "Figure_6A.pdf"))
+dev.copy(pdf, paste0(output.dir, "Figure_3A.pdf"))
 dev.off()
 
 
 ```
 
 
-### Figure 6B—D
-```{r Figure_6B_D}
+### Figure 3B—D
+```{r Figure_3B_D}
 
 ####################################################################################
 # Identify clones that are uniquely found only in US-ISG cluster
@@ -369,7 +369,7 @@ UMAPPlot(ISG.seurat,
   xlim(-8, 6.5) + 
   ylim(-5.5, 7)
 
-dev.copy(pdf, paste0(output.dir, "Figure_6C.pdf"))
+dev.copy(pdf, paste0(output.dir, "Figure_3C.pdf"))
 dev.off()
 
 
@@ -407,14 +407,14 @@ UMAPPlot(GZMK.seurat,
   xlim(-8, 6.5) + 
   ylim(-5.5, 7)
 
-dev.copy(pdf, paste0(output.dir, "Figure_6D.pdf"))
+dev.copy(pdf, paste0(output.dir, "Figure_3D.pdf"))
 dev.off()
 
 
 ```
 
-### Figure 6C & D quantification
-```{r Figure_6C_D_quantification}
+### Figure 3C & D quantification
+```{r Figure_3C_D_quantification}
 
 ## Statsitics of clone movement after stimulation 
 
@@ -449,7 +449,7 @@ clone.distribution.df
 # sanity check
 rowSums(clone.distribution.df)
 
-write.csv(clone.distribution.df, paste0(output.dir, "Figure_6C_by_clonotype.csv"))
+#write.csv(clone.distribution.df, paste0(output.dir, "Figure_3C_by_clonotype.csv"))
 
 ########################
 # Unique GZMK clones
@@ -471,7 +471,7 @@ clone.distribution.df
 # sanity check
 rowSums(clone.distribution.df)
 
-write.csv(clone.distribution.df, paste0(output.dir, "Figure_6D_by_clonotype.csv"))
+#write.csv(clone.distribution.df, paste0(output.dir, "Figure_3D_by_clonotype.csv"))
 
 
 
@@ -506,7 +506,7 @@ cell.distribution.df
 # sanity check
 rowSums(cell.distribution.df)
 
-write.csv(cell.distribution.df, paste0(output.dir, "Figure_6C_by_cells.csv"))
+write.csv(cell.distribution.df, paste0(output.dir, "Figure_3C_by_cells.csv"))
 
 ########################
 # Unique GZMK clones
@@ -528,15 +528,15 @@ cell.distribution.df
 # sanity check
 rowSums(cell.distribution.df)
 
-write.csv(cell.distribution.df, paste0(output.dir, "Figure_6D_by_cells.csv"))
+write.csv(cell.distribution.df, paste0(output.dir, "Figure_3D_by_cells.csv"))
 
 
 ```
 
 
 
-### Figure 6E
-```{r Figure_6E}
+### Figure 3E
+```{r Figure_3E}
 
 ####################################
 # Create dir to hold large objects
@@ -673,7 +673,7 @@ dynplot::plot_dimred(slingshot,
                      label_milestones = T,
                      color_cells = "pseudotime")
 
-dev.copy(pdf, paste0(output.dir, "Figure_E.pdf"))
+dev.copy(pdf, paste0(output.dir, "Figure_3E.pdf"))
 dev.off()
 
 # plot scorpius trajectory 

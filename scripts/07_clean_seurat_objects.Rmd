@@ -1,0 +1,239 @@
+---
+title: "07_Clean_seurat_objects"
+author: "Dillon Corvino"
+date: "07/03/2022"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: united
+    highlight: tango
+    df_print: paged
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+  markdown: 
+    wrap: 72
+---
+
+Built with R version `{r} getRversion()`
+
+## Setup {.tabset}
+
+### Environment
+
+```{r setup, message = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,  
+  eval = TRUE, 
+  tidy = TRUE
+)
+
+knitr::opts_knit$set(
+  root.dir = "../"
+)
+
+# Environment Set up
+rm(list = ls()) #Clean workspace
+cat("\014")     #Clean Console
+gc() # Free memory
+
+
+# Establish working directory
+library("rstudioapi")
+
+# Set working directory to source file location
+setwd(dirname(getActiveDocumentContext()$path))
+setwd("..")
+
+# load required packages
+require(tidyverse)
+require(Seurat)
+require(SeuratDisk)
+
+```
+
+
+### Read in seurat objects and clean metadata for uploading to GEO
+```{r clean_seurat_objects}
+
+
+output.dir <- "saves/GEO_upload/"
+
+# Create output directory
+if(!dir.exists(output.dir)){
+  dir.create(output.dir,
+             recursive = TRUE)}
+
+
+###########################
+# clean seurat objects
+###########################
+
+#####################
+# Innate dataset
+#####################
+temp.object <- SeuratDisk::LoadH5Seurat("saves/Innate_seurat.h5Seurat")
+
+unique(temp.object@meta.data$group)
+
+
+# remove unnecessary metadata 
+temp.object@meta.data$UMAP_1 <- NULL
+temp.object@meta.data$UMAP_2 <- NULL
+temp.object@meta.data$PCA_1 <- NULL
+temp.object@meta.data$PCA_2 <- NULL
+
+
+# introduce new sample ID annotation to match with GEO upload notation - S1-S4 = US_1, Stim_2 annotation
+
+temp.object@meta.data <- temp.object@meta.data %>%
+  dplyr::mutate(SampleID = case_when(group == "S1" ~ "US_1", 
+                                     group == "S2" ~ "US_2", 
+                                     group == "S3" ~ "Stim_1", 
+                                     group == "S4" ~ "Stim_2", 
+                                     TRUE ~ "ERROR"))
+
+
+SeuratDisk::SaveH5Seurat(temp.object, paste0(output.dir, "Innate_cells_only.h5Seurat"),
+                         overwrite = TRUE)
+
+# clean environment
+rm(temp.object)
+
+
+
+#####################
+# Complete dataset
+#####################
+temp.object <- SeuratDisk::LoadH5Seurat("saves/seurat_combined.h5Seurat")
+
+temp.object@meta.data
+
+unique(temp.object@meta.data$group)
+unique(temp.object@meta.data$Clusters_l1)
+
+# remove unnecessary metadata 
+temp.object@meta.data$UMAP_1 <- NULL
+temp.object@meta.data$UMAP_2 <- NULL
+temp.object@meta.data$PCA_1 <- NULL
+temp.object@meta.data$PCA_2 <- NULL
+temp.object@meta.data$condition_clust <- NULL
+
+# introduce new sample ID annotation to match with GEO upload notation - S1-S4 = US_1, Stim_2 annotation
+# change naive_like-x to match manuscript naive_memory_x
+
+
+temp.object@meta.data <- temp.object@meta.data %>%
+  dplyr::mutate(SampleID = case_when(group == "S1" ~ "US_1", 
+                                     group == "S2" ~ "US_2", 
+                                     group == "S3" ~ "Stim_1", 
+                                     group == "S4" ~ "Stim_2", 
+                                     TRUE ~ "ERROR")) %>%
+  dplyr::mutate(Clusters_l1 = case_when(Clusters_l1 == "Naive_like_1" ~ "Naive_Memory_1", 
+                                        Clusters_l1 == "Naive_like_2" ~ "Naive_Memory_2", 
+                                        Clusters_l1 == "Naive_like_3" ~ "Naive_Memory_3", 
+                                        TRUE ~ Clusters_l1))
+
+
+SeuratDisk::SaveH5Seurat(temp.object, paste0(output.dir, "All_cells_GEX.h5Seurat"),
+                         overwrite = TRUE)
+
+# clean environment
+rm(temp.object)
+
+
+#####################
+# CD8 only dataset
+#####################
+temp.object <- SeuratDisk::LoadH5Seurat("saves/CD8_seurat.h5Seurat")
+
+temp.object
+
+temp.object@meta.data
+
+unique(temp.object@meta.data$group)
+unique(temp.object@meta.data$Clusters_l1)
+
+# remove unnecessary metadata 
+temp.object@meta.data$UMAP_1 <- NULL
+temp.object@meta.data$UMAP_2 <- NULL
+temp.object@meta.data$PCA_1 <- NULL
+temp.object@meta.data$PCA_2 <- NULL
+temp.object@meta.data$condition_clust <- NULL
+
+# introduce new sample ID annotation to match with GEO upload notation - S1-S4 = US_1, Stim_2 annotation
+# change naive_like-x to match manuscript naive_memory_x
+
+temp.object@meta.data <- temp.object@meta.data %>%
+  dplyr::mutate(SampleID = case_when(group == "S1" ~ "US_1", 
+                                     group == "S2" ~ "US_2", 
+                                     group == "S3" ~ "Stim_1", 
+                                     group == "S4" ~ "Stim_2", 
+                                     TRUE ~ "ERROR")) %>%
+  dplyr::mutate(Clusters_l1 = case_when(Clusters_l1 == "Naive_like_1" ~ "Naive_Memory_1", 
+                                        Clusters_l1 == "Naive_like_2" ~ "Naive_Memory_2", 
+                                        Clusters_l1 == "Naive_like_3" ~ "Naive_Memory_3", 
+                                        TRUE ~ Clusters_l1))
+
+
+SeuratDisk::SaveH5Seurat(temp.object, paste0(output.dir, "CD8_only_GEX.h5Seurat"),
+                         overwrite = TRUE)
+
+# clean environment
+rm(temp.object)
+
+
+#################################
+# CD8 only with TCR dataset
+#################################
+temp.object <- SeuratDisk::LoadH5Seurat("saves/CD8_seurat_tcr.h5Seurat")
+
+temp.object
+
+temp.object@meta.data
+
+unique(temp.object@meta.data$group)
+unique(temp.object@meta.data$Clusters_l1)
+
+
+# remove unnecessary metadata 
+temp.object@meta.data$UMAP_1 <- NULL
+temp.object@meta.data$UMAP_2 <- NULL
+temp.object@meta.data$PCA_1 <- NULL
+temp.object@meta.data$PCA_2 <- NULL
+temp.object@meta.data$condition_clust <- NULL
+temp.object@meta.data$barcode <- NULL
+temp.object@meta.data$Total_clonotype_scaled <- NULL
+temp.object@meta.data$Clone_conditionwise_scaled <- NULL
+temp.object@meta.data$Clone_Clust_conditionwise_scaled <- NULL
+
+# introduce new sample ID annotation to match with GEO upload notation - S1-S4 = US_1, Stim_2 annotation
+# change naive_like-x to match manuscript naive_memory_x
+
+
+temp.object@meta.data <- temp.object@meta.data %>%
+  dplyr::mutate(SampleID = case_when(group == "S1" ~ "US_1", 
+                                     group == "S2" ~ "US_2", 
+                                     group == "S3" ~ "Stim_1", 
+                                     group == "S4" ~ "Stim_2", 
+                                     TRUE ~ "ERROR")) %>%
+  dplyr::mutate(Clusters_l1 = case_when(Clusters_l1 == "Naive_like_1" ~ "Naive_Memory_1", 
+                                        Clusters_l1 == "Naive_like_2" ~ "Naive_Memory_2", 
+                                        Clusters_l1 == "Naive_like_3" ~ "Naive_Memory_3", 
+                                        TRUE ~ Clusters_l1))
+
+
+SeuratDisk::SaveH5Seurat(temp.object, paste0(output.dir, "CD8_only_GEX_VDJ.h5Seurat"),
+                         overwrite = TRUE)
+
+# clean environment
+rm(temp.object)
+
+
+```
+
+

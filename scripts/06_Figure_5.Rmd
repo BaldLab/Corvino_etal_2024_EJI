@@ -663,9 +663,9 @@ custom.boxplot(data = temp.plot,
                do.stats = TRUE)
 
 # save plot
-ggsave(filename = paste0(output.dir, "Figure_5D_Esophagus.pdf"),
-       width = 25, height = 15, units = "in", dpi = 300,
-       device = "pdf")
+#ggsave(filename = paste0(output.dir, "Figure_5D_Esophagus.pdf"),
+#       width = 25, height = 15, units = "in", dpi = 300,
+#       device = "pdf")
 
 ###############
 # Endometrial 
@@ -690,9 +690,9 @@ custom.boxplot(data = temp.plot,
                do.stats = TRUE)
 
 # save plot
-ggsave(filename = paste0(output.dir, "Figure_5D_Endometrial.pdf"),
-       width = 25, height = 15, units = "in", dpi = 300,
-       device = "pdf")
+#ggsave(filename = paste0(output.dir, "Figure_5D_Endometrial.pdf"),
+#       width = 25, height = 15, units = "in", dpi = 300,
+#       device = "pdf")
 
 
 ###############
@@ -718,9 +718,9 @@ custom.boxplot(data = temp.plot,
                do.stats = TRUE)
 
 # save plot
-ggsave(filename = paste0(output.dir, "Figure_5D_Lung.pdf"),
-       width = 25, height = 15, units = "in", dpi = 300,
-       device = "pdf")
+#ggsave(filename = paste0(output.dir, "Figure_5D_Lung.pdf"),
+#       width = 25, height = 15, units = "in", dpi = 300,
+#       device = "pdf")
 
 
 ##########################################################################
@@ -813,14 +813,14 @@ ggplot(plot_data, aes(x = ClusterID, y = prop, fill = ISG_status, color = ISG_st
                      label.y = 80)
 
 # save plot
-ggsave(filename = paste0(output.dir, "Figure_5E.pdf"),
-       width = 25, height = 15, units = "in", dpi = 300,
-       device = "pdf")
+#ggsave(filename = paste0(output.dir, "Figure_5E.pdf"),
+ #      width = 25, height = 15, units = "in", dpi = 300,
+ #      device = "pdf")
 
 ```
 
 
-## Figure 5F
+## Figure 5D
 
 ### Prepare Cillo dataset
 
@@ -848,46 +848,9 @@ ggsave(filename = paste0(output.dir, "Figure_5E.pdf"),
 
 ```
 
-### Use Cillo CD8 dataset as ISG score validation dataset
-```{r validate_ISG_scoring_Cillo_CD8}
 
-if(long.compute){
-  ##############################################################################################################
-  # Use Cillo CD8 dataset as a validation tool to confirm ISG signature captures the authors ISG population
-  ##############################################################################################################
-  
-  library(SeuratDisk)
-  
-  # Load data
-  Cillo.CD8.seurat <- LoadH5Seurat("data/external_datasets/Cillo_CD8_seurat.h5Seurat")
-  
-  
-  cores <- parallel::detectCores(all.tests = FALSE, logical = TRUE)
-  
-  # Calculate Ucell scores for signatures
-  DefaultAssay(Cillo.CD8.seurat) <- "RNA"
-  Cillo.CD8.seurat <- UCell::AddModuleScore_UCell(Cillo.CD8.seurat,
-                                                  features = Signature.list,
-                                                  ncores = cores)
-  
-  
-  
-  # VlnPlots
-  VlnPlot(Cillo.CD8.seurat,
-          pt.size = 0, 
-          same.y.lims = T,
-          features = "Top_10_UCell",
-          group.by = "cd8_cells_clusterID") + 
-    NoLegend()
-  
-  
-  #dev.copy(pdf, paste0(output.dir, "Sup_Figure_3X.pdf"))
-  #dev.off()
-}
-```
-
-### Figure 5F - cell-cell communcation using Cillo dataset
-```{r Figure_5F}
+### Figure 5D - cell-cell communcation using Cillo dataset
+```{r Figure_5D}
 
 ################################################
 # Read in and format complete Cillo dataset
@@ -1013,7 +976,7 @@ top_20_ints_source <- liana_trunc %>%
 top_20_ints_source
 chord_freq(top_20_ints_source)
 
-dev.copy(pdf, paste0(output.dir, "Figure_5F_top_20_source.pdf"))
+dev.copy(pdf, paste0(output.dir, "Figure_5D_top_20_source.pdf"))
 dev.off()
 
 # Chord diagram of the top 20 interactions for each target
@@ -1025,7 +988,7 @@ top_20_ints_target <- liana_trunc %>%
 top_20_ints_target
 chord_freq(top_20_ints_target)
 
-dev.copy(pdf, paste0(output.dir, "Figure_5F_top_20_target.pdf"))
+dev.copy(pdf, paste0(output.dir, "Figure_5D_top_20_target.pdf"))
 dev.off()
 
 
@@ -1034,12 +997,12 @@ dev.off()
 
 
 
-## Supplementary Figure 3 {.tabset}
+## Supplementary Figure 2 {.tabset}
 ### Set up output dir
-```{r Supplementary_Figure_3_setup}
+```{r Sup_Figure_2_setup}
 
 # Create output directory
-output.dir <- "results//Supplementary_Figure_3/"
+output.dir <- "results/Supplementary_Figure_2/"
 
 if(!dir.exists(paste0(output.dir))){
   dir.create(paste0(output.dir), 
@@ -1049,7 +1012,70 @@ if(!dir.exists(paste0(output.dir))){
 
 ```
 
-### Supplementary Figure 3A - ISG score VlnPlot Ovarian and Esophagus - Pancancer CD8 dataset
+
+
+### Sup Figure 2A - Use Cillo CD8 dataset as ISG score validation dataset
+```{r Sup_Figure_2A}
+
+if(long.compute){
+  ##############################################################################################################
+  # Use Cillo CD8 dataset as a validation tool to confirm ISG signature captures the authors ISG population
+  ##############################################################################################################
+  
+  library(SeuratDisk)
+  
+  # Load data
+  Cillo.CD8.seurat <- LoadH5Seurat("data/external_datasets/Cillo_CD8_seurat.h5Seurat")
+  
+  head(Cillo.CD8.seurat@meta.data)
+  table(Cillo.CD8.seurat@meta.data$cd8_cells_clusterID)
+     table(Cillo.CD8.seurat@meta.data$patient_id)
+
+  # heatmap to demonstrate cluster - 2 = ISG cluster
+  pseudo.seurat <- AggregateExpression(Cillo.CD8.seurat, 
+                      return.seurat = TRUE, 
+                      group.by = "cd8_cells_clusterID")
+  
+  #DoHeatmap(pseudo.seurat, 
+     #       features = c("IFI6", "ISG15", "IFI27", "IFIT3", "IFIT1"), draw.lines = FALSE)
+  
+ 
+  #dev.copy(pdf, paste0(output.dir, "Sup_Figure_5A.pdf"))
+  #dev.off()
+  
+  
+  
+  cores <- parallel::detectCores(all.tests = FALSE, logical = TRUE)
+  
+  # Calculate Ucell scores for signatures
+  DefaultAssay(Cillo.CD8.seurat) <- "RNA"
+  Cillo.CD8.seurat <- UCell::AddModuleScore_UCell(Cillo.CD8.seurat,
+                                                  features = Signature.list,
+                                                  ncores = cores)
+  
+  
+  # VlnPlots
+  VlnPlot(Cillo.CD8.seurat,
+          pt.size = 0, 
+          same.y.lims = T,
+          features = "Top_10_UCell",
+          group.by = "cd8_cells_clusterID") + 
+    NoLegend()
+  
+  
+  dev.copy(pdf, paste0(output.dir, "Sup_Figure_2A.pdf"))
+  dev.off()
+}
+```
+
+
+
+
+
+
+
+
+### Supplementary Figure 2B - ISG score VlnPlot Ovarian and Esophagus - Pancancer CD8 dataset
 ```{r Sup_Figure_3A}
 
 if(long.compute){
@@ -1148,7 +1174,7 @@ VlnPlot(ISG.tumors.seurat,
         split.by = "Tissue",
         group.by = "IFN_status")
 
-dev.copy(pdf, paste0(output.dir, "Supplementary_Figure_3A_T1.pdf"))
+dev.copy(pdf, paste0(output.dir, "Sup_Figure_2B_T1.pdf"))
 dev.off()
 
 VlnPlot(ISG.tumors.seurat,
@@ -1157,7 +1183,7 @@ VlnPlot(ISG.tumors.seurat,
         split.by = "Tissue",
         group.by = "IFN_status")
 
-dev.copy(pdf, paste0(output.dir, "Supplementary_Figure_3A_T2.pdf"))
+dev.copy(pdf, paste0(output.dir, "Sup_Figure_2B_T2.pdf"))
 dev.off()
 
 ```
@@ -1309,12 +1335,12 @@ if(long.compute){
 
 ```
 
-### Supplementary Figure 3B
-```{r Sup_Figure_3B}
+### Supplementary Figure 2C
+```{r Sup_Figure_2C}
 
 
 ##############################
-# Supplementary Figure 3B
+# Supplementary Figure 2C
 ##############################
 
 library(scCustomize)
@@ -1327,17 +1353,17 @@ Plot_Density_Custom(cd8.covid.seurat,
                     pt.size = 1, 
                     reduction = "umap")
 
-dev.copy(pdf, paste0(output.dir, "Supplementary_Figure_3B.pdf"))
+dev.copy(pdf, paste0(output.dir, "Sup_Figure_2C.pdf"))
 dev.off()
 
 
 ```
 
-### Supplementary Figure 3C-E
-```{r Supplementary_Figure_3C_E}
+### Supplementary Figure 2D
+```{r Sup_Figure_2D}
 
 #################################################
-# Supplementary Figure 3C - ISG freq by disease
+# Supplementary Figure 2D - ISG freq by disease
 #################################################
 
 plot_data <- cd8.covid.seurat@meta.data %>%
@@ -1381,12 +1407,12 @@ ggplot(plot_data, aes(x = disease, y = prop, color = disease, fill = disease)) +
                       aesthetics = c("colour", "fill"))
 
 
-ggsave(filename = paste0(output.dir, "Supplementary_Figure_3C.pdf"),
+ggsave(filename = paste0(output.dir, "Sup_Figure_2D.pdf"),
        device = "pdf")
 
 
 ############################################################
-# Supplementary Figure 3D - ISG Freq by disease status
+# Supplementary Figure 2X - ISG Freq by disease status
 ############################################################
 
 # note sepsis is annotated as COVID-19 but not sure if this is correct based on paper, looks like sepsis is maybe/maybenot covid attributed
@@ -1440,15 +1466,15 @@ ggplot(plot_data, aes(x = Source, y = prop, color = Source, fill = Source)) +
                       aesthetics = c("colour", "fill"))
 
 
-ggsave(filename = paste0(output.dir, "Supplementary_Figure_3D.pdf"),
-       device = "pdf")
+#ggsave(filename = paste0(output.dir, "Supplementary_Figure_2X.pdf"),
+#       device = "pdf")
 
 
 
 
 
 ###########################################################
-# Supplementary Figure 3E - ISG freq by CD8 annotation 
+# Supplementary Figure 2X - ISG freq by CD8 annotation 
 ###########################################################
 
 table(cd8.covid.seurat@meta.data$minor_subset, cd8.covid.seurat@meta.data$ISG_status)
@@ -1532,8 +1558,8 @@ ggplot(plot_data, aes(x = minor_subset, y = prop, fill = ISG_status, color = ISG
   stat_compare_means(method = "t.test", 
                      label.y = 80)
 
-ggsave(filename = paste0(output.dir, "Supplementary_Figure_3E.pdf"),
-       device = "pdf")
+#ggsave(filename = paste0(output.dir, "Supplementary_Figure_2X.pdf"),
+#       device = "pdf")
 
 
 #################################################
@@ -1576,9 +1602,9 @@ ggsave(filename = paste0(output.dir, "Supplementary_Figure_3E.pdf"),
 ```
 
 
-### Supplementary Figure 3X - Data not shown, but references in manuscript
+### Supplementary Figure 2X - Data not shown, but references in manuscript
 
-```{r Supplementary_Figure_3X}
+```{r Sup_Figure_2X}
 
 if(long.compute){
   
