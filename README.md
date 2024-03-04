@@ -31,6 +31,6 @@ Head and neck squamous cell carcinoma (HNSCC) originate from the mucosal epithel
 
 This repository holds the code and input/output used and generated within the above manuscript.
 
-Raw data is available at the following GEO accession (Place here once generated).
+Raw data is available at the following GEO accession GSE260676.
 
 Please do not hesitate to contact me (Dillon Corvino) if you have any questions about this dataset or the analysis.
