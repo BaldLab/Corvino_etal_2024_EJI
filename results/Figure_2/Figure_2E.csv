@@ -1,6 +1,3 @@
-"","Shared","US"
-"Hyperexpanded (20 < X <= 150)",100,0
-"Large (10 < X <= 20)",100,0
-"Medium (5 < X <= 10)",93.5483870967742,6.45161290322581
-"Small (1 < X <= 5)",65.0519031141868,34.9480968858132
-"Single (1)",15.1403249630724,84.8596750369276
+version https://git-lfs.github.com/spec/v1
+oid sha256:8179acabf6d35e69191fc65c745adafd618f2378571e77e1416e3cf5c6570f1b
+size 243
