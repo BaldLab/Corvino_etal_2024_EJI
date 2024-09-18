@@ -75,9 +75,6 @@ DefaultAssay(seurat.combined) <- "RNA"
 ```
 
 
-
-
-
 ### Set up output directory for fig 1 and supplementary
 ```{r Fig_1_setup}
 
@@ -245,13 +242,9 @@ dev.off()
 
 ```
 
-
-
 ## Sup Figure 1 dataset overview and Innate clusters {.tabset}
 
-
 ### Read in Innate dataset
-
 ```{r read_innate_dataset}
 
 # Load innate dataset
@@ -261,8 +254,6 @@ Idents(Innate.seurat) <- Innate.seurat@meta.data$Clusters_l1
 DefaultAssay(Innate.seurat) <- "RNA"
 
 ```
-
-
 
 ### Sup Figure 1A
 ```{r Sup_Figure_1A}
@@ -300,10 +291,6 @@ dev.copy(pdf, paste0(output.Supfig1, "Sup_Figure_1A.pdf"))
 dev.off()
 
 ```
-
-
-
-
 
 ### Sup Figure 1B
 ```{r Sup_Figure_1B}
@@ -361,15 +348,6 @@ dev.off()
 
 ```
 
-
-
-
-
-
-
-
-
-
 ### Sup Figure 1C
 ```{r Sup_Figure_1C}
 
@@ -415,7 +393,6 @@ dev.off()
 
 ```
 
-
 ### Sup Figure 1E
 ```{r Sup_Figure_1E}
 
@@ -442,8 +419,6 @@ for(i in seq_along(list.goi)){
 
 
 ```
-
-
 
 ### Sup Figure 1F 
 ```{r Sup_Figure_1F}
@@ -515,12 +490,7 @@ dev.off()
 
 ```
 
-
-
-
-
 ### Sup Figure 1G
-
 ```{r Sup_Figure_1G}
 
 
@@ -580,7 +550,57 @@ dev.off()
 
 
 
+### Reviewer plots
+```{r reviewer_plots}
 
+
+output.dir <- "results/reviewer_plots/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
+             recursive = T)
+}
+
+
+DefaultAssay(seurat.combined) <- "RNA"
+Idents(seurat.combined) <- seurat.combined@meta.data$Clusters_l1
+
+grep("IL10.", rownames(seurat.combined), value = T)
+
+# Functional markers
+goi <- c("IL10", "IL10RA", "IL10RB")
+
+Stacked_VlnPlot(seurat.combined, 
+                features = goi, 
+                pt.size = 0,
+                colors_use = clust.cols, 
+                x_lab_rotate = TRUE)
+
+dev.copy(pdf, paste0(output.dir, "VlnPlot_IL10_genes.pdf"))
+dev.off()
+
+
+
+#SeuratExtend::feature_percent(seurat.combined, feature = "IL10RA")
+
+
+
+input.dir <- "results/Figure_2/"
+
+# load data
+DEG.wilcox <- read.csv(paste0(input.dir, "Figure_2B_DEGs.csv"))
+DEG.wilcox <- DEG.wilcox[,-1]
+
+
+DEG.wilcox %>%
+  dplyr::filter(p_val_adj < 0.05) %>%
+  dplyr::filter(gene %in% goi)
+
+
+
+
+
+```
 
 
 

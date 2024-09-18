@@ -994,9 +994,6 @@ dev.off()
 
 ```
 
-
-
-
 ## Supplementary Figure 2 {.tabset}
 ### Set up output dir
 ```{r Sup_Figure_2_setup}
@@ -1011,8 +1008,6 @@ if(!dir.exists(paste0(output.dir))){
 
 
 ```
-
-
 
 ### Sup Figure 2A - Use Cillo CD8 dataset as ISG score validation dataset
 ```{r Sup_Figure_2A}
@@ -1067,13 +1062,6 @@ if(long.compute){
   dev.off()
 }
 ```
-
-
-
-
-
-
-
 
 ### Supplementary Figure 2B - ISG score VlnPlot Ovarian and Esophagus - Pancancer CD8 dataset
 ```{r Sup_Figure_3A}
@@ -1187,8 +1175,6 @@ dev.copy(pdf, paste0(output.dir, "Sup_Figure_2B_T2.pdf"))
 dev.off()
 
 ```
-
-
 
 ## COMBAT COVID dataset
 ### Subset for CD8 and score for ISG
@@ -1701,7 +1687,67 @@ if(long.compute){
 
 ```
 
+### Reviewer plots
+```{r Reviewer_plots}
 
+
+output.dir <- "results/reviewer_plots/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
+             recursive = T)
+}
+
+head(Cillo.seurat@meta.data)
+unique(Cillo.seurat@meta.data$patient_id)
+
+
+plot_data <- cd8.covid.seurat@meta.data %>%
+  group_by(donor_id, disease, ISG_status) %>%
+  summarise(freq = n()) %>%
+  ungroup() %>%
+  group_by(donor_id, disease) %>%
+  mutate(prop = freq / sum(freq)) %>%
+  filter(ISG_status == "ISG_cluster")
+
+plot_data$prop <- plot_data$prop*100
+
+
+# Create a data frame for the t-test groups
+t_test_groups <- data.frame(
+  group1 = c("normal", "COVID-19"),
+  group2 = c("COVID-19", "influenza"), 
+  group3 = c("normal", "influenza")
+)
+# Get the n value for each variable
+legend_data <- plot_data %>%
+  group_by(disease) %>%
+  summarise(n = n_distinct(donor_id))
+
+
+# plot data
+ggplot(plot_data, aes(x = disease, y = prop, color = disease, fill = disease)) +
+  geom_boxplot(alpha = 0.3, position = position_dodge(width = 0.75), aes(color = disease, fill = disease), outlier.shape = NA, width = 0.75) +
+  geom_point(aes(color = disease), position = position_jitter(width = 0.1), shape = 19, size = 2) + 
+  labs(x = "disease", y = "Proportion of ISG_cluster") +
+  boxplot_theme() + 
+  scale_y_continuous(expand = expansion(add = c(0, 0.01)), limits = c(0, 100), breaks = seq(0, 100, by = 10)) + 
+  stat_compare_means(comparisons = t_test_groups, 
+                     method = "t.test", 
+                     label = "p.signif",
+                     hide.ns = FALSE,
+                     label.y = c(80, 85, 90)) + # Perform t-test and add statistics
+  ggtitle("Proportion of ISG_cluster by Disease Group") + 
+  scale_colour_manual(values = seq(1:length(levels(plot_data$disease))), 
+                      labels = paste(levels(plot_data$disease), " (n=", legend_data$n, ")", sep = ""),
+                      aesthetics = c("colour", "fill"))
+
+
+ggsave(filename = paste0(output.dir, "Sup_Figure_2D.pdf"),
+       device = "pdf")
+
+
+```
 
 
 

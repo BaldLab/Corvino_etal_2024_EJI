@@ -1,0 +1,676 @@
+---
+title: "04_Figure_3_naive"
+author: "Dillon Corvino"
+date: "07/03/2022"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
+    theme: united
+    highlight: tango
+    df_print: paged
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+  markdown: 
+    wrap: 72
+---
+
+Built with R version `{r} getRversion()`
+
+## Setup {.tabset}
+
+### Environment
+
+```{r setup, message = FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,  
+  eval = TRUE, 
+  tidy = TRUE
+)
+
+knitr::opts_knit$set(
+  root.dir = "../"
+)
+
+# Environment Set up
+rm(list = ls()) #Clean workspace
+cat("\014")     #Clean Console
+gc() # Free memory
+
+
+# Establish working directory
+library("rstudioapi")
+
+# Set working directory to source file location
+setwd(dirname(getActiveDocumentContext()$path))
+setwd("..")
+
+# Create output directories & load custom functions & colour scheme
+source("scripts/Setup.R", local = knitr::knit_global())
+
+# pipeline variables
+long.compute <- FALSE
+quick.load <- TRUE
+
+# load required packages
+require(tidyverse)
+require(Seurat)
+
+
+# Create output directory
+output.dir <- "results/reviewer_plots/"
+
+if(!dir.exists(paste0(output.dir))){
+  dir.create(paste0(output.dir), 
+             recursive = TRUE)
+}
+
+
+
+
+```
+
+
+
+### Preparing dataset
+```{r reducing_seurat_object}
+if(long.compute){
+  
+  ################################################
+  # Subset dataset and recalculate UMAP
+  ################################################
+  
+  CD8.seurat <- LoadH5Seurat("saves/CD8_seurat.h5Seurat")
+  
+  Idents(CD8.seurat) <- CD8.seurat@meta.data$Clusters_l1
+  unique(Idents(CD8.seurat))
+  DefaultAssay(CD8.seurat) <- "integrated"
+  reduced.seurat <- subset(CD8.seurat, idents = c("Stimulated_exhausted", "Exhausted_1", "Exhausted_2"))
+  
+  # calculate dim reduction using reduced dataset
+  reduced.seurat <- Seurat::RunPCA(reduced.seurat)
+  reduced.seurat <- Seurat::RunUMAP(object = reduced.seurat,
+                                    reduction = "pca",
+                                    dims = 1:20,
+                                    umap.method = "uwot",
+                                    n.neighbors = 30, # 5 to 50
+                                    min.dist = 0.5, # Sensible values are in the range 0.001 to 0.5
+                                    seed.use = 42)
+  
+  UMAPPlot(reduced.seurat,
+           group.by = "Clusters_l1", 
+           label = TRUE, 
+           pt.size = 1) + NoLegend()
+  
+  dev.copy(pdf, paste0(output.dir, "UMAP_reduced_dataset.pdf"))
+  dev.off()
+  
+  # Load tcr seurat and append umap dims with tcr seurat 
+  CD8.seurat.tcr <- LoadH5Seurat("saves/CD8_seurat_tcr.h5Seurat")
+  
+  # reduce tcr object
+  Idents(CD8.seurat.tcr) <- CD8.seurat.tcr@meta.data$Clusters_l1
+  reduced.seurat.tcr <- subset(CD8.seurat.tcr, idents = c("Stimulated_exhausted", "Exhausted_1", "Exhausted_2"))
+  
+  
+  # extract vector of cells to keep
+  cells.keep <- colnames(reduced.seurat.tcr)
+  
+  # extract UMAP dimensions from reduced seurat object
+  temp.seurat <- subset(reduced.seurat, cells = cells.keep)
+  
+  DefaultAssay(reduced.seurat.tcr) <- "integrated"
+
+  reduced.seurat.tcr[["umap"]] <- Seurat::CreateDimReducObject(embeddings = temp.seurat@reductions$umap@cell.embeddings, key = "umap_", assay = DefaultAssay(temp.seurat))
+  
+  
+  UMAPPlot(reduced.seurat.tcr,
+           group.by = "Clusters_l1", 
+           label = TRUE, 
+           pt.size = 1) + NoLegend()
+  
+  dev.copy(pdf, paste0(output.dir, "UMAP_reduced_dataset_tcrdataset.pdf"))
+  dev.off()
+  
+  
+  rm(temp.seurat, CD8.seurat, CD8.seurat.tcr)
+}
+
+
+
+
+
+
+```
+
+
+
+
+### Figure 3A
+```{r Figure_3A}
+
+
+# UMAP projection of reduced subset 
+
+cols.vec <- clust.cols[names(clust.cols) %in% c("Stimulated_exhausted", "Exhausted_1", "Exhausted_2")]
+
+UMAPPlot(reduced.seurat,
+                 group.by = "Clusters_l1", 
+                 cols = cols.vec,
+                 label = TRUE, 
+                 pt.size = 1) + NoLegend()
+
+dev.copy(pdf, paste0(output.dir, "Figure_X.pdf"))
+dev.off()
+
+
+```
+
+
+### Figure 3B—D
+```{r Figure_3B_D}
+
+####################################################################################
+# Identify clones that are uniquely found only in US-Ex-1 cluster
+####################################################################################
+unique(reduced.seurat.tcr@meta.data$Clusters_l1)
+
+# Clone size minimum 
+clonesize.min <- 3
+
+# Get clonotypes found in US-ISG that are shared across conditions
+Exhausted_1.clonotypes <- reduced.seurat.tcr@meta.data %>%
+  dplyr::filter(Total_clonotype_n > clonesize.min) %>%
+  dplyr::select(CTaa, Clusters_l1, condition, Clonotype_overlap) %>%
+  dplyr::filter(Clonotype_overlap == "Shared" & condition == "US") %>%
+  dplyr::filter(Clusters_l1 == "Exhausted_1") %>%
+  dplyr::distinct(CTaa) %>%
+  dplyr::pull(CTaa)
+
+length(Exhausted_1.clonotypes) # 86 clonotypes 
+
+# Cross reference to identify which of the above clones can be found elsewehre within the US dataset
+non.specific.clonotypes <- reduced.seurat.tcr@meta.data %>%
+  dplyr::filter(Total_clonotype_n > clonesize.min) %>%
+  dplyr::filter(Clonotype_overlap == "Shared" & condition == "US") %>%
+  dplyr::filter(CTaa %in% Exhausted_1.clonotypes) %>%
+  dplyr::filter(Clusters_l1 != "Exhausted_1") %>%
+  dplyr::distinct(CTaa) %>%
+  dplyr::pull(CTaa)
+
+length(non.specific.clonotypes) # 7 clonotypes 
+# therefore 79 Ex-1 specific clonotypes 
+
+# Use non.specific.clonotypes list to identify unique.clonotypes
+logic.vec <- Exhausted_1.clonotypes %in% non.specific.clonotypes
+unique.Ex1.clones <- Exhausted_1.clonotypes[!logic.vec]
+
+length(unique.Ex1.clones) # 79 clonotypes 
+
+
+# create metadata identifying unique and non-unique clones
+meta.data.temp <- reduced.seurat.tcr@meta.data %>%
+  dplyr::mutate(Ex1_unique = case_when(CTaa %in% unique.Ex1.clones ~ "unique", 
+                                       CTaa %in% non.specific.clonotypes ~ "nonunique",
+                                       .default = "nonEx1")) %>%
+  dplyr::select(Ex1_unique)
+
+# Append metadata to seurat object
+reduced.seurat.tcr <- AddMetaData(object = reduced.seurat.tcr, 
+                                  col.name = "Ex1_unique",
+                                  metadata = meta.data.temp)
+
+####################################################################################
+# Identify clones that are uniquely found only in US Ex2 cluster
+####################################################################################
+
+# Clone size minimum 
+clonesize.min <- 3
+
+# Get clonotypes found in US-ISG that are shared across conditions
+Exhausted_2.clonotypes <- reduced.seurat.tcr@meta.data %>%
+  dplyr::filter(Total_clonotype_n > clonesize.min) %>%
+  dplyr::select(CTaa, Clusters_l1, condition, Clonotype_overlap) %>%
+  dplyr::filter(Clonotype_overlap == "Shared" & condition == "US") %>%
+  dplyr::filter(Clusters_l1 == "Exhausted_2") %>%
+  dplyr::distinct(CTaa) %>%
+  dplyr::pull(CTaa)
+
+length(Exhausted_2.clonotypes) # 17 clonotypes 
+
+# Cross reference to identify which of the above clones can be found elsewehre within the US dataset
+non.specific.clonotypes <- reduced.seurat.tcr@meta.data %>%
+  dplyr::filter(Total_clonotype_n > clonesize.min) %>%
+  dplyr::filter(Clonotype_overlap == "Shared" & condition == "US") %>%
+  dplyr::filter(CTaa %in% Exhausted_2.clonotypes) %>%
+  dplyr::filter(Clusters_l1 != "Exhausted_2") %>%
+  dplyr::distinct(CTaa) %>%
+  dplyr::pull(CTaa)
+
+length(non.specific.clonotypes) # 6 clonotypes 
+# therefore 9 GZMK specific clonotypes 
+
+# Use non.specific.clonotypes list to identify unique.clonotypes
+logic.vec <- Exhausted_2.clonotypes %in% non.specific.clonotypes
+unique.Ex2.clones <- Exhausted_2.clonotypes[!logic.vec]
+
+length(unique.Ex2.clones) # 11 clonotypes 
+
+
+# create metadata identifying unique and non-unique clones
+meta.data.temp <- reduced.seurat.tcr@meta.data %>%
+  dplyr::mutate(Ex2_unique = case_when(CTaa %in% unique.Ex2.clones ~ "unique", 
+                                        CTaa %in% non.specific.clonotypes ~ "nonunique",
+                                        .default = "nonEx2")) %>%
+  dplyr::select(Ex2_unique)
+
+# Append metadata to seurat object
+reduced.seurat.tcr <- AddMetaData(object = reduced.seurat.tcr, 
+                                  col.name = "Ex2_unique",
+                                  metadata = meta.data.temp)
+
+
+####################################################################################################
+# add together Ex1 and Ex2 unique annotations into one column for plotting together on one graph 
+####################################################################################################
+
+meta.data.temp <- reduced.seurat.tcr@meta.data %>%
+  dplyr::mutate(unique_ident = case_when(CTaa %in% unique.Ex1.clones ~ "Ex1_unique", 
+                                         CTaa %in% unique.Ex2.clones ~ "Ex2_unique",
+                                         .default = "other")) %>%
+  dplyr::select(unique_ident)
+
+# Append metadata to seurat object
+reduced.seurat.tcr <- AddMetaData(object = reduced.seurat.tcr, 
+                                  col.name = "unique_ident",
+                                  metadata = meta.data.temp)
+
+reduced.seurat.tcr@meta.data$unique_ident <- factor(reduced.seurat.tcr@meta.data$unique_ident, 
+                                                    levels = c("Ex1_unique", "Ex2_unique", "other"))
+
+# subset dataset by condition to make two plots. plotting looks nicer when split and not using the split.by variable 
+# use xlim and ylim to keep axis dims same across datasets
+# note, plotting performed like this to ensure a bunch of "other" cells keept in dataset that can be put as background to help orientate the cluster positions etc
+
+Idents(reduced.seurat.tcr) <- reduced.seurat.tcr@meta.data$condition
+US.reduced.tcr.seurat <- subset(reduced.seurat.tcr, idents = "US")
+
+# Plot US dataset
+UMAPPlot(US.reduced.tcr.seurat, 
+         group.by = "unique_ident", 
+         pt.size = 3, 
+         order = c("Ex1_unique", "Ex2_unique", "other"), 
+         cols = c("#BEBEBE33", "#666666", "#A6D854")) + 
+  NoLegend() + 
+  ggtitle("Unique Ex1 and Ex2 clones in US") + 
+  xlim(-7,9) + 
+  ylim(-6, 7)
+
+dev.copy(pdf, paste0(output.dir, "Figure_US_Ex1_Ex2.pdf"))
+dev.off()
+
+
+# to show after stim clone positions first subset by stim 
+Idents(reduced.seurat.tcr) <- reduced.seurat.tcr@meta.data$condition
+Stim.reduced.tcr.seurat <- subset(reduced.seurat.tcr, idents = "Stim")
+
+
+# Next subset by Ex1 unique and other
+Idents(Stim.reduced.tcr.seurat) <- Stim.reduced.tcr.seurat@meta.data$unique_ident
+Ex1.seurat <- subset(Stim.reduced.tcr.seurat, idents = c("Ex1_unique", "other"))
+
+
+# define new metadata that identifies the cluster Ex1_unique cells belong to after stimulation
+meta.data.temp <- Ex1.seurat@meta.data %>%
+  mutate(destination_id = case_when(unique_ident == "Ex1_unique" ~ Clusters_l1, 
+                                    .default = "other")) %>%
+  dplyr::select(destination_id)
+
+# Append metadata to seurat object
+Ex1.seurat <- AddMetaData(object = Ex1.seurat, 
+                          col.name = "destination_id",
+                          metadata = meta.data.temp)
+
+
+# Plot ISG unique
+UMAPPlot(Ex1.seurat, 
+         group.by = "destination_id", 
+         pt.size = 3, 
+         order = c("Exhausted_1", "Exhausted_2", "Stimulated_exhausted", "other"),
+         cols = rev(c("#666666", "#A6D854", "#984EA3", "#BEBEBE33"))) +
+  NoLegend() + 
+  ggtitle("Unique Ex1 clones") + 
+  xlim(-7,9) + 
+  ylim(-6, 7)
+
+dev.copy(pdf, paste0(output.dir, "Figure_stim_unique_ex1.pdf"))
+dev.off()
+
+
+
+
+###################################################
+# Next subset by Ex2 unique and other
+###################################################
+
+Idents(Stim.reduced.tcr.seurat) <- Stim.reduced.tcr.seurat@meta.data$unique_ident
+Ex2.seurat <- subset(Stim.reduced.tcr.seurat, idents = c("Ex2_unique", "other"))
+
+
+# define new metadata that identifies the cluster ISG_unique cells belong to after stimulation
+meta.data.temp <- Ex2.seurat@meta.data %>%
+  mutate(destination_id = case_when(unique_ident == "Ex2_unique" ~ Clusters_l1,
+                                    .default = "other")) %>%
+  dplyr::select(destination_id)
+
+# Append metadata to seurat object
+Ex2.seurat <- AddMetaData(object = Ex2.seurat, 
+                           col.name = "destination_id",
+                           metadata = meta.data.temp)
+
+
+
+# Plot GZMK unique
+UMAPPlot(Ex2.seurat, 
+         group.by = "destination_id", 
+         pt.size = 3, 
+         order = c("Exhausted_1", "Exhausted_2", "Stimulated_exhausted", "other"),
+         cols = rev(c("#666666", "#A6D854", "#984EA3", "#BEBEBE33"))) +
+  NoLegend() + 
+  ggtitle("Unique Ex2 clones") + 
+  xlim(-7,9) + 
+  ylim(-6, 7)
+
+dev.copy(pdf, paste0(output.dir, "Figure_stim_ex2.pdf"))
+dev.off()
+
+
+```
+
+### Figure 3C & D quantification
+```{r Figure_3C_D_quantification}
+
+## Statsitics of clone movement after stimulation 
+
+########################
+# stats by clonotype 
+########################
+
+# Firstly subset data by Stim only, and reduce to clonotype by cluster level
+# i.e keep only one entry per clonotype per cluster
+clonotype.data <- reduced.seurat.tcr@meta.data %>%
+  dplyr::filter(condition == "Stim") %>%
+  dplyr::distinct(CTaa, Clusters_l1, .keep_all = T)
+
+########################
+# Unique ISG clones
+########################
+
+clone.distribution.df <- table(clonotype.data$ISG_unique, clonotype.data$Clusters_l1)
+clone.distribution.df
+
+# calculate number of clones in each catagory (unique, non-unique, etc)
+sum.val <- rowSums(clone.distribution.df)
+
+# divide each cluster clone # by the sum value of clones for that category 
+clone.distribution.df <- sweep(clone.distribution.df, 1, 
+                               sum.val, 
+                               FUN = "/")
+
+clone.distribution.df <- clone.distribution.df*100
+clone.distribution.df
+
+# sanity check
+rowSums(clone.distribution.df)
+
+#write.csv(clone.distribution.df, paste0(output.dir, "Figure_3C_by_clonotype.csv"))
+
+########################
+# Unique GZMK clones
+########################
+clone.distribution.df <- table(clonotype.data$GZMK_unique, clonotype.data$Clusters_l1)
+clone.distribution.df
+
+# calculate number of clones in each catagory (unique, non-unique, etc)
+sum.val <- rowSums(clone.distribution.df)
+
+# divide each cluster clone # by the sum value of clones for that category 
+clone.distribution.df <- sweep(clone.distribution.df, 1, 
+                               sum.val, 
+                               FUN = "/")
+
+clone.distribution.df <- clone.distribution.df*100
+clone.distribution.df
+
+# sanity check
+rowSums(clone.distribution.df)
+
+#write.csv(clone.distribution.df, paste0(output.dir, "Figure_3D_by_clonotype.csv"))
+
+
+
+
+########################
+# stats by cell number 
+########################
+
+# Firstly subset data by Stim only, and reduce to clonotype by cluster level
+# i.e keep only one entry per clonotype per cluster
+cell.number.data <- reduced.seurat.tcr@meta.data %>%
+  dplyr::filter(condition == "Stim")
+
+########################
+# Unique ISG clones
+########################
+
+cell.distribution.df <- table(cell.number.data$ISG_unique, cell.number.data$Clusters_l1)
+cell.distribution.df
+
+# calculate number of clones in each catagory (unique, non-unique, etc)
+sum.val <- rowSums(cell.distribution.df)
+
+# divide each cluster clone # by the sum value of clones for that category 
+cell.distribution.df <- sweep(cell.distribution.df, 1, 
+                              sum.val, 
+                              FUN = "/")
+
+cell.distribution.df <- cell.distribution.df*100
+cell.distribution.df
+
+# sanity check
+rowSums(cell.distribution.df)
+
+write.csv(cell.distribution.df, paste0(output.dir, "Figure_3C_by_cells.csv"))
+
+########################
+# Unique GZMK clones
+########################
+cell.distribution.df <- table(cell.number.data$GZMK_unique, cell.number.data$Clusters_l1)
+cell.distribution.df
+
+# calculate number of clones in each catagory (unique, non-unique, etc)
+sum.val <- rowSums(cell.distribution.df)
+
+# divide each cluster clone # by the sum value of clones for that category 
+cell.distribution.df <- sweep(cell.distribution.df, 1, 
+                              sum.val, 
+                              FUN = "/")
+
+cell.distribution.df <- cell.distribution.df*100
+cell.distribution.df
+
+# sanity check
+rowSums(cell.distribution.df)
+
+write.csv(cell.distribution.df, paste0(output.dir, "Figure_3D_by_cells.csv"))
+
+
+```
+
+
+
+### Figure 3E
+```{r Figure_3E}
+
+####################################
+# Create dir to hold large objects
+####################################
+
+save.dir <- "saves/Trajectory/"
+  
+  if(!dir.exists(paste0(save.dir))){
+    dir.create(paste0(save.dir), 
+               recursive = T)
+  }
+  
+###########################
+# Load packages
+###########################
+
+#devtools::install_github("dynverse/dyno")
+
+library(dyno)
+library(dynplot)
+library(dynmethods)
+library(dynutils)
+library(dynwrap)
+library(tidyverse)
+dynwrap::test_docker_installation(detailed = TRUE)
+
+############################
+# Read in and prepare data
+############################
+
+if(long.compute){  
+  
+  # Read in dataframes
+  raw.data <- as.data.frame(as.matrix(reduced.seurat@assays$RNA@counts))
+  normed.data <- as.data.frame(as.matrix(reduced.seurat@assays$RNA@data))
+  
+  
+  # data is organized cols = cells and rows = genes
+  head(raw.data[1:10, 1:10])
+  head(normed.data[1:10, 1:10])
+  
+  # Need to inverse data for input into dyno package
+  raw.data <- t(raw.data)
+  head(raw.data[1:10, 1:10])
+  
+  normed.data <- t(normed.data)
+  head(normed.data[1:10, 1:10])
+  
+  # Check data structure
+  dim(raw.data) # 4,102 cells and 16,295 genes
+  dim(normed.data) # 4,102 cells and 16,295 genes
+  
+  ##########################################
+  # Creating Dyno formatted data structure
+  ##########################################
+  
+  Dyno.data <- wrap_expression(counts = raw.data,
+                               expression = normed.data)
+  
+  # Add grouping info
+  group.vect <- reduced.seurat@meta.data$Clusters_l1
+  names(group.vect) <- colnames(reduced.seurat)
+  
+  Dyno.data <- add_grouping(Dyno.data,
+                            grouping = group.vect)
+  
+  
+  # Add dim reduction
+  UMAP.dims <- reduced.seurat@reductions$umap@cell.embeddings
+  
+  
+  Dyno.data <- add_dimred(Dyno.data,
+                          dimred = UMAP.dims)
+  
+  
+  
+  #####################
+  # Infer Trajectory
+  #####################
+  
+  
+  ##############
+  # Slingshot
+  ##############
+  options(dynwrap_backend = c('container'))
+  slingshot <- infer_trajectory(Dyno.data, 
+                                method = ti_slingshot(), 
+                                parameters = NULL, 
+                                give_priors = NULL, 
+                                seed = set.seed(42),
+                                verbose = TRUE)
+  
+  
+  
+  saveRDS(slingshot, file = paste0(save.dir, "slingshot_temp.rds"))
+  rm(slingshot)
+  
+  ##############
+  # scorpius
+  ##############
+  scorpius <- infer_trajectory(Dyno.data, 
+                               method = ti_scorpius(), 
+                               parameters = NULL, 
+                               give_priors = NULL, 
+                               seed = set.seed(42),
+                               verbose = TRUE)
+  
+  saveRDS(scorpius, file = paste0(save.dir, "scorpius.rds"))
+  rm(scorpius)
+  
+}
+
+# Read data
+slingshot <- readRDS(paste0(save.dir, "slingshot.rds"))
+scorpius <- readRDS(paste0(save.dir, "scorpius.rds"))
+
+# umap dim values 
+UMAP.dims <- reduced.seurat@reductions$umap@cell.embeddings
+
+# Set root milestone for slingshot model
+slingshot <- add_root(trajectory = slingshot, 
+                        root_milestone_id = "4")
+
+milestone.names <- c("GZMK", "GZMK", "ISG", "Stim_1")
+names(milestone.names) <- c("1", "2", "3", "4")
+slingshot <- label_milestones(slingshot, milestone.names)
+
+
+
+# Plot trajectory ontop of UMAP dimension 
+dynplot::plot_dimred(slingshot, 
+                     dimred = UMAP.dims,
+                     hex_cells = T, 
+                     label_milestones = T,
+                     color_cells = "pseudotime")
+
+#dev.copy(pdf, paste0(output.dir, "Figure_3E.pdf"))
+#dev.off()
+
+# plot scorpius trajectory 
+dynplot::plot_dimred(scorpius, 
+                     dimred = UMAP.dims,
+                     hex_cells = TRUE, 
+                     label_milestones = T,
+                     color_cells = "pseudotime")
+# data not shown
+
+DefaultAssay(CD8.seurat) <- "RNA"
+average.seurat <- AverageExpression(CD8.seurat, group.by = "Clusters_l1", return.seurat = T)
+#average.seurat <- ScaleData(average.seurat)
+DoHeatmap(average.seurat, rownames(goi), draw.lines = F)
+
+
+
+```
+
+
+
+

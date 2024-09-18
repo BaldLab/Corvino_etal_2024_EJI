@@ -132,12 +132,12 @@ if(long.compute){
     filter(p_val_adj < 0.05)
   
   
-  write.csv(DEG.markers, paste0(output.dir, "Figure_2B_DEGs.csv"))
+  write.csv(DEG.markers, paste0(output.dir, "Figure_2_DEGs.csv"))
 }
 
 
 # load data
-DEG.wilcox <- read.csv(paste0(output.dir, "Figure_2B_DEGs.csv"))
+DEG.wilcox <- read.csv(paste0(output.dir, "Figure_2_DEGs.csv"))
 DEG.wilcox <- DEG.wilcox[,-1]
 
 
@@ -156,9 +156,17 @@ average.seurat <- AverageExpression(CD8.seurat, return.seurat = TRUE)
 goi <- DEG.wilcox %>%
   dplyr::filter(p_val_adj < 0.05) %>%
   dplyr::filter(cluster == "Stimulated_1" | cluster == "Stimulated_exhausted") %>%
-  dplyr::filter(avg_log2FC > 0.5)
+  dplyr::filter(avg_log2FC > 0.5) %>%
+  dplyr::group_by(gene) %>%
+  dplyr::filter(n() > 1) %>%
+  dplyr::ungroup()
 
-goi <- goi$gene[duplicated(goi$gene)]
+# save to file 
+write.csv(goi, paste0(output.dir, "Figure_2B_DEGs.csv"))
+
+# extract just the genes 
+goi <- unique(goi$gene)
+
 
 
 source("scripts/functions/annotate_seurat_heatmap_function.R")

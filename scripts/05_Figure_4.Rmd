@@ -112,13 +112,13 @@ if(long.compute){
   
   # Export results
   write_csv(x = IFN.clust.DEGs,
-            file = paste0(output.dir, "IFN_clust_DEGs.csv"))
+            file = paste0(output.dir, "Figure_4_DEGs.csv"))
   
 }
 
 
 # create signatures
-#IFN.clust.DEGs <- read.csv(paste0(output.dir, "IFN_clust_DEGs.csv"))
+#IFN.clust.DEGs <- read.csv(paste0(output.dir, "Figure_4_DEGs.csv"))
 
 #Sig.10 <- IFN.clust.DEGs %>%
 #  filter(p_val_adj <= 0.05) %>%
@@ -141,10 +141,10 @@ signature.names <- paste0(names(Signature.list), "_UCell")
 ```{r Figure_4A_B}
 
 
-  # read in data
+# read in data
 input.dir <- "results/Figure_4/"
 
-IFN.clust.DEGs <- read.csv(paste0(input.dir, "IFN_clust_DEGs.csv"))
+IFN.clust.DEGs <- read.csv(paste0(input.dir, "Figure_4_DEGs.csv"))
 
 
 # Prepare dataset for heatmap
@@ -159,7 +159,13 @@ goi <- IFN.clust.DEGs %>%
   dplyr::filter(p_val_adj < 0.05) %>%
   dplyr::filter(avg_log2FC > 0.25) %>%
   dplyr::filter(DE == "up") %>%
-  dplyr::arrange(desc(avg_log2FC)) %>%
+  dplyr::arrange(desc(avg_log2FC)) 
+
+# export table
+write_csv(goi, paste0(output.dir, "Figure_4A_DEGs.csv"))
+
+# extract just gene IDs
+goi <- goi %>%
   dplyr::pull(gene_symbol)
 
 
@@ -189,6 +195,14 @@ DoHeatmap(average.seurat,
 
 dev.copy(pdf, paste0(output.dir, "Figure_4B.pdf"))
 dev.off()
+
+
+# create table of just top 10 DEGs used in figure 4B
+goi <- IFN.clust.DEGs %>%
+  dplyr::filter(gene_symbol %in% Sig.10)
+
+# export table
+write_csv(goi, paste0(output.dir, "Figure_4B_DEGs.csv"))
 
 
 ```
@@ -221,15 +235,15 @@ Signature.list <- list(Type1.sig = Type1.signature,
 
 
 if(long.compute){
-
- cores <- parallel::detectCores(all.tests = FALSE, logical = TRUE)
-
-# Calculate Ucell scores for signatures
- CD8.seurat <- UCell::AddModuleScore_UCell(CD8.seurat,
-                                           features = Signature.list,
-                                           ncores = cores)
-
-
+  
+  cores <- parallel::detectCores(all.tests = FALSE, logical = TRUE)
+  
+  # Calculate Ucell scores for signatures
+  CD8.seurat <- UCell::AddModuleScore_UCell(CD8.seurat,
+                                            features = Signature.list,
+                                            ncores = cores)
+  
+  
 }
 
 ########################
@@ -267,7 +281,7 @@ dev.off()
 library("enrichR")
 #install.packages("SCpubr")
 library("SCpubr")
- 
+
 # set serach to human genes
 enrichR::setEnrichrSite(site = "Enrichr")
 
@@ -330,12 +344,12 @@ dn.enriched.terms <- enrichR::enrichr(dn.genes, dbs_use)
 
 # Plot enriched terms 
 downregulated.plots <- SCpubr::do_TermEnrichmentPlot(enriched_terms = dn.enriched.terms, 
-                                                   nchar_wrap = 20,
-                                                   font.size = 5, 
-                                                   font.type = "sans", 
-                                                   text_labels_size = 1,
-                                                   colors.use = c("royalblue", "gray"),
-                                                   nterms = 10)
+                                                     nchar_wrap = 20,
+                                                     font.size = 5, 
+                                                     font.type = "sans", 
+                                                     text_labels_size = 1,
+                                                     colors.use = c("royalblue", "gray"),
+                                                     nterms = 10)
 
 # upregulated plot
 name.var <- dbs_use
