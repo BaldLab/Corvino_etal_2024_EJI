@@ -92,6 +92,7 @@ if(quick.load){
 
 ### Preparing dataset
 ```{r reducing_seurat_object}
+
 if(long.compute){
   ################################################
   # Subset dataset and recalculate UMAP
@@ -168,8 +169,6 @@ if(long.compute){
 
 
 ```
-
-
 
 
 ### Figure 3A
@@ -331,7 +330,7 @@ UMAPPlot(US.reduced.tcr.seurat,
   xlim(-8,6.5) + 
   ylim(-5.5, 7)
 
-dev.copy(pdf, paste0(output.dir, "Figure_6B.pdf"))
+dev.copy(pdf, paste0(output.dir, "Figure_3B.pdf"))
 dev.off()
 
 
@@ -529,160 +528,6 @@ cell.distribution.df
 rowSums(cell.distribution.df)
 
 write.csv(cell.distribution.df, paste0(output.dir, "Figure_3D_by_cells.csv"))
-
-
-```
-
-
-
-### Figure 3E
-```{r Figure_3E}
-
-####################################
-# Create dir to hold large objects
-####################################
-
-save.dir <- "saves/Trajectory/"
-  
-  if(!dir.exists(paste0(save.dir))){
-    dir.create(paste0(save.dir), 
-               recursive = T)
-  }
-  
-###########################
-# Load packages
-###########################
-
-#devtools::install_github("dynverse/dyno")
-
-library(dyno)
-library(dynplot)
-library(dynmethods)
-library(dynutils)
-library(dynwrap)
-library(tidyverse)
-dynwrap::test_docker_installation(detailed = TRUE)
-
-############################
-# Read in and prepare data
-############################
-
-if(long.compute){  
-  
-  # Read in dataframes
-  raw.data <- as.data.frame(reduced.seurat@assays$RNA@counts)
-  normed.data <- as.data.frame(reduced.seurat@assays$RNA@data)
-  
-  
-  # data is organized cols = cells and rows = genes
-  head(raw.data[1:10, 1:10])
-  head(normed.data[1:10, 1:10])
-  
-  # Need to inverse data for input into dyno package
-  raw.data <- t(raw.data)
-  head(raw.data[1:10, 1:10])
-  
-  normed.data <- t(normed.data)
-  head(normed.data[1:10, 1:10])
-  
-  # Check data structure
-  dim(raw.data) # 4,102 cells and 16,295 genes
-  dim(normed.data) # 4,102 cells and 16,295 genes
-  
-  ##########################################
-  # Creating Dyno formatted data structure
-  ##########################################
-  
-  Dyno.data <- wrap_expression(counts = raw.data,
-                               expression = normed.data)
-  
-  # Add grouping info
-  group.vect <- reduced.seurat@meta.data$Clusters_l1
-  names(group.vect) <- colnames(reduced.seurat)
-  
-  Dyno.data <- add_grouping(Dyno.data,
-                            grouping = group.vect)
-  
-  
-  # Add dim reduction
-  UMAP.dims <- reduced.seurat@reductions$umap@cell.embeddings
-  
-  
-  Dyno.data <- add_dimred(Dyno.data,
-                          dimred = UMAP.dims)
-  
-  
-  
-  #####################
-  # Infer Trajectory
-  #####################
-  
-  
-  ##############
-  # Slingshot
-  ##############
-  
-  slingshot <- infer_trajectory(Dyno.data, 
-                                method = ti_slingshot(), 
-                                parameters = NULL, 
-                                give_priors = NULL, 
-                                seed = set.seed(42),
-                                verbose = TRUE)
-  
-  
-  
-  saveRDS(slingshot, file = paste0(save.dir, "slingshot.rds"))
-  rm(slingshot)
-  
-  ##############
-  # scorpius
-  ##############
-  scorpius <- infer_trajectory(Dyno.data, 
-                               method = ti_scorpius(), 
-                               parameters = NULL, 
-                               give_priors = NULL, 
-                               seed = set.seed(42),
-                               verbose = TRUE)
-  
-  saveRDS(scorpius, file = paste0(save.dir, "scorpius.rds"))
-  rm(scorpius)
-  
-}
-
-# Read data
-slingshot <- readRDS(paste0(save.dir, "slingshot.rds"))
-scorpius <- readRDS(paste0(save.dir, "scorpius.rds"))
-
-# umap dim values 
-UMAP.dims <- reduced.seurat@reductions$umap@cell.embeddings
-
-# Set root milestone for slingshot model
-slingshot <- add_root(trajectory = slingshot, 
-                        root_milestone_id = "3")
-
-milestone.names <- c("GZMK", "GZMK", "ISG", "Stim_1")
-names(milestone.names) <- c("1", "2", "3", "4")
-slingshot <- label_milestones(slingshot, milestone.names)
-
-
-
-# Plot trajectory ontop of UMAP dimension 
-dynplot::plot_dimred(slingshot, 
-                     dimred = UMAP.dims,
-                     hex_cells = T, 
-                     label_milestones = T,
-                     color_cells = "pseudotime")
-
-dev.copy(pdf, paste0(output.dir, "Figure_3E.pdf"))
-dev.off()
-
-# plot scorpius trajectory 
-dynplot::plot_dimred(scorpius, 
-                     dimred = UMAP.dims,
-                     hex_cells = TRUE, 
-                     label_milestones = T,
-                     color_cells = "pseudotime")
-# data not shown
 
 
 ```

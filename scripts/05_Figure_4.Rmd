@@ -293,7 +293,7 @@ dbs_use <- c("GO_Biological_Process_2021")
 
 
 # read in IFN clust DEGS
-IFN.clust.DEGs <- read.csv(paste0(output.dir, "IFN_clust_DEGs.csv"))
+IFN.clust.DEGs <- read.csv("results/Figure_4/Figure_4_DEGs.csv")
 
 # filter DEGs for sig up genes 
 IFN.sig.up <- IFN.clust.DEGs %>%

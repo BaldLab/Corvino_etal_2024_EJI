@@ -272,7 +272,6 @@ dev.off()
 ## Figure 2 - TCR data {.tabset}
 
 ### Reading TCR data
-
 ```{r reading_tcr_data}
 
 ########################
@@ -378,7 +377,6 @@ write.csv(output.df, paste0(output.dir, "Figure_2E.csv"))
 
 
 ### Figure 2F & G - Circos plots 
-
 ```{r Figure_2F_G}
 
 # majority of this code was written by Nick Borcherding (https://www.borch.dev/) or (https://github.com/ncborcherding) 

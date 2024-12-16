@@ -115,7 +115,6 @@ dev.off()
 
 ```
 
-
 ### Figure 1 C-G
 ```{r Figure_1C_G}
 
@@ -177,7 +176,7 @@ dev.off()
 
 
 #Figure 1 C-G density expression plots
-goi <- c("IL7R", "CCR7", "SELL", "GZMK", "ISG15", "IFNG", "XCL1", "HAVCR2", "PDCD1", "TOX", "ZNF683", "MKI67", "TRDC")
+goi <- c("IL7R", "CCR7", "SELL", "GZMK", "ISG15", "IFNG", "XCL1", "TOX", "HAVCR2", "PDCD1", "ZNF683", "MKI67", "TRDC")
 
 
 for(i in 1:length(goi)){

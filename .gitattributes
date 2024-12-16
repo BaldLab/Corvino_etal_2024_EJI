@@ -326,3 +326,4 @@ results/Figure_2/Figure_2F_G_ribbons_originating_from_US_GZMK.pdf filter=lfs dif
 results/Figure_4/Figure_4_DEGs.csv filter=lfs diff=lfs merge=lfs -text
 results/Figure_2/Figure_2_DEGs.csv filter=lfs diff=lfs merge=lfs -text
 results/Figure_3/Figure_3D.pdf filter=lfs diff=lfs merge=lfs -text
+results/Supplementary_Figure_1/DEG_Innate_Clusters_only.csv filter=lfs diff=lfs merge=lfs -text
