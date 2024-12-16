@@ -23,6 +23,10 @@ Dillon Corvino^1\*^, Martin Batstone^2,3^, Brett G.M Hughes^2,3^, Tim Kempchen^1
 
 Tobias Bald, Institute for Experimental Oncology, University Hospital Bonn, Venusberg-Campus 1, 53127 Bonn, Germany; [Tobias.Bald\@ukbonn.de](mailto:Tobias.Bald@ukbonn.de)
 
+### DOI
+https://doi.org/10.1002/eji.202451371
+
+
 ## Abstract:
 
 Background: Head and neck squamous cell carcinoma (HNSCC) is linked to human papillomavirus (HPV) infection. HPV-positive and HPV-negative HNSCC exhibit distinct molecular and clinical characteristics. Although checkpoint inhibitors have shown efficiency in recurrent/metastatic HNSCC, response variability persists regardless of HPV status. This study aimed to explore the CD8+ T-cell landscape in HPV-negative HNSCC.
